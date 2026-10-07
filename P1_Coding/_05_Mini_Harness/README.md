@@ -30,10 +30,9 @@ P1 最后一个练习，对应学习计划 **M1–M3 的组装验收**：前四�
 | 5 | `app.py` | CLI：`chat` / `run` / `list` / `show` / `fork` |
 | 6 | `server.py` | ★ 可视化服务：stdlib http.server + JSON/NDJSON API（实时推事件流） |
 | 7 | `webui/index.html` | ★ 可视化页面：会话列表 + 对话 + **日志轨迹实时生长** |
-| 8 | `demo_provider.py` | 离线规则 provider（读历史、按关键词路由，让页面无 key 也能交互） |
 | — | `demo.py` | 入口：离线跑完整故事（多轮 → 工具 → 退出 → resume → 同构 → 分叉） |
 | — | `test_mini_harness.py` | 13 个装配验收测试（全离线） |
-| — | `test_webui.py` | 11 个可视化服务测试（真起 HTTP 服务，全离线） |
+| — | `test_webui.py` | 9 个可视化服务测试（真起 HTTP 服务，FakeLLM 剧本驱动，全离线） |
 | — | `llm_seam/ agent_loop/ tool_pipeline/ session/ runner.py` | 前四个练习的自包含副本（见下） |
 
 > **自包含副本**：`llm_seam`(_01)、`agent_loop`(_04 版，含 resume 扩展)、
@@ -45,11 +44,11 @@ P1 最后一个练习，对应学习计划 **M1–M3 的组装验收**：前四�
 ```bash
 cd P1_Coding/_05_Mini_Harness
 
-# 可视化页面（推荐）：离线规则 provider，自动打开 http://127.0.0.1:8765/
+# 可视化页面（推荐）：真实 API（读取根目录 .env 里的 key），自动打开 http://127.0.0.1:8765/
 ./run_web.bat
 bash run_web.sh
-# 去掉 --fake 即走真实 API；可加 --port 9000 --search --deny-writes
-python server.py --fake --no-open
+# 可加 --port 9000 --search --deny-writes
+python server.py --no-open
 
 # CLI 交互对话（真实 API，需要项目根 .env 里的 key）
 ./run.bat chat
@@ -70,7 +69,7 @@ python server.py --fake --no-open
 bash run.sh
 
 # 测试（全离线）
-python -m pytest -q        # 13 + 11 = 24 个用例
+python -m pytest -q        # 13 + 9 = 22 个用例
 ```
 
 ## 可视化页面
@@ -83,9 +82,8 @@ python -m pytest -q        # 13 + 11 = 24 个用例
   （seq/时间戳以日志为准）。
 - **工具栏**：`▶ 回放轨迹`（逐条动画播放）、`✂ 模拟崩溃`（往日志尾部写半行 JSON，再打开时
   自动修复并弹提示——M3 的核心机制一眼可见）、`⑂ 分叉`、`⟳ 刷新`。
-- **离线可用**：`--fake` 用 `demo_provider.DemoProvider`——它读历史、按关键词路由
-  （算术/写文件/读文件/列文件），因此页面上能真的看到"模型读到工具结果后再作答"的完整轨迹，
-  且不需要 API key。
+- **直接调用真实 API**：页面每次发送现场构造 `DeepSeekProvider`（读取项目根 `.env` 里的
+  key），所以看到的轨迹是真实模型的工具调用与作答；启动时若缺 key 会立即报错（fail loud）。
 
 **安全提示（重要）**：页面把写文件审批默认设为 `AutoApprove`——浏览器里无法做 y/n 交互。
 服务只监听 `127.0.0.1`，**没有任何认证**，仅适合本机演示；不要绑定到公网地址。
@@ -104,8 +102,8 @@ python -m pytest -q        # 13 + 11 = 24 个用例
 - [x] **可选搜索**：默认不注册 web_search，`--search` 才启用
 - [x] **CLI**：run / list / show / fork 全部可用；fork 目标已存在则 fail loud
 - [x] **可视化服务**：GET 只读接口（config/tools/sessions/session）、POST send 以 NDJSON
-      流回事件并落盘、fork、模拟崩溃 + 自动修复，11 个测试真起 HTTP 服务验证
-- [x] `pytest -q` 全部通过（24 个用例，13 装配 + 11 可视化，全离线）
+      流回事件并落盘、fork、模拟崩溃 + 自动修复，9 个测试真起 HTTP 服务验证
+- [x] `pytest -q` 全部通过（22 个用例，13 装配 + 9 可视化，全离线）
 - [x] **真实 API 实测**：DeepSeek 完成 `calculate → write_file → 回答` 三步链；
       跨进程 resume 后 turn 接续、成功读回上一轮写的文件
 - [x] **页面实测**：浏览器里多轮对话（算数/写文件/列文件）轨迹实时生长；崩溃按钮弹修复提示

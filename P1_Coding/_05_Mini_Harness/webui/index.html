@@ -272,16 +272,18 @@ async function send() {
   // 先本地回显用户消息
   appendLocalUser(text);
 
+  // 声明在函数作用域：finally 里还要用（曾因声明在 try 内导致 ReferenceError）
+  let finalText = "";
+  let notice = "";   // 本次运行的提示（完成/修复/出错），延后到权威视图加载后再显示
   try {
     const res = await fetch(`/api/sessions/${encodeURIComponent(state.currentId)}/send`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
     });
-    if (!res.ok) { banner("请求失败：" + await res.text()); throw new Error("send failed"); }
+    if (!res.ok) { banner("请求失败：" + await res.text()); return; }
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
-    let finalText = "";
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
@@ -293,13 +295,13 @@ async function send() {
         let obj; try { obj = JSON.parse(line); } catch { continue; }
         if (obj.kind === "__done") {
           finalText = obj.payload.final_text;
-          banner(`✔ turn ${obj.payload.turn} 完成 · status=${obj.payload.status} · step ${obj.payload.steps} 个`);
+          notice = `✔ turn ${obj.payload.turn} 完成 · status=${obj.payload.status} · step ${obj.payload.steps} 个`;
         } else if (obj.kind === "__repair") {
-          banner(`⚠ 上次会话尾部被截断，已自动修复：丢弃 ${obj.payload.dropped_bytes} 字节`);
+          notice = `⚠ 上次会话尾部被截断，已自动修复：丢弃 ${obj.payload.dropped_bytes} 字节`;
         } else if (obj.kind === "__error") {
-          banner("运行出错：" + esc(obj.payload.message));
+          notice = "运行出错：" + obj.payload.message;
         } else if (obj.kind === "turn_start") {
-          // 事件 seq 由服务端分配，这里用递增占位符展示实时流
+          // 事件 seq 由服务端分配，这里用占位符展示实时流
           appendTraceLive({ seq: "…", ts: new Date().toISOString(), type: "turn/start", data: { turn: obj.payload.turn } });
         } else if (obj.kind === "step_request") {
           appendTraceLive({ seq: "…", ts: new Date().toISOString(), type: "step/start", data: { turn: obj.payload.turn, step: obj.payload.step } });
@@ -313,12 +315,14 @@ async function send() {
       }
     }
   } catch (e) {
-    if (!/send failed/.test(String(e))) banner("网络错误：" + esc(String(e)));
+    notice = "网络错误：" + String(e);
   } finally {
     state.sending = false;
     $("btnSend").disabled = false;
-    // 流结束后从日志重新加载权威视图（seq/ts 以落盘日志为准）
+    // 流结束后从日志重新加载权威视图（seq/ts 以落盘日志为准）。注意 selectSession
+    // 内部会清空横幅，所以本次运行的提示要等它加载完再显示。
     await selectSession(state.currentId);
+    if (notice) banner(notice);
     if (finalText) { const el = $("chat"); el.scrollTop = el.scrollHeight; }
   }
 }

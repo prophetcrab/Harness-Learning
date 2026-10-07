@@ -17,8 +17,7 @@
 
 用法（在 _05_Mini_Harness 目录下）：
 
-    python server.py                  # 真实 API（需要 .env 里的 key）
-    python server.py --fake           # 离线规则 provider（不需要 key）
+    python server.py                  # 真实 API（需要项目根 .env 里的 key）
     python server.py --port 8765 --no-open
 """
 
@@ -373,14 +372,9 @@ def create_server(config: ServerConfig, *, host: str = "127.0.0.1", port: int = 
 
 
 def build_config(args: argparse.Namespace) -> ServerConfig:
-    if args.fake:
-        from demo_provider import DemoProvider
-
-        provider_factory = DemoProvider
-        provider_label = "DemoProvider（离线规则，不需要 key）"
-    else:
-        provider_factory = lambda: build_deepseek_provider(PROJECT_ROOT)  # noqa: E731
-        provider_label = "DeepSeekProvider（真实 API）"
+    # 页面直接调用真实 API：provider 每次请求现场构造，读取项目根 .env 里的 key。
+    provider_factory: Callable[[], LLMProvider] = lambda: build_deepseek_provider(PROJECT_ROOT)
+    provider_label = "DeepSeekProvider（真实 API）"
 
     approval_factory: Callable[[], ApprovalPolicy]
     if args.deny_writes:
@@ -401,7 +395,6 @@ def build_config(args: argparse.Namespace) -> ServerConfig:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="server.py", description="mini harness 可视化服务")
-    parser.add_argument("--fake", action="store_true", help="离线规则 provider（不需要 API key）")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--root", default=str(DEFAULT_ROOT), help="会话日志根目录")
@@ -416,6 +409,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     config = build_config(args)
+    # 提前校验 key（fail loud）：缺 key 时立刻报错，而不是等第一个请求失败。
+    try:
+        config.provider_factory()
+    except SystemExit as exc:
+        print(f"[错误] {exc}", file=sys.stderr)
+        return 1
     httpd = create_server(config, host=args.host, port=args.port)
     url = f"http://{args.host}:{args.port}/"
     print(f"mini harness 可视化服务已启动：{url}")

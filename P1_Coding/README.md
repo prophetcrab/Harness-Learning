@@ -109,13 +109,11 @@ python cli.py fork <src> <new> --upto 4  # 分叉
 
 ```bash
 cd P1_Coding/_05_Mini_Harness
-python -m pytest -q                     # 24 用例（全离线）
+python -m pytest -q                     # 22 用例（全离线）
 
 # —— 可视化页面（推荐，直观看到对话与日志轨迹）——
-./run_web.bat                           # 离线规则 provider（不需要 key），自动开浏览器
-./run_web.bat --fake                    # 同上（显式）
-./run_web.bat                           # 去掉 --fake 即走真实 API（需 .env）
-python server.py --fake --port 8765 --no-open   # 手动指定端口/不自动开页面
+./run_web.bat                           # 真实 API（读取根目录 .env 里的 key），自动开浏览器
+python server.py --port 8765 --no-open   # 手动指定端口/不自动开页面
 # 页面默认 http://127.0.0.1:8765/
 #   三栏：会话列表 | 对话 | 日志轨迹（append-only 事件流，实时生长）
 #   工具栏：▶ 回放轨迹 / ✂ 模拟崩溃（看自动修复）/ ⑂ 分叉 / ⟳ 刷新
@@ -145,7 +143,7 @@ python demo.py                          # 多轮对话 → 工具 → 退出 →
    沙箱越界（`../x`）即使放行也会被拦。
 5. **分叉**：点 `⑂ 分叉` 从当前会话某条事件派生新会话，原会话不变。
 
-> 从零跑通全部：`python -m pytest P0_Coding P1_Coding -q` → 96 passed。
+> 从零跑通全部：`python -m pytest P0_Coding P1_Coding -q` → 94 passed。
 
 ---
 
