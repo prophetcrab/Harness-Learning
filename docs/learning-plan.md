@@ -245,7 +245,10 @@ AgentDevLearn/
 
 **P1 阶段（2026-10-07 完成）**：把 P0 跑通的机制升级为结构化骨架，练习路线见 [P1_Coding/README.md](../P1_Coding/README.md)，
 对应 M1–M3：`_01_Provider_Protocol` → `_02_Agent_Loop` → `_03_Tool_Pipeline` / `_04_Session_Log` → `_05_Mini_Harness`，
-五个练习全部完成，P1 共 57 个测试用例全绿（真实 API 亦实测走通完整链路）。
+五个练习全部完成，P1 共 81 个测试用例全绿（真实 API 亦实测走通完整链路）。
+`_05` 额外提供了一个**可视化页面**（标准库 http.server，零新增依赖）：把会话日志的事件流
+实时搬到浏览器，日志轨迹随对话生长，崩溃修复/审批拒绝/分叉都能一键观察——让 M3 的
+"事件溯源"从日志文件变成看得见的东西。
 
 | 阶段 | 主题 | 状态 | 完成日期 | 验收命令 |
 |---|---|---|---|---|
@@ -253,7 +256,7 @@ AgentDevLearn/
 | M0 | 工程地基 | ⏭ 已并入 P1（git 已 init 并提交；`check.py` 门禁仍未补） | | `python scripts/check.py` |
 | M1 | 最小 agent loop | ✅ 已完成（P1 `_01` + `_02`） | 2026-10-07 | `pytest P1_Coding -q` |
 | M2 | 工具系统 | ✅ 已完成（P1 `_03`） | 2026-10-07 | `pytest P1_Coding -q` |
-| M3 | 会话日志 | ✅ 已完成（P1 `_04`） | 2026-10-07 | `pytest P1_Coding -q` |
+| M3 | 会话日志 | ✅ 已完成（P1 `_04` + `_05` 可视化） | 2026-10-07 | `pytest P1_Coding -q` |
 | M4 | 提示词装配 | ☐ 未开始 | | `python -m harness run --dump-prompt` |
 | M5 | 能力接缝 | ☐ 未开始 | | `pytest -q`（双 provider 全绿） |
 | M6 | Profile 组装 | ☐ 未开始 | | `python -m harness --profile dev dump-config` |

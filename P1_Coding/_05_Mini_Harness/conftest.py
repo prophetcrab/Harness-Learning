@@ -27,6 +27,8 @@ _PACKAGES = (
     "web_search",
     "env",
     "app",
+    "server",
+    "demo_provider",
 )
 for _key in [k for k in sys.modules if k.split(".")[0] in _PACKAGES]:
     sys.modules.pop(_key, None)

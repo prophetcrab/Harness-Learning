@@ -1,85 +1,157 @@
 # P1_Coding
 
-P1 阶段工作区：**从"跑通机制"到"装进结构"**。
+## P1 简介
 
-P0 用单文件脚本把 harness 的核心机制逐个摸了一遍（模型调用、提示词拼装、工具调用闭环、文件工具沙箱与审批）。
-P1 把这些机制升级成最小 harness 的骨架：**协议化、管线化、事件化**——结束时你将拥有一个
-"能对话、能恢复、可扩展工具、可离线测试"的小 harness。
+P1 是"从跑通机制到装进结构"的阶段。P0 用单文件脚本把 harness 的核心机制逐个摸了一遍；
+P1 把这些机制升级成一个小 harness 的骨架——**协议化、管线化、事件化**，最终得到
+"能对话、能恢复、可扩展工具、可离线测试、可可视化观察"的 mini harness。
 
-对应学习计划：[docs/learning-plan.md](../docs/learning-plan.md) 的
-M1（最小 agent loop）→ M2（工具系统）→ M3（会话日志）。
+对应学习计划的 **M1 → M2 → M3**，共 5 个练习，依赖关系
+`_01 → _02 → {_03, _04} → _05`：
 
-## 与 P0 的约定差异
+| 编号 | 主题 | 对应阶段 |
+|---|---|---|
+| `_01_Provider_Protocol` | LLM 接缝（协议 + FakeLLM + DeepSeek） | M1 |
+| `_02_Agent_Loop` | Agent 主循环（turn/step + 轨迹 + 取消） | M1 |
+| `_03_Tool_Pipeline` | 工具管线（注册表 + 审批 + pre/execute/post） | M2 |
+| `_04_Session_Log` | 会话日志（事件溯源 + JSONL + resume） | M3 |
+| `_05_Mini_Harness` | 组装（可对话 + 可恢复的小 harness + 可视化页面） | M1–M3 验收 |
 
-1. **结构升级**：练习仍有可直接运行的入口（`python xxx.py` + `run.bat`/`run.sh`），
-   但内部按需分模块；协议/类/纯函数必须能被 `import`，不再全部塞在一个文件里。
-2. **测试升级**：从黑盒 subprocess 升级为可导入的单元测试——模型调用一律走 `FakeLLM`
-   离线断言（剧本 + 请求记录），真实 API 只用于 demo。
-3. **决策记录**：从 P1 开始，每个练习完成时写一份 `docs/decisions/NNNN-*.md`（背景/决策/备选/后果）。
-   P0 阶段豁免了这条，格式见 [docs/decisions/README.md](../docs/decisions/README.md)。
-4. **沿用 P0**：四件套（入口脚本 + README + 测试 + 一键启动器）、先定验收再实现、中文注释、`.bat` 纯 ASCII。
+**状态：5 个练习全部完成，81 个 P1 用例全离线通过**（连同 P0 共 96 个）。
+每个练习自包含（各带所需的同名包副本），并配一份决策记录 `docs/decisions/000N-*.md`。
 
-## 练习路线图
+约定：测试一律走 `FakeLLM` 离线断言，真实 API 只用于 demo；`.bat` 保持纯 ASCII；
+每个练习四件套 = 入口脚本 + README + 测试 + 一键启动器。
 
-| 编号 | 主题 | 核心交付 | 验收预告 |
-|---|---|---|---|
-| `_01_Provider_Protocol` | LLM 接缝 | `LLMProvider` 协议 + `FakeLLM`（剧本、请求记录）+ `DeepSeekProvider`；消息词汇模块 | FakeLLM 驱动完整工具闭环，全程离线可断言；换 provider 只改一行 |
-| `_02_Agent_Loop` | Agent 主循环 | 循环抽成可复用类：turn/step 词汇、max_steps、流式回调、调用轨迹返回 | 剧本覆盖"两步收尾 / 触顶停止 / 工具报错恢复"；决策记录 0002 |
-| `_03_Tool_Pipeline` | 工具管线 | 注册表（define_tool 定义与实现分离）+ pre/execute/post 三段 + 超时 + 审批策略接口化 | 审批三态、超时、post 加工三类测试；决策记录 0003 |
-| `_04_Session_Log` | 会话日志 | append-only 事件 + JSONL 落盘 + `derive_messages()` + resume + 崩溃尾部修复 | 重放同构、进程被杀后恢复、坏尾自动修复；决策记录 0004 |
-| `_05_Mini_Harness` | 综合验收 | 前四者组装：CLI 对话 + resume + 工具箱（计算器/文件/可选搜索） | M1–M3 验收全绿；完整 demo：对话 → 工具 → 退出 → resume 继续 |
+---
 
-依赖关系：`_01 → _02 → {_03, _04} → _05`（_03 与 _04 可在 _02 完成后并行，也可按编号顺序做）。
+## 模块简介
 
-### 每个练习的"读 dsh"清单（写代码前先读）
+### `_01_Provider_Protocol` —— LLM 接缝
+把散落的模型调用升级成**三角色接缝**：定义（`LLMProvider` 协议 + 中立词汇
+`Message`/`ToolCall`/`ToolSpec`）、实现（`FakeLLM` 离线剧本 / `DeepSeekProvider` 真实）、
+消费者（`run_tool_loop`）。厂商方言（JSON 字符串参数、`tool_call_id` 配对）全部关在
+provider 里。**换供应商只改一行组装代码。** 交付：`llm_seam/` 包 + 12 个离线测试。
 
-| 练习 | 先读 dsh 的 |
-|---|---|
-| `_01` | `packages/llm/llm/src/index.ts`（`LlmAdapter` 抽象）、`message.ts`（消息词汇） |
-| `_02` | `packages/core/agent-loop/src/agent.ts`（turn/step 主流程）、`inbox.ts` |
-| `_03` | `packages/core/tools/src/index.ts`（pre/guard/execute/post 管线）、`docs/tool-execution-pipeline.md` |
-| `_04` | `packages/core/session/src/types.ts`（事件表）、`index.ts`（append/校验）、`session-persistence-jsonl`（落盘与代际） |
-| `_05` | `packages/bundle/base/cordis.patch.yml`（组装视角）、`apps/cli/src/bin.ts` |
+### `_02_Agent_Loop` —— Agent 主循环
+把闭环函数升级成可复用的 `AgentLoop` 类，引入 **turn/step 两层词汇**：一次 `run()` 是一个
+turn，turn 内部每轮模型往返是一个 step；产出可事后审查的**调用轨迹**
+（`TurnResult → Step → ToolResult`）；支持在 step 边界取消。交付：`agent_loop/` 包 + 13 个测试。
 
-## 开工前建议（补 M0 欠账，可选）
+### `_03_Tool_Pipeline` —— 工具管线
+把"注册 + 查表"升级成 dsh 式的**注册表 + 执行管线**：定义与实现分离（`define_tool`）、
+两层作用域遮蔽、`pre → execute → post` 三段中间件链（决策/改写参数 → 执行+超时 → 加工结果）、
+审批策略接口（allow/deny/ask，**问不到应答方一律 fail-closed**）。交付：`tool_pipeline/` 包
++ 19 个测试。
 
-学习计划 M0 的工程动作在 P0 阶段简化跳过了，P1 是补上的好时机：
+### `_04_Session_Log` —— 会话日志（全项目的心脏）
+把内存轨迹升级成**事件溯源**：会话是一串 append-only 事件，模型历史由 `derive_messages()`
+从日志**投影**而来（绝不直接存）；每条事件落盘 `session.jsonl`，进程被强杀留下的半截尾行
+下次启动自动截断修复；`open_session` 对新建/已存在是同一条路径，**resume 不是特例而是常态**。
+交付：`session/` 包 + `runner.py` + `cli.py` + 13 个测试。
 
-- `git init` + 首次提交——目前所有练习都没有版本历史（`.gitignore` 已备好，`.env` 不会入库）；
-- `pyproject.toml` + `scripts/check.py` 门禁（ruff + mypy + pytest），对应"门禁不绿不前进"。
+### `_05_Mini_Harness` —— 综合组装 + 可视化
+把前四者接成一个能用的产品——**被组装的四个包一行未改**：`MiniHarness` 装配类把 provider、
+工具管线、主循环、会话日志接起来；默认工具面 `calculate / read_file / write_file / list_files`
+（工作区沙箱 + 写审批），可选 `web_search`；提供 CLI（`app.py`）与**可视化页面**（`server.py`
++ `webui/index.html`）。交付：装配类 + CLI + 可视化服务 + 24 个测试。
 
-不做也不影响练习；想做的话说一声，我来搭。
+---
 
-## 进度
+## 使用方法
 
-| 练习 | 状态 | 完成日期 | 验收命令 |
-|---|---|---|---|
-| `_01_Provider_Protocol` | ✅ 已完成 | 2026-09-30 | `pytest _01_Provider_Protocol -q`（12 用例全离线） |
-| `_02_Agent_Loop` | ✅ 已完成 | 2026-10-07 | `pytest _02_Agent_Loop -q`（13 用例全离线） |
-| `_03_Tool_Pipeline` | ✅ 已完成 | 2026-10-07 | `pytest _03_Tool_Pipeline -q`（19 用例全离线） |
-| `_04_Session_Log` | ✅ 已完成 | 2026-10-07 | `pytest _04_Session_Log -q`（13 用例全离线） |
-| `_05_Mini_Harness` | ✅ 已完成 | 2026-10-07 | `pytest _05_Mini_Harness -q`（13 用例全离线） |
+所有命令都在**对应练习目录下**运行。若项目根有 `.venv`，`run*.bat` / `run*.sh`
+会自动使用它，否则回退到 PATH 上的 `python`。
 
-**`_01` 产出速览**：`llm_seam/` 包 6 个模块（词汇 → 协议 → FakeLLM → DeepSeekProvider → 闭环 → 工具箱），
-入口 `demo.py`（`--fake` 离线 / 默认真实 API），12 个单元测试；决策记录
-[docs/decisions/0001](../docs/decisions/0001-llm-provider-seam.md)。
+### `_01_Provider_Protocol`
 
-**`_04` 产出速览**：`session/` 包 5 个模块（事件 → 投影 → 日志 → JSONL 落盘 → 录制器），
-`runner.py` 胶水（open_session / resume / fork），`cli.py`（list/show/run/fork），
-13 个单元测试；决策记录 [docs/decisions/0004](../docs/decisions/0004-event-sourcing.md)。
+```bash
+cd P1_Coding/_01_Provider_Protocol
+python -m pytest -q                     # 12 用例（全离线）
+python demo.py --fake                   # 离线剧本，看"换 provider 只改一行"
+python demo.py "帮我算 1234*56.78"       # 真实 API（需 .env 里的 key）
+./run.bat --fake                        # 一键（双击 run.bat 亦可）
+```
 
-**`_05` 产出速览**：`MiniHarness` 装配类（provider + 工具管线 + 主循环 + 会话日志，
-被组装的四个包一行未改），`workspace_tools.py` 工具面（calculate / read_file /
-write_file / list_files，沙箱 + 审批），可选 `web_search.py`；CLI `app.py`
-（chat / run / list / show / fork）；13 个单元测试 + 离线 demo 跑通完整故事；
-决策记录 [docs/decisions/0005](../docs/decisions/0005-mini-harness-assembly.md)。
-**P1 五个练习至此全部完成**，M1–M3 验收全绿。
+### `_02_Agent_Loop`
 
-> **全量测试注意**：`_02`–`_05` 各自带同名顶层包（`agent_loop` / `llm_seam` /
-> `tool_pipeline` / `session` 等），每个练习的 `conftest.py` 会在导入前驱逐同名模块，
-> 保证全量 `pytest` 不串味。`_05` 收敛成单一包后可消除重复（取舍见决策记录 0005）。
+```bash
+cd P1_Coding/_02_Agent_Loop
+python -m pytest -q                     # 13 用例（全离线）
+python demo.py --fake                   # 看 turn/step 轨迹（1 turn 内含多个 step）
+python demo.py "帮我算 987654*321 再除以 7"
+./run.bat --fake
+```
+
+### `_03_Tool_Pipeline`
+
+```bash
+cd P1_Coding/_03_Tool_Pipeline
+python -m pytest -q                     # 19 用例（全离线）
+python demo.py --pipeline-only          # 只看管线：成功/超时/截断/审批三态/沙箱越界
+python demo.py --fake                   # 管线 + 主循环闭环
+./run.bat --pipeline-only
+```
+
+### `_04_Session_Log`
+
+```bash
+cd P1_Coding/_04_Session_Log
+python -m pytest -q                     # 13 用例（全离线）
+python demo.py                          # 离线全套：落盘 → 模拟崩溃 → 修复 → resume → 同构 → fork
+python cli.py list                      # 会话列表
+python cli.py show <id>                 # 看事件日志
+python cli.py run <id> "问题" --fake     # 跑一个 turn（不存在即创建，存在即恢复）
+python cli.py fork <src> <new> --upto 4  # 分叉
+```
+
+### `_05_Mini_Harness`
+
+```bash
+cd P1_Coding/_05_Mini_Harness
+python -m pytest -q                     # 24 用例（全离线）
+
+# —— 可视化页面（推荐，直观看到对话与日志轨迹）——
+./run_web.bat                           # 离线规则 provider（不需要 key），自动开浏览器
+./run_web.bat --fake                    # 同上（显式）
+./run_web.bat                           # 去掉 --fake 即走真实 API（需 .env）
+python server.py --fake --port 8765 --no-open   # 手动指定端口/不自动开页面
+# 页面默认 http://127.0.0.1:8765/
+#   三栏：会话列表 | 对话 | 日志轨迹（append-only 事件流，实时生长）
+#   工具栏：▶ 回放轨迹 / ✂ 模拟崩溃（看自动修复）/ ⑂ 分叉 / ⟳ 刷新
+#   可选参数：--search（启用联网搜索）--deny-writes（禁止写操作，观察拒绝路径）
+
+# —— CLI ——
+python app.py chat --fake               # 交互对话（可 /history、/exit；同名会话即恢复）
+python app.py chat                      # 真实 API 交互对话
+python app.py chat --no-approve         # 写文件自动放行
+python app.py run "帮我算 2+3" --fake     # 一条输入跑一个 turn
+python app.py list                      # 会话列表
+python app.py show default              # 看事件日志
+python app.py fork default default-fork --upto 6
+
+# —— 离线完整故事（脚本化，无需交互）——
+python demo.py                          # 多轮对话 → 工具 → 退出 → resume → 同构 → 分叉
+```
+
+**常见的可视化 / 测试姿势**（页面里最值得点一遍的几条路径）：
+
+1. **对话 + 工具**：输入"帮我算 987654\*321"——右侧轨迹实时长出
+   `turn 开始 → step → 模型回复(tool_calls) → 工具结果 → 模型回复(最终回答)`。
+2. **日志轨迹回放**：点 `▶ 回放轨迹` 逐条播放当前会话的事件；点会话列表切换不同会话对照。
+3. **崩溃恢复**：点 `✂ 模拟崩溃`（往日志尾部写半行 JSON）→ 顶部弹出"已自动修复，丢弃 N 字节"，
+   事件不丢——这是 M3 最核心的机制，可视化后一目了然。
+4. **审批第二道防线**：用 `--deny-writes` 启动，再让它写文件，可见 `tool/result` 变红（被拒绝）；
+   沙箱越界（`../x`）即使放行也会被拦。
+5. **分叉**：点 `⑂ 分叉` 从当前会话某条事件派生新会话，原会话不变。
+
+> 从零跑通全部：`python -m pytest P0_Coding P1_Coding -q` → 96 passed。
+
+---
 
 ## 运行约定
 
-与 P0 相同：用 `.venv` 里的 Python 直接运行各练习目录的入口脚本，每个练习配 `run.bat` / `run.sh`。
-环境配置与常见问题见[项目根 README](../README.md)。
+与 P0 相同：用 `.venv` 里的 Python 直接运行各练习目录的入口脚本；每个练习配
+`run.bat` / `run.sh`（`_05` 另有 `run_web.bat` / `run_web.sh`）。
+`_02`–`_05` 各自带同名顶层包，全量 `pytest` 时由各练习的 `conftest.py` 驱逐同名模块以避免串味
+（`_05` 收敛成单一包后可消除，取舍见决策记录 0005）。环境配置与常见问题见[项目根 README](../README.md)。

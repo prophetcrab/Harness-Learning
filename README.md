@@ -235,7 +235,7 @@ cd D:/project/AgentDevLearn/P0_Coding/_04_File_Tools_Loop
 ```bash
 # 一次跑完所有练习的测试（从项目根目录）
 cd D:/project/AgentDevLearn
-.venv/Scripts/python.exe -m pytest P0_Coding P1_Coding -q   # 当前共 85 个用例（P0 15 + P1 70）
+.venv/Scripts/python.exe -m pytest P0_Coding P1_Coding -q   # 当前共 96 个用例（P0 15 + P1 81）
 
 # 只跑某一个练习
 cd P1_Coding/_03_Tool_Pipeline
@@ -320,16 +320,21 @@ AgentDevLearn/
         ├── run.bat / run.sh         一键运行
         ├── test_session_log.py      验收测试（13 用例，全离线）
         └── README.md
-    └── _05_Mini_Harness/         ← 练习 5：综合组装（可对话 + 可恢复的小 harness）
+    └── _05_Mini_Harness/         ← 练习 5：综合组装（可对话 + 可恢复 + 可视化）
         ├── mini_harness.py          装配核心：MiniHarness（provider + 管线 + 循环 + 日志）
         ├── workspace_tools.py       工具面：calculate / read_file / write_file / list_files
         ├── web_search.py            可选工具：Bing 搜索（--search 才注册）
         ├── app.py                   CLI：chat / run / list / show / fork
+        ├── server.py                可视化服务（stdlib http.server + NDJSON 事件流）
+        ├── webui/index.html         可视化页面：对话 + 日志轨迹实时生长
+        ├── demo_provider.py         离线规则 provider（页面无 key 也能交互）
         ├── runner.py agent_loop/ llm_seam/ tool_pipeline/ session/
         │                            前四个练习的自包含副本（均未修改）
         ├── demo.py                  入口：离线跑完整故事（对话→工具→退出→resume→分叉）
-        ├── run.bat / run.sh         一键运行
-        ├── test_mini_harness.py     验收测试（13 用例，全离线）
+        ├── run.bat / run.sh         一键运行（demo / CLI）
+        ├── run_web.bat / run_web.sh 一键运行（可视化页面）
+        ├── test_mini_harness.py     装配验收测试（13 用例，全离线）
+        ├── test_webui.py            可视化服务测试（11 用例，真起 HTTP）
         └── README.md
 ```
 

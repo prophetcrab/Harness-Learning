@@ -14,7 +14,10 @@ P1 最后一个练习，对应学习计划 **M1–M3 的组装验收**：前四�
    - `Session.derive_messages()` 产出循环的初始历史 → **resume 就是把日志投影喂回循环**。
 3. 走通**完整产品路径**：多轮对话 → 工具（算数/读写文件）→ 审批 → 退出 → 重新进入
    → 历史完整、turn 接续、工作区文件仍在 → 同构断言 → 分叉。
-4. 体会**组装层的取舍**：只做"接线 + 工具面 + CLI"，不引入新抽象（理由见决策记录 0005）。
+4. 体会**组装层的取舍**：只做"接线 + 工具面 + 入口（CLI / 可视化）"，不引入新抽象
+   （理由见决策记录 0005）。
+5. 用**可视化页面**把"事件流"从日志文件变成一个能看见的东西：日志轨迹随对话实时生长，
+   崩溃修复、审批拒绝、分叉都能一键观察。
 
 ## 文件（推荐阅读顺序）
 
@@ -25,8 +28,12 @@ P1 最后一个练习，对应学习计划 **M1–M3 的组装验收**：前四�
 | 3 | `web_search.py` | 可选工具：Bing 搜索（--search 才注册，保持默认离线） |
 | 4 | `env.py` | 环境与 provider 构造（唯一的"选供应商"落点） |
 | 5 | `app.py` | CLI：`chat` / `run` / `list` / `show` / `fork` |
+| 6 | `server.py` | ★ 可视化服务：stdlib http.server + JSON/NDJSON API（实时推事件流） |
+| 7 | `webui/index.html` | ★ 可视化页面：会话列表 + 对话 + **日志轨迹实时生长** |
+| 8 | `demo_provider.py` | 离线规则 provider（读历史、按关键词路由，让页面无 key 也能交互） |
 | — | `demo.py` | 入口：离线跑完整故事（多轮 → 工具 → 退出 → resume → 同构 → 分叉） |
-| — | `test_mini_harness.py` | 13 个验收测试（全离线） |
+| — | `test_mini_harness.py` | 13 个装配验收测试（全离线） |
+| — | `test_webui.py` | 11 个可视化服务测试（真起 HTTP 服务，全离线） |
 | — | `llm_seam/ agent_loop/ tool_pipeline/ session/ runner.py` | 前四个练习的自包含副本（见下） |
 
 > **自包含副本**：`llm_seam`(_01)、`agent_loop`(_04 版，含 resume 扩展)、
@@ -38,11 +45,13 @@ P1 最后一个练习，对应学习计划 **M1–M3 的组装验收**：前四�
 ```bash
 cd P1_Coding/_05_Mini_Harness
 
-# 离线完整演示（不需要 key）：多轮对话 → 工具 → 退出 → resume → 同构 → 分叉
-./run.bat
-bash run.sh
+# 可视化页面（推荐）：离线规则 provider，自动打开 http://127.0.0.1:8765/
+./run_web.bat
+bash run_web.sh
+# 去掉 --fake 即走真实 API；可加 --port 9000 --search --deny-writes
+python server.py --fake --no-open
 
-# 交互对话（真实 API，需要项目根 .env 里的 key）
+# CLI 交互对话（真实 API，需要项目根 .env 里的 key）
 ./run.bat chat
 ./run.bat chat --session s1              # 同名会话即"恢复继续"
 ./run.bat chat --no-approve              # 写文件自动放行（跳过 y/n 审批）
@@ -56,9 +65,31 @@ bash run.sh
 ./run.bat show demo
 ./run.bat fork demo demo-fork --upto 6
 
+# 离线完整演示（不需要 key）
+./run.bat
+bash run.sh
+
 # 测试（全离线）
-python -m pytest -q        # 13 个用例
+python -m pytest -q        # 13 + 11 = 24 个用例
 ```
+
+## 可视化页面
+
+`server.py` 用**标准库 http.server**（零新增依赖）把 harness 的事件流搬到浏览器：
+
+- **三栏布局**：会话列表 | 对话 | **日志轨迹**（append-only 事件流）。
+- **实时生长**：`POST /api/sessions/<id>/send` 以 NDJSON 流把每个事件边跑边推给前端，
+  轨迹区随对话实时长出 `turn/step/assistant/tool` 各节点，跑完再从落盘日志重新加载权威视图
+  （seq/时间戳以日志为准）。
+- **工具栏**：`▶ 回放轨迹`（逐条动画播放）、`✂ 模拟崩溃`（往日志尾部写半行 JSON，再打开时
+  自动修复并弹提示——M3 的核心机制一眼可见）、`⑂ 分叉`、`⟳ 刷新`。
+- **离线可用**：`--fake` 用 `demo_provider.DemoProvider`——它读历史、按关键词路由
+  （算术/写文件/读文件/列文件），因此页面上能真的看到"模型读到工具结果后再作答"的完整轨迹，
+  且不需要 API key。
+
+**安全提示（重要）**：页面把写文件审批默认设为 `AutoApprove`——浏览器里无法做 y/n 交互。
+服务只监听 `127.0.0.1`，**没有任何认证**，仅适合本机演示；不要绑定到公网地址。
+想观察"拒绝"路径用 `--deny-writes` 启动。
 
 ## 验收标准（M1–M3 组装）
 
@@ -72,9 +103,12 @@ python -m pytest -q        # 13 个用例
 - [x] **崩溃尾部修复**：半行 JSON 被自动截断，`open` 报告 `repaired`
 - [x] **可选搜索**：默认不注册 web_search，`--search` 才启用
 - [x] **CLI**：run / list / show / fork 全部可用；fork 目标已存在则 fail loud
-- [x] `pytest -q` 全部通过（13 个用例，0.18 秒）
+- [x] **可视化服务**：GET 只读接口（config/tools/sessions/session）、POST send 以 NDJSON
+      流回事件并落盘、fork、模拟崩溃 + 自动修复，11 个测试真起 HTTP 服务验证
+- [x] `pytest -q` 全部通过（24 个用例，13 装配 + 11 可视化，全离线）
 - [x] **真实 API 实测**：DeepSeek 完成 `calculate → write_file → 回答` 三步链；
       跨进程 resume 后 turn 接续、成功读回上一轮写的文件
+- [x] **页面实测**：浏览器里多轮对话（算数/写文件/列文件）轨迹实时生长；崩溃按钮弹修复提示
 
 ## demo 实际输出（节选）
 
