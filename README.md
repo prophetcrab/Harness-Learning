@@ -338,23 +338,28 @@ AgentDevLearn/
         ├── test_mini_harness.py     装配验收测试（13 用例，全离线）
         ├── test_webui.py            可视化服务测试（9 用例，真起 HTTP）
         └── README.md
-└── P2_Coding/                    ← 阶段 2：单一 harness/ 包 + 产品化（M4–M7，进行中）
-    ├── README.md                 ← P2 学习计划（M4 提示词 / M5 接缝 / M6 profile / M7 服务化）
-    ├── pyproject.toml            ← 打包 + ruff/pytest 配置
-    ├── scripts/check.py          ← 门禁：ruff + pytest（对应 M0）
-    ├── harness/                  ← 单一实现包（P1 四份副本已收敛于此）
-    │   ├── __main__.py / cli.py     python -m harness
-    │   ├── llm/ agent/ tools/ session/   M1–M3 产出（原 P1，语义等价合并）
-    │   ├── mini.py / runner.py / env.py  装配与 provider 构造
-    │   ├── webui/                  本地可视化页面（stdlib http.server）
-    │   ├── prompt/                  M4 占位：提示词装配
-    │   ├── providers/               M5 占位：能力接缝（FileSystem / Subprocess）
-    │   ├── config/                  M6 占位：profile 组装
-    │   └── server/                  M7 占位：JSON-RPC + 事件流 follow
-    ├── tests/                    ← test_harness_assembly（13）+ test_harness_webui（9）
-    └── demo.py                   ← 离线端到端回归（M1–M3 行为基线）
+└── P2_Coding/                    ← 阶段 2：产品化（M4–M7，进行中，阶段式工作区）
+    ├── README.md                 ← P2 学习计划（模块简介 + 使用方法 + 进度）
+    ├── pyproject.toml            ← ruff 配置（阶段式工作区，不做 setuptools 打包）
+    ├── scripts/check.py          ← 门禁：ruff（整体）+ pytest（逐阶段）
+    ├── _01_Prompt_Assembly/      ← M4：提示词装配
+    ├── _02_Capability_Seams/     ← M5：能力接缝
+    ├── _03_Profile_Composition/  ← M6：Profile 组装
+    └── _04_Service/              ← M7：服务化
+```
+
+每个 `_0N` 阶段目录都**自包含**（与 P1 的练习同构）：
+
+```
+_0N_<主题>/
+├── README.md      本阶段学习计划（读 dsh / 做 / 验收 / 运行）
+├── harness/       一份完整的 harness 副本（llm/agent/tools/session 基线 + 各阶段子包）
+├── tests/         基线验收测试（22 用例，M1–M3 组装回归）
+├── demo.py        离线端到端回归
+└── run.bat/run.sh 一键启动器
 ```
 
 每个练习目录的内部结构（入口脚本 + `run.bat`/`run.sh` + 测试 + README）见各练习自己的 README。
-**P1 与 P2 的关系**：P1 `_05` 是"组装成产品"的教学快照（自包含四份副本）；P2 把它收敛成
-单一 `harness/` 包作为唯一维护对象，M4–M7 在 P2 上继续。P1 的五个练习保留备查。
+**P1 与 P2 的关系**：P1 `_05` 是"组装成产品"的教学快照（自包含四份副本）；P2 把基线代码收敛成
+单一 `harness/` 包，并拆成 `_01`–`_04` 四个自包含阶段（M4–M7，各带一份完整副本）。
+P1 的五个练习保留备查，后续以 P2 为唯一维护对象。

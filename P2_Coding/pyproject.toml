@@ -1,7 +1,7 @@
 [project]
 name = "mini-harness"
 version = "0.2.0"
-description = "从一个学习项目长出来的最小 agent harness（P2：M4–M7）"
+description = "从一个学习项目长出来的最小 agent harness（P2：M4–M7，阶段式工作区）"
 requires-python = ">=3.11"
 dependencies = [
     "openai>=1.0",
@@ -11,19 +11,13 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
 
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-packages = ["harness"]
-
-# ---- 门禁配置：ruff（lint）与 pytest ----
+# P2 是阶段式工作区：每个 _0N 目录自带一份完整 harness（自包含）。
+# 因此这里不做 setuptools 打包，也不固定 testpaths —— 由 scripts/check.py 逐阶段运行。
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["demo_run", "sessions"]
+extend-exclude = ["demo_run", "sessions", "demo_workspace"]
 
 [tool.ruff.lint]
 # E/W pycodestyle、F pyflakes、I import 排序、UP pyupgrade、B bugbear
@@ -34,8 +28,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["E402"]   # 测试里允许在 sys.path 引导后再 import
+"*/tests/*" = ["E402"]   # 测试里允许在 sys.path 引导后再 import
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-q"
+[tool.ruff.lint.isort]
+known-first-party = ["harness"]   # 让 ruff 把 harness 视为本项目包（import 分组稳定）

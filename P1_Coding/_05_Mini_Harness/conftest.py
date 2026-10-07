@@ -28,6 +28,7 @@ _PACKAGES = (
     "env",
     "app",
     "server",
+    "harness",   # 驱逐 P2 阶段的同名包，避免全量跑时互相串味
 )
 for _key in [k for k in sys.modules if k.split(".")[0] in _PACKAGES]:
     sys.modules.pop(_key, None)

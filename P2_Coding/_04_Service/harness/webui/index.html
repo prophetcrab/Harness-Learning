@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mini harness · 可视化</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --panel2: #1d212c; --line: #2a2f3d;
+    --fg: #e6e9f0; --muted: #8b93a7; --accent: #6ea8fe;
+    --user: #3fb950; --assistant: #a371f7; --tool: #e3b341; --error: #f85149;
+    --turn: #6ea8fe; --step: #6b7280; --start: #8b93a7;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 14px/1.55 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    display: grid; grid-template-rows: auto 1fr; height: 100vh; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: .3px; }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); color: var(--muted); }
+  .badge.on { color: var(--accent); border-color: #2d4a7c; }
+  header .spacer { flex: 1; }
+  button, select, input {
+    font: inherit; color: var(--fg); background: var(--panel2);
+    border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; font-weight: 600; }
+  button.primary:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: transparent; }
+
+  main { display: grid; grid-template-columns: 232px 1fr 1.15fr; overflow: hidden; }
+
+  aside { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 12px; }
+  aside h2, .col h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 4px 0 10px; }
+  .sess { padding: 8px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; margin-bottom: 6px; }
+  .sess:hover { background: var(--panel2); }
+  .sess.active { background: #16243a; border-color: #2d4a7c; }
+  .sess .id { font-weight: 600; }
+  .sess .meta { font-size: 12px; color: var(--muted); }
+
+  .col { display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--line); }
+  .col:last-child { border-right: none; }
+  .col-head { padding: 12px 14px 8px; }
+  .col-body { flex: 1; overflow-y: auto; padding: 0 14px 14px; }
+
+  .banner { margin: 8px 14px; padding: 8px 12px; border-radius: 8px; font-size: 13px; border: 1px solid #6b4b00; background: #2b2200; color: #ffd479; display: none; }
+  .banner.show { display: block; }
+
+  /* 对话 */
+  .msg { margin-bottom: 10px; display: flex; flex-direction: column; }
+  .msg .who { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  .bubble { padding: 8px 11px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--line); white-space: pre-wrap; word-break: break-word; }
+  .msg.user { align-items: flex-end; }
+  .msg.user .bubble { background: #14281a; border-color: #1f5b2c; }
+  .msg.assistant .bubble { background: #20182f; border-color: #4a3273; }
+  .msg.tool .bubble, .msg.system .bubble { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+  .msg.system .bubble { opacity: .7; }
+  .callchip { display: inline-block; font-family: var(--mono); font-size: 12px; color: var(--tool); background: #2a2410; border: 1px solid #55461a; border-radius: 6px; padding: 1px 6px; margin-top: 6px; }
+
+  /* 轨迹 */
+  .ev { position: relative; padding: 7px 10px 7px 12px; margin-bottom: 6px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--step); animation: pop .22s ease; }
+  @keyframes pop { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .ev.live { box-shadow: 0 0 0 1px #2d4a7c inset; }
+  .ev .row1 { display: flex; align-items: baseline; gap: 8px; }
+  .ev .seq { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .ev .type { font-weight: 600; font-size: 12.5px; }
+  .ev .ts { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: #5b6377; }
+  .ev .data { margin-top: 4px; font-family: var(--mono); font-size: 12px; color: #c6ccdb; white-space: pre-wrap; word-break: break-word; }
+  .ev.session\/start { border-left-color: var(--start); }
+  .ev.turn\/start, .ev.turn\/end { border-left-color: var(--turn); }
+  .ev.user\/message { border-left-color: var(--user); }
+  .ev.assistant\/message { border-left-color: var(--assistant); }
+  .ev.tool\/result { border-left-color: var(--tool); }
+  .ev.tool\/result.err { border-left-color: var(--error); }
+  .ev.step\/start, .ev.step\/end { border-left-color: var(--step); opacity: .82; }
+
+  /* 输入 */
+  .composer { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--panel); }
+  .composer input { flex: 1; }
+  .hint { font-size: 12px; color: var(--muted); padding: 0 14px 10px; }
+  .stat { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .empty { color: var(--muted); text-align: center; padding: 30px 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>mini harness · 可视化</h1>
+  <span class="badge" id="providerBadge">…</span>
+  <span class="badge" id="sessionBadge">会话：-</span>
+  <span class="badge" id="statsBadge">事件 0 · turn 0 · step 0</span>
+  <span class="spacer"></span>
+  <span class="stat" id="toolList">工具加载中…</span>
+  <button class="ghost" id="btnReplay" title="重新逐条播放日志轨迹">▶ 回放轨迹</button>
+  <button class="ghost" id="btnCrash" title="往日志尾部写半行 JSON，模拟进程被强杀">✂ 模拟崩溃</button>
+  <button class="ghost" id="btnFork" title="从当前会话派生一个分支">⑂ 分叉</button>
+  <button class="ghost" id="btnRefresh">⟳ 刷新</button>
+</header>
+
+<main>
+  <aside>
+    <h2>会话</h2>
+    <button class="primary" id="btnNew" style="width:100%;margin-bottom:10px">＋ 新建会话</button>
+    <div id="sessionList"></div>
+  </aside>
+
+  <section class="col">
+    <div class="col-head"><h2>对话</h2></div>
+    <div class="banner" id="banner"></div>
+    <div class="col-body" id="chat"><div class="empty">选择一个会话开始对话</div></div>
+    <div class="composer">
+      <input id="input" placeholder="输入消息，回车发送…" autocomplete="off">
+      <button class="primary" id="btnSend">发送</button>
+    </div>
+    <div class="hint">提示：写文件类请求在页面里默认自动放行（页面无法做 y/n 交互）；用 <code>--deny-writes</code> 启动可观察"拒绝"路径。</div>
+  </section>
+
+  <section class="col">
+    <div class="col-head"><h2>日志轨迹（append-only 事件流）</h2></div>
+    <div class="col-body" id="trace"><div class="empty">日志轨迹将在这里实时生长</div></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let state = { sessions: [], currentId: null, sending: false, seqCursor: 0 };
+
+const TYPE_LABEL = {
+  "session/start": "会话建立", "turn/start": "turn 开始", "turn/end": "turn 结束",
+  "user/message": "用户消息", "step/start": "step 开始", "step/end": "step 结束",
+  "assistant/message": "模型回复", "tool/result": "工具结果",
+};
+
+function esc(s) { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  if (!res.ok) { const t = await res.text(); throw new Error(t || ("HTTP " + res.status)); }
+  return res.json();
+}
+
+function banner(msg, cls) {
+  const b = $("banner");
+  if (!msg) { b.classList.remove("show"); b.textContent = ""; return; }
+  b.className = "banner show" + (cls ? " " + cls : "");
+  b.innerHTML = msg;
+}
+
+/* ---------------- 会话列表 ---------------- */
+async function loadSessions() {
+  const data = await api("/api/sessions");
+  state.sessions = data.sessions;
+  const el = $("sessionList");
+  if (!data.sessions.length) { el.innerHTML = '<div class="empty">还没有会话</div>'; return; }
+  el.innerHTML = data.sessions.map((s) =>
+    `<div class="sess ${s.id === state.currentId ? "active" : ""}" data-id="${esc(s.id)}">
+       <div class="id">${esc(s.id)}</div>
+       <div class="meta">${s.events} 事件 · ${s.turns} turn</div>
+     </div>`).join("");
+  el.querySelectorAll(".sess").forEach((node) =>
+    node.onclick = () => selectSession(node.dataset.id));
+}
+
+/* ---------------- 选中会话：加载日志 + 对话 ---------------- */
+async function selectSession(id) {
+  state.currentId = id;
+  $("sessionBadge").textContent = "会话：" + id;
+  await loadSessions();
+  const data = await api("/api/sessions/" + encodeURIComponent(id));
+  renderStats(data.stats);
+  renderChat(data.messages);
+  renderTrace(data.events, { animate: false });
+  if (data.repair && data.repair.repaired) {
+    banner(`⚠ 上次会话尾部被截断，已自动修复：丢弃 ${data.repair.dropped_bytes} 字节（${esc(data.repair.reason)}）`);
+  } else {
+    banner("");
+  }
+}
+
+function renderStats(stats) {
+  $("statsBadge").textContent = `事件 ${stats.events} · turn ${stats.turns} · step ${stats.steps}`;
+}
+
+/* ---------------- 对话渲染 ---------------- */
+function renderChat(messages) {
+  const el = $("chat");
+  if (!messages || !messages.length) { el.innerHTML = '<div class="empty">还没有消息</div>'; return; }
+  el.innerHTML = messages.map((m) => {
+    const who = { system: "system", user: "你", assistant: "助手", tool: "工具结果" }[m.role] || m.role;
+    let extra = "";
+    if (m.tool_calls && m.tool_calls.length) {
+      extra = m.tool_calls.map((c) =>
+        `<span class="callchip">→ ${esc(c.name)}(${esc(JSON.stringify(c.arguments))})</span>`).join(" ");
+    }
+    const body = m.content ? esc(m.content) : (extra ? "" : '<span style="color:#5b6377">（空）</span>');
+    return `<div class="msg ${m.role}"><div class="who">${who}</div><div class="bubble">${body}${extra ? "<br>" + extra : ""}</div></div>`;
+  }).join("");
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ---------------- 轨迹渲染 ---------------- */
+function eventDataLine(ev) {
+  const d = ev.data || {};
+  switch (ev.type) {
+    case "user/message": return "content: " + JSON.stringify(d.content);
+    case "assistant/message": {
+      const calls = (d.tool_calls || []).map((c) => `${c.name}(${JSON.stringify(c.arguments)})`);
+      const parts = [];
+      if (d.content) parts.push("content: " + JSON.stringify(d.content));
+      if (calls.length) parts.push("tool_calls: " + calls.join(", "));
+      if (d.finish_reason) parts.push("finish_reason: " + d.finish_reason);
+      return parts.join("\n") || "（空回复）";
+    }
+    case "tool/result": return `${d.name}(${JSON.stringify(d.arguments)})\nresult: ${JSON.stringify(d.result)}`;
+    case "turn/end": return `status: ${d.status} · steps: ${d.steps}` + (d.final_text ? `\nfinal_text: ${JSON.stringify(d.final_text)}` : "");
+    case "session/start": return "system_prompt: " + JSON.stringify(d.system_prompt || "");
+    default: return Object.keys(d).length ? JSON.stringify(d) : "";
+  }
+}
+
+function eventCard(ev, live) {
+  const cls = "ev " + ev.type + (ev.type === "tool/result" && ev.data && ev.data.is_error ? " err" : "") + (live ? " live" : "");
+  const label = TYPE_LABEL[ev.type] || ev.type;
+  const time = (ev.ts || "").slice(11, 19) || (live ? "…" : "");
+  return `<div class="${cls}">
+      <div class="row1"><span class="seq">#${ev.seq}</span><span class="type">${esc(label)}</span><span class="ts">${esc(time)}</span></div>
+      ${eventDataLine(ev) ? `<div class="data">${esc(eventDataLine(ev))}</div>` : ""}
+    </div>`;
+}
+
+function renderTrace(events, opts) {
+  const el = $("trace");
+  if (!events.length) { el.innerHTML = '<div class="empty">日志轨迹将在这里实时生长</div>'; return; }
+  el.innerHTML = events.map((e) => eventCard(e, false)).join("");
+  el.scrollTop = el.scrollHeight;
+  if (opts && opts.animate) replayAnimate();
+}
+
+function appendTraceLive(ev) {
+  const el = $("trace");
+  if (el.querySelector(".empty")) el.innerHTML = "";
+  el.insertAdjacentHTML("beforeend", eventCard(ev, true));
+  el.scrollTop = el.scrollHeight;
+}
+
+function replayAnimate() {
+  const cards = $("trace").querySelectorAll(".ev");
+  cards.forEach((c, i) => { c.style.animation = "none"; c.style.opacity = 0; setTimeout(() => { c.style.animation = "pop .22s ease"; c.style.opacity = 1; }, i * 55); });
+}
+
+/* ---------------- 发送一个 turn（NDJSON 流） ---------------- */
+async function send() {
+  if (state.sending) return;
+  const text = $("input").value.trim();
+  if (!text) return;
+  if (!state.currentId) state.currentId = "default";
+  state.sending = true;
+  $("btnSend").disabled = true;
+  $("input").value = "";
+  banner("");
+  $("trace").innerHTML = '<div class="empty">正在实时生长…</div>' + '<div class="live-note"></div>';
+
+  // 先本地回显用户消息
+  appendLocalUser(text);
+
+  // 声明在函数作用域：finally 里还要用（曾因声明在 try 内导致 ReferenceError）
+  let finalText = "";
+  let notice = "";   // 本次运行的提示（完成/修复/出错），延后到权威视图加载后再显示
+  try {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(state.currentId)}/send`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
+    });
+    if (!res.ok) { banner("请求失败：" + await res.text()); return; }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx); buf = buf.slice(idx + 1);
+        if (!line.trim()) continue;
+        let obj; try { obj = JSON.parse(line); } catch { continue; }
+        if (obj.kind === "__done") {
+          finalText = obj.payload.final_text;
+          notice = `✔ turn ${obj.payload.turn} 完成 · status=${obj.payload.status} · step ${obj.payload.steps} 个`;
+        } else if (obj.kind === "__repair") {
+          notice = `⚠ 上次会话尾部被截断，已自动修复：丢弃 ${obj.payload.dropped_bytes} 字节`;
+        } else if (obj.kind === "__error") {
+          notice = "运行出错：" + obj.payload.message;
+        } else if (obj.kind === "turn_start") {
+          // 事件 seq 由服务端分配，这里用占位符展示实时流
+          appendTraceLive({ seq: "…", ts: new Date().toISOString(), type: "turn/start", data: { turn: obj.payload.turn } });
+        } else if (obj.kind === "step_request") {
+          appendTraceLive({ seq: "…", ts: new Date().toISOString(), type: "step/start", data: { turn: obj.payload.turn, step: obj.payload.step } });
+        } else if (obj.kind === "step_response") {
+          appendTraceLive({ seq: "…", ts: new Date().toISOString(), type: "assistant/message",
+            data: { content: obj.payload.content, tool_calls: obj.payload.tool_calls, finish_reason: obj.payload.finish_reason } });
+        } else if (obj.kind === "tool_result") {
+          appendTraceLive({ seq: "…", ts: new Date().toISOString(), type: "tool/result",
+            data: { name: obj.payload.name, arguments: obj.payload.arguments, result: obj.payload.result, is_error: obj.payload.is_error } });
+        }
+      }
+    }
+  } catch (e) {
+    notice = "网络错误：" + String(e);
+  } finally {
+    state.sending = false;
+    $("btnSend").disabled = false;
+    // 流结束后从日志重新加载权威视图（seq/ts 以落盘日志为准）。注意 selectSession
+    // 内部会清空横幅，所以本次运行的提示要等它加载完再显示。
+    await selectSession(state.currentId);
+    if (notice) banner(notice);
+    if (finalText) { const el = $("chat"); el.scrollTop = el.scrollHeight; }
+  }
+}
+
+function appendLocalUser(text) {
+  const el = $("chat");
+  if (el.querySelector(".empty")) el.innerHTML = "";
+  el.insertAdjacentHTML("beforeend", `<div class="msg user"><div class="who">你</div><div class="bubble">${esc(text)}</div></div>`);
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ---------------- 操作按钮 ---------------- */
+async function newSession() {
+  const id = prompt("新会话 id：", "s" + Date.now().toString().slice(-6));
+  if (!id) return;
+  await api(`/api/sessions/${encodeURIComponent(id)}`).catch(() => {});
+  await selectSession(id);
+  $("input").focus();
+}
+
+async function simulateCrash() {
+  if (!state.currentId) return;
+  const r = await api(`/api/sessions/${encodeURIComponent(state.currentId)}/simulate-crash`, { method: "POST" });
+  await selectSession(state.currentId);
+  if (r && r.repaired) {
+    banner(`⚠ 已模拟崩溃（写入半行 JSON）；重开会话时自动修复：丢弃 ${r.dropped_bytes} 字节（${esc(r.reason)}）`);
+  } else {
+    banner("已模拟崩溃：写入半行 JSON。重新打开会话时会自动截断修复。");
+  }
+}
+
+async function forkSession() {
+  if (!state.currentId) return;
+  const newId = prompt("新分支 id：", state.currentId + "-fork");
+  if (!newId) return;
+  const upto = prompt("只拷贝前 N 条事件（留空=全部）：", "");
+  try {
+    const r = await api(`/api/sessions/${encodeURIComponent(state.currentId)}/fork`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new_id: newId, upto: upto || null }),
+    });
+    banner(`⑂ 已分叉出 ${esc(r.id)}（${r.events} 条事件）`);
+    await selectSession(r.id);
+  } catch (e) { banner("分叉失败：" + esc(String(e).replace(/^.*Error:\s*/, ""))); }
+}
+
+async function loadTools() {
+  try {
+    const data = await api("/api/tools");
+    $("toolList").textContent = "工具：" + data.tools.map((t) => t.name).join(" / ");
+  } catch { $("toolList").textContent = "工具：加载失败"; }
+}
+
+async function boot() {
+  const cfg = await api("/api/config");
+  $("providerBadge").textContent = cfg.provider;
+  $("providerBadge").classList.add("on");
+  document.title = "mini harness · " + cfg.provider;
+  await loadTools();
+  await loadSessions();
+  if (state.sessions.length) await selectSession(state.sessions[state.sessions.length - 1].id);
+  $("input").focus();
+}
+
+$("btnSend").onclick = send;
+$("input").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+$("btnNew").onclick = newSession;
+$("btnReplay").onclick = () => { if (state.currentId) replayAnimate(); };
+$("btnCrash").onclick = simulateCrash;
+$("btnFork").onclick = forkSession;
+$("btnRefresh").onclick = () => selectSession(state.currentId || "default");
+
+boot().catch((e) => banner("初始化失败：" + esc(String(e))));
+</script>
+</body>
+</html>

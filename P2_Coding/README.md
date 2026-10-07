@@ -1,183 +1,140 @@
-# P2_Coding —— 把 harness 长成一个真正的产品
+# P2_Coding
 
-P1 结束时你有一个"能对话、能恢复、可扩展工具、可离线测试"的小 harness，但它是
-**四份自包含副本拼起来的**，组装发生在练习目录里。P2 要做的是：**先把它收敛成一个
-真正的包，再在这个包上把 harness 变成可配置、可替换、可服务化的产品。**
+## P2 简介
 
-对应学习计划 [docs/learning-plan.md](../docs/learning-plan.md) 的
-**M4（提示词装配）→ M5（能力接缝）→ M6（Profile 组装）→ M7（服务化）**。
+P2 是"把 harness 长成一个真正的产品"的阶段。P1 结束时你有一个能对话、能恢复、可扩展工具、
+可离线测试的小 harness，但它是**四份自包含副本拼起来的**、组装发生在练习目录里。
+P2 在单一 `harness/` 包上做四件事：**提示词变成可装配的产物 → 能力变成可替换的接缝 →
+组合变成配置数据 → harness 变成常驻服务**。
 
----
+对应学习计划的 **M4 → M5 → M6 → M7**，四个阶段各自一个自包含目录：
 
-## 第 0 步：地基收敛（已完成）
+| 编号 | 主题 | 对应阶段 | 核心交付 |
+|---|---|---|---|
+| `_01_Prompt_Assembly` | 提示词装配 | M4 | section 注册表 + 变量插值 + `--dump-prompt` |
+| `_02_Capability_Seams` | 能力接缝 | M5 | `FileSystem`/`Subprocess` 三角色 + Memory/Jail provider |
+| `_03_Profile_Composition` | Profile 组装 | M6 | 插件协议 + YAML 分层 patch + `dump-config` |
+| `_04_Service` | 服务化 | M7 | JSON-RPC `serve` + `attach`（follow = 重放 + 订阅） |
 
-这一步是 P1 留下的欠账，也是 M4–M7 的共同前提——**不先做，后面每加一个能力都要复制多份**：
+依赖关系：`_01 → _02 → _03 → _04`（后一阶段从上一阶段的 `harness/` 复制起点）。
 
-1. **四份副本 → 单一 `harness/` 包**。P1 `_05` 里各带一份的 `llm_seam` / `agent_loop` /
-   `tool_pipeline` / `session` 收敛成 `harness.llm` / `harness.agent` / `harness.tools` /
-   `harness.session`；原来的 `conftest.py` 驱逐模块技巧随之作废（不再有同名包）。
-2. **补上 M0 门禁**：`pyproject.toml` + `scripts/check.py`（ruff + pytest；mypy 可选）。
-   对应学习计划硬约束 #3「门禁不绿不前进」。
+**沿用 P1 的约定**：每个阶段自包含、四件套（入口 + README + 测试 + 一键启动器）、
+先定验收再实现、测试走 `FakeLLM` 离线断言、真实 API 只用于 demo。
+**与 P1 的差异**：阶段之间**不共享代码**——每个 `_0N` 目录自带一份完整 `harness/` 副本。
 
-**验收**：`python scripts/check.py` 全绿；`python -m harness list` 可用；P2 22 个用例通过
-（与 P1 `_05` 迁移前的行为完全一致）。
-
----
-
-## 目标仓库结构
+## 目录
 
 ```
 P2_Coding/
-├── README.md                  ← 本文件（P2 学习计划）
-├── pyproject.toml             ← 打包 + ruff/pytest 配置
-├── scripts/check.py           ← 门禁：ruff + pytest（+ mypy 若装了）
-├── harness/                   ← 实现代码（单一包）
-│   ├── __init__.py / __main__.py  ← python -m harness
-│   ├── llm/                   ← M1 产出：LLM 接缝（协议/词汇/Fake/DeepSeek）
-│   ├── agent/                 ← M1 产出：主循环（turn/step + 轨迹 + 取消）
-│   ├── tools/                 ← M2 产出：注册表 + 审批 + pre/execute/post 管线
-│   ├── session/               ← M3 产出：事件日志 + JSONL + resume
-│   ├── mini.py / runner.py    ← 装配：MiniHarness / Runner
-│   ├── env.py / cli.py        ← provider 构造 / 命令行入口
-│   ├── webui/                 ← 本地可视化页面（stdlib http.server）
-│   ├── prompt/                ← M4：系统提示与上下文装配（待实现）
-│   ├── providers/             ← M5：能力接缝（FileSystem / SubprocessService）
-│   ├── config/                ← M6：profile 式组装
-│   └── server/                ← M7：JSON-RPC 服务 + 事件流 follow
-├── profiles/                  ← M6：YAML 组合层
-├── tests/                     ← 单元测试（test_harness_assembly / test_harness_webui）
-└── demo.py                    ← 离线端到端回归（M1–M3 的行为基线）
+├── README.md            ← 本文件
+├── pyproject.toml       ← ruff 配置（阶段式工作区，不做 setuptools 打包）
+├── scripts/check.py     ← 门禁：ruff（整体）+ pytest（逐阶段）
+├── _01_Prompt_Assembly/     ← M4：提示词装配
+├── _02_Capability_Seams/    ← M5：能力接缝
+├── _03_Profile_Composition/ ← M6：Profile 组装
+└── _04_Service/             ← M7：服务化
 ```
 
-`harness/prompt`、`harness/providers`、`harness/config`、`harness/server` 现在是**占位包**
-（只有说明性的 `__init__.py`），每个阶段往对应目录里写实现。
+每个 `_0N` 目录的内部结构一致：
+
+```
+_0N_<主题>/
+├── README.md          ← 本阶段的学习计划（读 dsh / 做 / 验收 / 运行）
+├── harness/           ← 一份完整的 harness 副本（llm/agent/tools/session 基线 + 各阶段子包）
+│   ├── prompt/ providers/ config/ server/   ← M4–M7 的实现落点
+│   └── ...（M1–M3 的基线代码）
+├── tests/             ← 基线验收测试（22 用例，M1–M3 组装回归）
+├── demo.py            ← 离线端到端回归
+├── conftest.py        ← pytest 引导（隔离本阶段的 harness 副本）
+└── run.bat / run.sh   ← 一键启动器
+```
+
+四个阶段现在都是**同一份基线代码**（P1 `_05` 语义等价的单一包）。M4–M7 的实现尚未落地——
+对应子包（`prompt` / `providers` / `config` / `server`）目前是只有规划说明的占位包。
 
 ---
 
-## 阶段计划
+## 模块简介与使用方法
 
-### M4 系统提示与上下文装配（3–4 天）
-
-**目标**：提示词是可组合、可追溯、可重建的产物——不再是散落在各处的字符串拼接。
-
-**读**：`dsh/packages/core/system-prompt/src/index.ts`；`dsh/packages/context/`
-（workspace 指令、时间上下文）；`dsh/docs/subsystems/system-prompt.md`。
-
-**做**：
-- `harness/prompt/`：section 注册表（有序、支持作用域覆盖）；
-- 变量插值 `{{cwd}}` / `{{platform}}` / `{{time}}`；
-- 运行时上下文每 step 渲染，`system/message` 进日志；
-- 装配断言：渲染出的提示词必须能由「日志 + 装配器」重建；
-- CLI：`python -m harness run --dump-prompt` 打印装配过程与来源。
-
-**验收**：快照测试稳定；改 cwd 只影响对应 section；新增一个 section 不动其他部分。
-
-**决策记录**：`docs/decisions/0006-prompt-assembly.md`。
-
-### M5 能力接缝：Provider 替换（4–6 天）
-
-**目标**：把 M2 里"能用"的文件/命令工具重构成三角色接缝，体验"换 provider 换产品"。
-
-**读**：`dsh/packages/shell/shell/src/index.ts` + `bash-local/` + `tool-bash/`
-（接缝的教科书样例）；`dsh/packages/fs/fs/src/index.ts`；
-`dsh/packages/subprocess/subprocess/src/index.ts`；`dsh/docs/capability-seams.md`。
-
-**做**：
-- `harness/providers/`：抽象 `FileSystem`（read/write/edit/列表）与
-  `SubprocessService`（spawn/捕获）；本地实现；工具只依赖抽象；
-- 单槽服务：重复注册即报错；provider 选择在**显式 resolve 步骤**完成；
-- 至少两个新 provider：`MemoryFS`（测试用）、`WorkspaceJailFS`（越出工作目录的写被拒）。
-
-**验收**：同一套工具测试在 `local` 与 `memory` 下全绿；jail 越权错误结构与其他错误一致。
-（此阶段会动 `harness/tools/` 的 `read_file`/`write_file`/`list_files`——它们从直接操作
-`pathlib` 改为依赖 `FileSystem` 抽象。）
-
-**决策记录**：`docs/decisions/0007-capability-seams.md`。
-
-### M6 组合与配置：Profile 式组装（3–5 天）
-
-**目标**：能力组合从代码变成配置数据；一行 patch 完成 provider 替换。
-
-**读**：`dsh/packages/boot/app-boot/src/profile.ts`；
-`dsh/packages/bundle/base/cordis.patch.yml`；`dsh/apps/cli/src/profile-boot.ts`；
-`dsh/docs/cordis-primer.md`（loader configuration 节）。
-
-**做**：
-- `harness/config/`：极简插件协议 `Plugin.setup(ctx) -> disposer`；注册即 effect；
-- `profiles/*.yaml`：有序层 + 按 id patch（替换整块 config 或 insert 新行）；
-  顺序 base → profile patch → 用户 patch → CLI `--patch`；
-- `python -m harness --profile <name> dump-config`；
-- 两个 profile：`dev`（FakeLLM + MemoryFS）、`prod`（DeepSeek + 本地）。
-
-**验收**：同 base 两个 profile 产出不同且可读的树；换 LLM provider 只改一行；
-故意写错配置启动即报错并指出位置。
-
-**决策记录**：`docs/decisions/0008-profile-composition.md`。
-
-### M7 服务化与多前端（5–7 天）
-
-**目标**：harness 成为常驻服务；前端通过事件流跟随会话（断线可补）。
-
-**读**：`dsh/packages/sdk/protocol/src/transport.ts`（换行 JSON-RPC）；
-`dsh/packages/api/gateway/src/index.ts`（RPC 网关）；
-`dsh/packages/host/webserver/src/index.ts`；`dsh/packages/client/connection/`；
-`dsh/docs/api-gateway.md`。
-
-**做**：
-- `harness/server/`：`python -m harness serve`，先做 stdio 换行 JSON-RPC
-  （`initialize` / `session.prompt` / `session.follow`），可选升级 HTTP + WebSocket；
-- `session.follow(from_seq)` = **重放（日志）+ 订阅（实时）**；
-- 客户端 `python -m harness attach`：流式渲染（rich 可选）。
-
-**验收**：两个终端 serve + attach 共享同一会话；kill attach 后重连能补齐缺失事件；
-协议 golden 测试。
-
-**决策记录**：`docs/decisions/0009-follow-equals-replay-plus-subscribe.md`。
-
----
-
-## 怎么用这个工作区
+每个阶段都能单独跑。通用命令（在对应阶段目录下）：
 
 ```bash
-cd P2_Coding
+python -m pytest -q                # 基线验收测试（22 用例，全离线）
+python demo.py                     # 离线端到端回归（对话 → 工具 → 退出 → resume → 分叉）
+python -m harness list             # CLI
+python -m harness.webui.server     # 可视化页面（真实 API，http://127.0.0.1:8765/）
+./run.bat                          # 双击即离线 demo；run.bat chat --fake 交互对话
+```
 
-# 门禁（每次动手前/收工前都跑）
-python scripts/check.py            # ruff + pytest（+ mypy 若装了）
-python scripts/check.py --fix      # 先让 ruff 自动修可修的问题
+### `_01_Prompt_Assembly`（M4 提示词装配）
 
-# 测试
-python -m pytest -q                # 22 个用例（组装 13 + 可视化 9）
-
-# 离线端到端回归（M1–M3 的行为基线，改任何底层后都该跑）
-python demo.py
-
-# 命令行
-python -m harness list
+```bash
+cd P2_Coding/_01_Prompt_Assembly
+python -m pytest -q
 python -m harness run "帮我算 1234*56.78" --fake
-python -m harness chat --session s1        # 真实 API（读取项目根 .env）
+python -m harness run "..." --dump-prompt    # 【将实现】打印装配过程与来源
+python demo.py
+./run.bat chat --fake
+```
 
-# 可视化页面（真实 API）
-python -m harness.webui.server             # http://127.0.0.1:8765/
+### `_02_Capability_Seams`（M5 能力接缝）
+
+```bash
+cd P2_Coding/_02_Capability_Seams
+python -m pytest -q                          # 【将含】local / memory 双 provider 对照
+python -m harness run "把 hello 写到 notes/a.txt" --fake
+python demo.py
+./run.bat chat --fake
+```
+
+### `_03_Profile_Composition`（M6 Profile 组装）
+
+```bash
+cd P2_Coding/_03_Profile_Composition
+python -m pytest -q
+python -m harness --profile dev dump-config     # 【将实现】dev 装配树
+python -m harness --profile prod dump-config    # 【将实现】prod 装配树
+python -m harness --profile dev run "帮我算 2+3"
+./run.bat --profile dev dump-config
+```
+
+### `_04_Service`（M7 服务化）
+
+```bash
+cd P2_Coding/_04_Service
+python -m pytest -q
+python -m harness serve                          # 【将实现】常驻服务（stdio JSON-RPC）
+python -m harness attach --session s1            # 【将实现】另一个终端：跟随会话
+python -m harness attach --session s1 --from 10  # 从 seq=10 补齐
+./run.bat serve
+```
+
+### 门禁（在 P2_Coding 目录下）
+
+```bash
+python scripts/check.py        # ruff（整体）+ pytest（逐阶段）
+python scripts/check.py --fix  # 先让 ruff 自动修可修的问题
 ```
 
 ---
 
-## 与 P1 的关系
+## 更新规则（每完成一个阶段）
 
-- **行为不变**：P2 的 `harness/` 是 P1 `_05` 四份副本的**语义等价合并**，`demo.py` 与
-  22 个测试即回归基线（迁移前后全部通过）。
-- **结构升级**：不再有"每个练习一份同名包"的重复；`python -m harness` 成为统一入口。
-- **P1 `_05` 保留**：作为"组装成产品"那一步的教学快照存在，其代码与 P2 内容重合，
-  后续以 P2 为唯一维护对象。
+1. 在该阶段目录里写实现 + 测试，**跑通该阶段的验收命令**；
+2. 在它的 README 里把验收清单勾上、更新本篇进度表；
+3. 写决策记录 `docs/decisions/000N-*.md`（M4→0006、M5→0007、M6→0008、M7→0009；
+   0001–0005 已被 P1 占用）；
+4. `python scripts/check.py` 全绿；
+5. 下一个阶段的起点 = 复制本阶段完成后的 `harness/` 目录。
 
 ## 进度
 
 | 阶段 | 主题 | 状态 | 完成日期 | 验收命令 |
 |---|---|---|---|---|
-| 第 0 步 | 地基收敛（单包 + 门禁） | ✅ 已完成 | 2026-10-08 | `python scripts/check.py` |
-| M4 | 提示词装配 | ☐ 未开始 | | `python -m harness run --dump-prompt` |
-| M5 | 能力接缝 | ☐ 未开始 | | `pytest -q`（local/memory 双 provider 全绿） |
-| M6 | Profile 组装 | ☐ 未开始 | | `python -m harness --profile dev dump-config` |
-| M7 | 服务化 | ☐ 未开始 | | `python -m harness serve` + `attach` |
+| `_01_Prompt_Assembly` | M4 提示词装配 | ☐ 未开始 | | `python -m harness run --dump-prompt` |
+| `_02_Capability_Seams` | M5 能力接缝 | ☐ 未开始 | | `pytest -q`（local/memory 双 provider 全绿） |
+| `_03_Profile_Composition` | M6 Profile 组装 | ☐ 未开始 | | `python -m harness --profile dev dump-config` |
+| `_04_Service` | M7 服务化 | ☐ 未开始 | | `python -m harness serve` + `attach` |
 
-每完成一个阶段：更新本表 → 写决策记录 `000N-*.md` → 门禁全绿 → commit。
+> **阶段名 vs 计划阶段**：目录名字是本阶段**主题**（如 `_01_Prompt_Assembly`），
+> 它服务的**学习计划阶段**是 M4–M7，见各阶段 README 顶部标注。
