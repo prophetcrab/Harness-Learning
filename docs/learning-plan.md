@@ -250,9 +250,9 @@ AgentDevLearn/
 |---|---|---|---|---|
 | P0 | 单文件预热练习 | ✅ 已完成 | 2026-09-30 | `pytest P0_Coding -q`（15 用例） |
 | M0 | 工程地基 | ☐ 未开始（P1 可选补：git init + check 门禁） | | `python scripts/check.py` |
-| M1 | 最小 agent loop | ☐ 未开始（P1 `_01`/`_02`） | | `pytest P1_Coding -q` |
-| M2 | 工具系统 | ☐ 未开始（P1 `_03`） | | `pytest P1_Coding -q` |
-| M3 | 会话日志 | ☐ 未开始（P1 `_04`） | | `pytest P1_Coding -q` |
+| M1 | 最小 agent loop | 🔵 进行中（P1 `_01`✅ / `_02`✅） | 2026-10-07（`_02`） | `pytest P1_Coding -q` |
+| M2 | 工具系统 | 🔵 进行中（P1 `_03`✅） | 2026-10-07（`_03`） | `pytest P1_Coding -q` |
+| M3 | 会话日志 | 🔵 进行中（P1 `_04`✅） | 2026-10-07（`_04`） | `pytest P1_Coding -q` |
 | M4 | 提示词装配 | ☐ 未开始 | | `python -m harness run --dump-prompt` |
 | M5 | 能力接缝 | ☐ 未开始 | | `pytest -q`（双 provider 全绿） |
 | M6 | Profile 组装 | ☐ 未开始 | | `python -m harness --profile dev dump-config` |

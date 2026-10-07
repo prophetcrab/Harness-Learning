@@ -9,3 +9,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# 练习运行时产物（demo 写入的工作区 / 会话日志）
+demo_workspace/
+sessions/

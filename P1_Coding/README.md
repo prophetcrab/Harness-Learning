@@ -24,9 +24,9 @@ M1（最小 agent loop）→ M2（工具系统）→ M3（会话日志）。
 | 编号 | 主题 | 核心交付 | 验收预告 |
 |---|---|---|---|
 | `_01_Provider_Protocol` | LLM 接缝 | `LLMProvider` 协议 + `FakeLLM`（剧本、请求记录）+ `DeepSeekProvider`；消息词汇模块 | FakeLLM 驱动完整工具闭环，全程离线可断言；换 provider 只改一行 |
-| `_02_Agent_Loop` | Agent 主循环 | 循环抽成可复用类：turn/step 词汇、max_steps、流式回调、调用轨迹返回 | 剧本覆盖"两步收尾 / 触顶停止 / 工具报错恢复"；决策记录 0001 |
-| `_03_Tool_Pipeline` | 工具管线 | 注册表（define_tool 定义与实现分离）+ pre/execute/post 三段 + 超时 + 审批策略接口化 | 审批三态、超时、post 加工三类测试；决策记录 0002 |
-| `_04_Session_Log` | 会话日志 | append-only 事件 + JSONL 落盘 + `derive_messages()` + resume + 崩溃尾部修复 | 重放同构、进程被杀后恢复、坏尾自动修复；决策记录 0003 |
+| `_02_Agent_Loop` | Agent 主循环 | 循环抽成可复用类：turn/step 词汇、max_steps、流式回调、调用轨迹返回 | 剧本覆盖"两步收尾 / 触顶停止 / 工具报错恢复"；决策记录 0002 |
+| `_03_Tool_Pipeline` | 工具管线 | 注册表（define_tool 定义与实现分离）+ pre/execute/post 三段 + 超时 + 审批策略接口化 | 审批三态、超时、post 加工三类测试；决策记录 0003 |
+| `_04_Session_Log` | 会话日志 | append-only 事件 + JSONL 落盘 + `derive_messages()` + resume + 崩溃尾部修复 | 重放同构、进程被杀后恢复、坏尾自动修复；决策记录 0004 |
 | `_05_Mini_Harness` | 综合验收 | 前四者组装：CLI 对话 + resume + 工具箱（计算器/文件/可选搜索） | M1–M3 验收全绿；完整 demo：对话 → 工具 → 退出 → resume 继续 |
 
 依赖关系：`_01 → _02 → {_03, _04} → _05`（_03 与 _04 可在 _02 完成后并行，也可按编号顺序做）。
@@ -55,14 +55,21 @@ M1（最小 agent loop）→ M2（工具系统）→ M3（会话日志）。
 | 练习 | 状态 | 完成日期 | 验收命令 |
 |---|---|---|---|
 | `_01_Provider_Protocol` | ✅ 已完成 | 2026-09-30 | `pytest _01_Provider_Protocol -q`（12 用例全离线） |
-| `_02_Agent_Loop` | ☐ 未开始 | | |
-| `_03_Tool_Pipeline` | ☐ 未开始 | | |
-| `_04_Session_Log` | ☐ 未开始 | | |
+| `_02_Agent_Loop` | ✅ 已完成 | 2026-10-07 | `pytest _02_Agent_Loop -q`（13 用例全离线） |
+| `_03_Tool_Pipeline` | ✅ 已完成 | 2026-10-07 | `pytest _03_Tool_Pipeline -q`（19 用例全离线） |
+| `_04_Session_Log` | ✅ 已完成 | 2026-10-07 | `pytest _04_Session_Log -q`（13 用例全离线） |
 | `_05_Mini_Harness` | ☐ 未开始 | | |
 
 **`_01` 产出速览**：`llm_seam/` 包 6 个模块（词汇 → 协议 → FakeLLM → DeepSeekProvider → 闭环 → 工具箱），
 入口 `demo.py`（`--fake` 离线 / 默认真实 API），12 个单元测试；决策记录
 [docs/decisions/0001](../docs/decisions/0001-llm-provider-seam.md)。
+
+**`_04` 产出速览**：`session/` 包 5 个模块（事件 → 投影 → 日志 → JSONL 落盘 → 录制器），
+`runner.py` 胶水（open_session / resume / fork），`cli.py`（list/show/run/fork），
+13 个单元测试；决策记录 [docs/decisions/0004](../docs/decisions/0004-event-sourcing.md)。
+
+> **全量测试注意**：`_02/_03/_04` 各自带同名顶层包（`agent_loop` / `llm_seam` 等），
+> 每个练习的 `conftest.py` 会在导入前驱逐同名模块，保证全量 `pytest` 不串味。
 
 ## 运行约定
 
