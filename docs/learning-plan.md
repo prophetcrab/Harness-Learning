@@ -282,7 +282,7 @@ AgentDevLearn/
 | M1 | 最小 agent loop | ✅ 已完成（P1 `_01` + `_02`） | 2026-10-07 | `pytest P1_Coding -q` |
 | M2 | 工具系统 | ✅ 已完成（P1 `_03`） | 2026-10-07 | `pytest P1_Coding -q` |
 | M3 | 会话日志 | ✅ 已完成（P1 `_04` + `_05` 可视化） | 2026-10-07 | `pytest P1_Coding -q` |
-| M4 | 提示词装配 | ☐ 未开始（P2 `_01`–`_03`） | | `python -m harness run --dump-prompt` |
+| M4 | 提示词装配 | 🔵 进行中（P2 `_01`✅ / `_02` / `_03`） | 2026-10-08（`_01`） | `python -m harness run --dump-prompt` |
 | M5 | 能力接缝 | ☐ 未开始（P2 `_04`–`_06`） | | `pytest -q`（双 provider 全绿） |
 | M6 | 组合与配置 | ☐ 未开始（P2 `_07`–`_09`） | | `python -m harness --profile dev dump-config` |
 | M7 | 服务化 | ☐ 未开始（P2 `_10`–`_11`） | | `python -m harness serve` + `attach` |

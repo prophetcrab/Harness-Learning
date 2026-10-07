@@ -21,6 +21,11 @@
 4. 事件 sink 同时喂给 recorder（先落日志）与 presenter（再打印）—— 日志是真相，
    打印只是观察。
 
+M4 起（P2 `_01`）新增第 5 处：**系统提示词由 section 装配器产出**。`open()` 的
+`system_prompt` 参数既可收一段成品文本，也可收一个 `PromptAssembler`；装配结果
+（含作用域遮蔽效果）写进 `session/start`，即"模型当时看到的提示词"。装配逻辑本身
+在 `harness/prompt/`，本类只负责在装配点调用它。
+
 本类不含业务逻辑，只把上面这些接线固化成"一个对象"。它替代了 _04 的
 `Runner`（`Runner` 仍是更底层的胶水，本类在其上再叠一层"工具面 + 审批"）。
 """
@@ -33,6 +38,7 @@ from pathlib import Path
 from harness.agent import TurnResult
 from harness.llm.provider import LLMProvider
 from harness.llm.vocabulary import Message
+from harness.prompt import PromptAssembler, default_assembler
 from harness.runner import Runner, open_session
 from harness.session import JsonlStore, RepairReport, Session
 from harness.tools import ApprovalPolicy, ToolMiddleware, ToolPipeline, ToolRegistry
@@ -41,13 +47,15 @@ from harness.tools.workspace import build_workspace_registry
 # 观察者回调：kind + payload（与 AgentLoop 的事件一致）。
 Presenter = Callable[[str, dict], None]
 
+# system 提示的入参形态（M4）：
+#   None              → 用内置默认装配器（default_assembler）装配
+#   str               → 直接当作成品提示词（向后兼容 P1 的写法，测试/demo 常用）
+#   PromptAssembler   → 调 .assemble() 得到提示词（由 section 装配而来）
+SystemPrompt = str | PromptAssembler | None
 
-DEFAULT_SYSTEM_PROMPT = (
-    "你是一名严谨的中文助手，可以调用工具。"
-    "涉及算术计算时必须调用 calculate 工具，不要心算；"
-    "需要读写文件时使用 read_file / write_file / list_files，路径用相对工作区根目录的相对路径。"
-    "最终回答用中文，简洁。"
-)
+# 默认系统提示词文本（由内置 section 装配而来）。保留这个常量是为了向后兼容：
+# webui/server.py 等地方把它当作默认字符串使用。
+DEFAULT_SYSTEM_PROMPT = default_assembler().assemble()
 
 
 class MiniHarness:
@@ -119,7 +127,7 @@ class MiniHarness:
         provider: LLMProvider,
         root: str | Path,
         workspace: str | Path | None = None,
-        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+        system_prompt: SystemPrompt = None,
         approval: ApprovalPolicy | None = None,
         include_search: bool = False,
         timeout: float = 30.0,
@@ -131,9 +139,18 @@ class MiniHarness:
 
         对新的 session_id 是"创建"，对已存在的 session_id 是"恢复"——同一条路径。
         返回 (harness, 修复报告)。report.repaired 为真表示上次被强杀、尾部已修复。
+
+        system_prompt（M4）：
+        - None            用内置默认装配器（由 section 装配出默认提示词）；
+        - str             直接当成品提示词（向后兼容；测试与 demo 常显式传一段文本）；
+        - PromptAssembler 调 `.assemble()` 得到提示词——这是 M4 的主路径：
+                          传入的装配器可以带作用域覆盖，装配结果（连同遮蔽效果）
+                          会被写进 session/start 事件，成为"模型当时看到的提示词"。
         """
         store = JsonlStore(Path(root))
-        session, report = open_session(session_id, store, system_prompt=system_prompt)
+        # 把入参形态归一成一段文本（装配点就在这一行）。
+        prompt_text = _resolve_system_prompt(system_prompt)
+        session, report = open_session(session_id, store, system_prompt=prompt_text)
         registry = build_workspace_registry(
             Path(workspace) if workspace is not None else Path(root),
             include_search=include_search,
@@ -151,4 +168,17 @@ class MiniHarness:
         return harness, report
 
 
-__all__ = ["MiniHarness", "Presenter", "DEFAULT_SYSTEM_PROMPT"]
+def _resolve_system_prompt(system_prompt: SystemPrompt) -> str:
+    """把 system_prompt 的三种入参形态归一成一段文本。
+
+    单独抽成模块级函数：这段"入参归一"的逻辑与 MiniHarness 的装配无关，
+    放在类外让 open() 保持清爽，也便于单测直接验算。
+    """
+    if system_prompt is None:
+        return default_assembler().assemble()
+    if isinstance(system_prompt, PromptAssembler):
+        return system_prompt.assemble()
+    return system_prompt
+
+
+__all__ = ["MiniHarness", "Presenter", "DEFAULT_SYSTEM_PROMPT", "SystemPrompt"]

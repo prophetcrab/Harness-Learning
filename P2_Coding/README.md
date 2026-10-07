@@ -110,7 +110,7 @@ python scripts/check.py --fix  # 先让 ruff 自动修可修的问题
 
 | 阶段 | 机制 | 状态 | 完成日期 |
 |---|---|---|---|
-| `_01_Prompt_Sections` | section 注册表 + 装配器 | ☐ 未开始 | |
+| `_01_Prompt_Sections` | section 注册表 + 装配器 | ✅ 已完成 | 2026-10-08 |
 | `_02_Prompt_Context` | 变量插值 + 运行时上下文 | ☐ 未开始 | |
 | `_03_Prompt_Trace` | `--dump-prompt` + 重建断言 | ☐ 未开始 | |
 | `_04_Filesystem_Seam` | FileSystem 接缝 + Local/Memory | ☐ 未开始 | |

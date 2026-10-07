@@ -6,6 +6,7 @@
     python demo.py --keep     # 保留 demo_run/（默认每次清空重建）
 
 故事线 = M1–M3 的组装验收（基线行为回归，改动任何底层后都该保持全绿）：
+    0. [M4 新增] 系统提示词由 section 装配（注册表 / 作用域遮蔽 / 装配器）
     1. 新会话，多轮对话：算数（工具）、写文件（工具 + 审批）、闲聊
     2. 打印会话日志：能看到 session/start、turn/step、assistant/message、tool/result
     3. 模拟"退出"：丢掉进程内对象，只留下磁盘上的日志
@@ -23,6 +24,7 @@ from pathlib import Path
 
 from harness.llm import FakeLLM, text_reply, tool_call_reply
 from harness.mini import MiniHarness
+from harness.prompt import PromptAssembler, Section, SectionRegistry
 from harness.runner import fork_session, load_messages
 from harness.session import JsonlStore
 from harness.tools import ScriptedApprover
@@ -54,6 +56,28 @@ def main() -> None:
     if DEMO_RUN.exists() and not keep:
         shutil.rmtree(DEMO_RUN)
     WORKSPACE.mkdir(parents=True, exist_ok=True)
+
+    # =====================================================================
+    # 0) [M4 新增] 系统提示词由 section 装配 —— 演示注册表 / 作用域 / 装配器
+    # =====================================================================
+    print("=" * 68)
+    print("0) 系统提示词由 section 装配（M4 本阶段新增的机制）")
+    # 基础注册表的默认两节
+    base = SectionRegistry()
+    base.register(Section("role", "你是基础助手。", title="角色"))
+    base.register(Section("style", "回答保持简洁。", title="风格"))
+    print("   基础 section 顺序：", base.names)
+    print("   装配结果：", repr(PromptAssembler(base).assemble()))
+
+    # 派生一个作用域：遮蔽 role（保持原位）、追加 tools（追加到末尾）
+    scope = base.scoped("demo-session")
+    scope.register(Section("role", "你是**演示专用**助手。"))
+    scope.register(Section("tools", "需要算术时调用 calculate。"))
+    print("   作用域遮蔽+追加后顺序：", scope.names, "（role 原位替换，tools 追加）")
+    print("   装配结果：", repr(PromptAssembler(scope).assemble()))
+    # 撤下作用域 → 基础层完全恢复（遮蔽不是删除）
+    scope.close()
+    print("   作用域 close() 后：", repr(PromptAssembler(scope).assemble()), "（基础层恢复）")
 
     # =====================================================================
     # 1) 新会话：多轮对话（工具 + 审批 + 闲聊），事件逐条落盘
