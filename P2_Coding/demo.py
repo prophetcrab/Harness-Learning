@@ -1,11 +1,11 @@
-"""P3_Coding 的入口脚本：把 mini harness 完整跑一遍（全离线）。
+"""P2_Coding 的入口脚本：把 mini harness 完整跑一遍（全离线）。
 
-运行方式（在 P3_Coding 目录下）：
+运行方式（在 P2_Coding 目录下）：
 
     python demo.py            # 全离线，FakeLLM 驱动，故事固定（每次清空 demo_run/ 重演）
     python demo.py --keep     # 保留 demo_run/（默认每次清空重建）
 
-故事线 = M1–M3 的组装验收（P1 已完成，这里作为 P3 的回归基线）：
+故事线 = M1–M3 的组装验收（P1 已完成，这里作为 P2 的回归基线）：
     1. 新会话，多轮对话：算数（工具）、写文件（工具 + 审批）、闲聊
     2. 打印会话日志：能看到 session/start、turn/step、assistant/message、tool/result
     3. 模拟"退出"：丢掉进程内对象，只留下磁盘上的日志

@@ -1,6 +1,6 @@
 """mini harness 的命令行入口：对话 / 恢复 / 会话管理。
 
-用法（在 P3_Coding 目录下；也可 `python -m harness <子命令>`）：
+用法（在 P2_Coding 目录下；也可 `python -m harness <子命令>`）：
 
     python -m harness chat                            # 真实 API，交互对话（新建/恢复 default 会话）
     python -m harness chat --session s1               # 指定会话 id；同名即"恢复继续"

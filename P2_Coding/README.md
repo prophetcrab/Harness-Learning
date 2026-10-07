@@ -1,7 +1,7 @@
-# P3_Coding —— 把 harness 长成一个真正的产品
+# P2_Coding —— 把 harness 长成一个真正的产品
 
 P1 结束时你有一个"能对话、能恢复、可扩展工具、可离线测试"的小 harness，但它是
-**四份自包含副本拼起来的**，组装发生在练习目录里。P3 要做的是：**先把它收敛成一个
+**四份自包含副本拼起来的**，组装发生在练习目录里。P2 要做的是：**先把它收敛成一个
 真正的包，再在这个包上把 harness 变成可配置、可替换、可服务化的产品。**
 
 对应学习计划 [docs/learning-plan.md](../docs/learning-plan.md) 的
@@ -19,7 +19,7 @@ P1 结束时你有一个"能对话、能恢复、可扩展工具、可离线测�
 2. **补上 M0 门禁**：`pyproject.toml` + `scripts/check.py`（ruff + pytest；mypy 可选）。
    对应学习计划硬约束 #3「门禁不绿不前进」。
 
-**验收**：`python scripts/check.py` 全绿；`python -m harness list` 可用；P3 22 个用例通过
+**验收**：`python scripts/check.py` 全绿；`python -m harness list` 可用；P2 22 个用例通过
 （与 P1 `_05` 迁移前的行为完全一致）。
 
 ---
@@ -27,8 +27,8 @@ P1 结束时你有一个"能对话、能恢复、可扩展工具、可离线测�
 ## 目标仓库结构
 
 ```
-P3_Coding/
-├── README.md                  ← 本文件（P3 学习计划）
+P2_Coding/
+├── README.md                  ← 本文件（P2 学习计划）
 ├── pyproject.toml             ← 打包 + ruff/pytest 配置
 ├── scripts/check.py           ← 门禁：ruff + pytest（+ mypy 若装了）
 ├── harness/                   ← 实现代码（单一包）
@@ -139,7 +139,7 @@ P3_Coding/
 ## 怎么用这个工作区
 
 ```bash
-cd P3_Coding
+cd P2_Coding
 
 # 门禁（每次动手前/收工前都跑）
 python scripts/check.py            # ruff + pytest（+ mypy 若装了）
@@ -164,11 +164,11 @@ python -m harness.webui.server             # http://127.0.0.1:8765/
 
 ## 与 P1 的关系
 
-- **行为不变**：P3 的 `harness/` 是 P1 `_05` 四份副本的**语义等价合并**，`demo.py` 与
+- **行为不变**：P2 的 `harness/` 是 P1 `_05` 四份副本的**语义等价合并**，`demo.py` 与
   22 个测试即回归基线（迁移前后全部通过）。
 - **结构升级**：不再有"每个练习一份同名包"的重复；`python -m harness` 成为统一入口。
-- **P1 `_05` 保留**：作为"组装成产品"那一步的教学快照存在，其代码与 P3 内容重合，
-  后续以 P3 为唯一维护对象。
+- **P1 `_05` 保留**：作为"组装成产品"那一步的教学快照存在，其代码与 P2 内容重合，
+  后续以 P2 为唯一维护对象。
 
 ## 进度
 

@@ -1,6 +1,6 @@
 """本地门禁：ruff + pytest（对应学习计划硬约束 #3 "门禁不绿不前进"）。
 
-用法（在 P3_Coding 目录下）：
+用法（在 P2_Coding 目录下）：
 
     python scripts/check.py            # 跑全部检查
     python scripts/check.py --fix      # 先让 ruff 自动修可修的问题，再跑
@@ -16,7 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]  # P3_Coding
+ROOT = Path(__file__).resolve().parents[1]  # P2_Coding
 PY = sys.executable
 
 

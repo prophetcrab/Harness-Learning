@@ -1,7 +1,7 @@
 [project]
 name = "mini-harness"
-version = "0.3.0"
-description = "从一个学习项目长出来的最小 agent harness（P3：M4–M7）"
+version = "0.2.0"
+description = "从一个学习项目长出来的最小 agent harness（P2：M4–M7）"
 requires-python = ">=3.11"
 dependencies = [
     "openai>=1.0",

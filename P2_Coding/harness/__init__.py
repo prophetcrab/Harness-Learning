@@ -1,4 +1,4 @@
-"""harness —— mini agent harness（P3 起统一为单一包）。
+"""harness —— mini agent harness（P2 起统一为单一包）。
 
 从 P1 的四份自包含副本收敛而来（消除"每个练习一份同名包"的重复）：
 
@@ -11,11 +11,11 @@
     harness.cli       命令行入口（python -m harness）
     harness.webui     本地可视化页面（stdlib http.server + NDJSON 事件流）
 
-P3（M4–M7）在此包上继续生长，占位子包：
+P2（M4–M7）在此包上继续生长，占位子包：
     harness.prompt       M4 系统提示与上下文装配
     harness.providers    M5 能力接缝（FileSystem / SubprocessService）
     harness.config       M6 profile 式组装
     harness.server       M7 JSON-RPC 服务 + 事件流 follow
 """
 
-__version__ = "0.3.0"
+__version__ = "0.2.0"

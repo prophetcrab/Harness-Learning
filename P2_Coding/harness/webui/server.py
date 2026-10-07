@@ -15,7 +15,7 @@
 对已存在 id 就是 resume），把 on_event 接到输出流上。这样天然支持 resume，也没有
 多请求共享状态的竞态。
 
-用法（在 P3_Coding 目录下）：
+用法（在 P2_Coding 目录下）：
 
     python -m harness.webui.server    # 真实 API（读取项目根 .env 里的 key）
     python -m harness.webui.server --port 8765 --no-open
