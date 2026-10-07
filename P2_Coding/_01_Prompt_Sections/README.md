@@ -61,17 +61,31 @@ python -m pytest -q        # 22 个基线用例 + 15 个本阶段用例 = 37
 基础层始终完整，遮蔽发生在解析期——所以 `close()`/`drop()` 后基础层自动恢复。
 
 接入方式：装配器产出**一段文本**，交给基线的 `harness.mini.MiniHarness.open(system_prompt=...)`
-（基线接口未改）。装配点是本阶段的 `demo.py` 与测试。
+（基线接口未改）。装配点是本阶段的 `chat.py`（真实对话）与 `demo.py`（脚本演示）。
 
 ## 3) 运行方法
 
 ```bash
 cd P2_Coding/_01_Prompt_Sections
 python -m pytest -q
-python demo.py                               # 第 0 节演示 section 装配与作用域回卷
+
+# ★ 真实对话（本阶段入口）：启动时打印装配明细，把装配出的提示词用于整场对话
+python chat.py                 # 真实 DeepSeek API（读取项目根 .env 的 key）
+python chat.py --fake          # 离线剧本对话（不需要 key）
+python chat.py --session s1    # 指定会话，同名即"恢复继续"
+python chat.py --no-scope      # 只看基础三节，不叠加 chat 作用域
+# 对话内命令：/prompt 看装配明细；/history 看历史；/exit 退出
+
+# 脚本化演示（离线，跑完整故事线）
+python demo.py                 # 第 0 节演示 section 装配与作用域回卷
 python -m harness run "帮我算 1234*56.78" --fake
-./run.bat                    # 双击即离线 demo；run.bat chat --fake 交互对话
+./run.bat                      # 双击即离线 demo
+./run.bat chat                 # 一键真实对话；run.bat chat --fake 离线对话
 ```
+
+**真实对话里能看到什么**：`chat.py` 启动时逐节打印系统提示词（name / 来源 / 内容），
+叠加 `chat` 作用域后追加一节 `conversation`；随后这场对话用的就是这段"装配出来的"
+提示词（它会被写进会话日志的 `session/start`，即"模型当时看到的提示词"）。
 
 ## 4) 完成后的去向
 
