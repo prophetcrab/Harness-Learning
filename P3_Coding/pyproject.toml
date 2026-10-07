@@ -1,0 +1,41 @@
+[project]
+name = "mini-harness"
+version = "0.3.0"
+description = "从一个学习项目长出来的最小 agent harness（P3：M4–M7）"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["harness"]
+
+# ---- 门禁配置：ruff（lint）与 pytest ----
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["demo_run", "sessions"]
+
+[tool.ruff.lint]
+# E/W pycodestyle、F pyflakes、I import 排序、UP pyupgrade、B bugbear
+select = ["E", "W", "F", "I", "UP", "B"]
+ignore = [
+    "E501",   # 行长由 line-length 约束，不逐行报
+    "B008",   # 允许在默认参数里调用（如 Field(...)）
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]   # 测试里允许在 sys.path 引导后再 import
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -234,12 +234,15 @@ cd D:/project/AgentDevLearn/P0_Coding/_04_File_Tools_Loop
 
 ```bash
 # 一次跑完所有练习的测试（从项目根目录）
-cd D:/project/AgentDevLearn
-.venv/Scripts/python.exe -m pytest P0_Coding P1_Coding -q   # 当前共 94 个用例（P0 15 + P1 79）
+cd D:/PythonProject/Harness-Learning
+python -m pytest P0_Coding P1_Coding P3_Coding -q   # 当前共 116 个用例（P0 15 + P1 79 + P3 22）
 
 # 只跑某一个练习
 cd P1_Coding/_03_Tool_Pipeline
-../../.venv/Scripts/python.exe -m pytest -q
+python -m pytest -q
+
+# P3 有独立门禁（ruff + pytest）
+cd P3_Coding && python scripts/check.py
 ```
 
 测试默认**不联网、不消耗模型额度**（`_02` 的联网用例断网时会自动跳过）。
@@ -335,6 +338,23 @@ AgentDevLearn/
         ├── test_mini_harness.py     装配验收测试（13 用例，全离线）
         ├── test_webui.py            可视化服务测试（9 用例，真起 HTTP）
         └── README.md
+└── P3_Coding/                    ← 阶段 3：单一 harness/ 包 + 产品化（M4–M7，进行中）
+    ├── README.md                 ← P3 学习计划（M4 提示词 / M5 接缝 / M6 profile / M7 服务化）
+    ├── pyproject.toml            ← 打包 + ruff/pytest 配置
+    ├── scripts/check.py          ← 门禁：ruff + pytest（对应 M0）
+    ├── harness/                  ← 单一实现包（P1 四份副本已收敛于此）
+    │   ├── __main__.py / cli.py     python -m harness
+    │   ├── llm/ agent/ tools/ session/   M1–M3 产出（原 P1，语义等价合并）
+    │   ├── mini.py / runner.py / env.py  装配与 provider 构造
+    │   ├── webui/                  本地可视化页面（stdlib http.server）
+    │   ├── prompt/                  M4 占位：提示词装配
+    │   ├── providers/               M5 占位：能力接缝（FileSystem / Subprocess）
+    │   ├── config/                  M6 占位：profile 组装
+    │   └── server/                  M7 占位：JSON-RPC + 事件流 follow
+    ├── tests/                    ← test_harness_assembly（13）+ test_harness_webui（9）
+    └── demo.py                   ← 离线端到端回归（M1–M3 行为基线）
 ```
 
 每个练习目录的内部结构（入口脚本 + `run.bat`/`run.sh` + 测试 + README）见各练习自己的 README。
+**P1 与 P3 的关系**：P1 `_05` 是"组装成产品"的教学快照（自包含四份副本）；P3 把它收敛成
+单一 `harness/` 包作为唯一维护对象，M4–M7 在 P3 上继续。P1 的五个练习保留备查。
