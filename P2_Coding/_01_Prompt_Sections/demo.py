@@ -24,11 +24,11 @@ from pathlib import Path
 
 from harness.llm import FakeLLM, text_reply, tool_call_reply
 from harness.mini import MiniHarness
-from harness.prompt import PromptAssembler, Section, SectionRegistry
 from harness.runner import fork_session, load_messages
 from harness.session import JsonlStore
 from harness.tools import ScriptedApprover
 from harness.tools.approval import ApprovalDecision
+from prompt import PromptAssembler, Section, SectionRegistry
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -78,6 +78,8 @@ def main() -> None:
     # 撤下作用域 → 基础层完全恢复（遮蔽不是删除）
     scope.close()
     print("   作用域 close() 后：", repr(PromptAssembler(scope).assemble()), "（基础层恢复）")
+    print("   → 装配产物（一段文本）交给 harness.mini.MiniHarness.open(system_prompt=...)，")
+    print("     harness/ 基线本阶段未改动（P2 约定）：新增机制在顶层 prompt/ 包里。")
 
     # =====================================================================
     # 1) 新会话：多轮对话（工具 + 审批 + 闲聊），事件逐条落盘

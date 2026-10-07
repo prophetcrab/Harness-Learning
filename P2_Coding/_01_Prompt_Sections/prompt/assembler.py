@@ -15,8 +15,8 @@ M4 的第二个机制：**装配器**。它持有一个"section 来源"（基础
 
 from __future__ import annotations
 
-from harness.prompt.registry import SectionRegistry, SectionScope
-from harness.prompt.section import Section
+from prompt.registry import SectionRegistry, SectionScope
+from prompt.section import Section
 
 # 装配器的来源：基础注册表或作用域覆盖层，二者都提供 .sections() / .names。
 SectionSource = SectionRegistry | SectionScope

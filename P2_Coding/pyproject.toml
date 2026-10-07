@@ -31,4 +31,6 @@ ignore = [
 "*/tests/*" = ["E402"]   # 测试里允许在 sys.path 引导后再 import
 
 [tool.ruff.lint.isort]
-known-first-party = ["harness"]   # 让 ruff 把 harness 视为本项目包（import 分组稳定）
+# P2 阶段新增的机制是各阶段目录下的**顶层模块**（如 _01 的 prompt/），与基线 harness 平级。
+# 这些名字不是包内子模块，ruff 需显式告知它们属于本项目，才能正确分组。
+known-first-party = ["harness", "prompt", "providers", "config", "server"]

@@ -23,18 +23,22 @@ P1 里系统提示词是一整个写死的字符串常量（`DEFAULT_SYSTEM_PROM
 
 引入三个小对象，把"一节提示词"变成一等公民：
 
-- **`Section`**（`harness/prompt/section.py`）：一节提示词 = `name` + `content` +
+- **`Section`**（`prompt/section.py`）：一节提示词 = `name` + `content` +
   `source`（来源）+ `title`（可选）。`frozen=True`，构造后不可变；空名字 fail loud；
   想"改内容"就注册一个**新的**同名 Section（遮蔽），而不是就地修改。
-- **`SectionRegistry` + `SectionScope`**（`registry.py`）：两层结构。基础层按注册顺序
+- **`SectionRegistry` + `SectionScope`**（`prompt/registry.py`）：两层结构。基础层按注册顺序
   有序、重名报错；作用域覆盖层叠加其上——**同名遮蔽（保持原位）、未同名追加到末尾**，
   撤下（`drop`/`close`）后基础层自动恢复。
-- **`PromptAssembler`**（`assembler.py`）：纯粹按来源顺序把各节正文**拼接成文本**
+- **`PromptAssembler`**（`prompt/assembler.py`）：纯粹按来源顺序把各节正文**拼接成文本**
   （分隔符可配）。它对来源只读，因此既能接基础注册表，也能接作用域覆盖层。
 
-装配点只有一处：`MiniHarness.open` 的 `system_prompt` 参数，接受
-`str | PromptAssembler | None`（`None` 走内置默认装配器，`str` 向后兼容，
-`PromptAssembler` 是 M4 主路径）。
+**代码位置（P2 组织约定）**：这个包放在**阶段主目录的顶层**（`_01_Prompt_Sections/prompt/`），
+**不在 `harness/` 里**——`harness/` 冻结为 M1–M3 基线库，本阶段一行未改。新增机制作为与
+`harness/` 平级的顶层模块摆放，好处是"这一阶段加了什么"在目录层面一目了然，也便于把基线
+原样复制到下一阶段。
+
+装配点在**本阶段的入口**（`demo.py` 与测试）：`assembler.assemble()` 产出一段文本，交给
+基线的 `harness.mini.MiniHarness.open(system_prompt=...)`（其 `system_prompt` 仍只收 `str`）。
 
 排序规则是刻意的：**遮蔽同名 section 时保持它在基础层的位置**。这让"覆盖某节内容"
 不会打乱整体结构——提示词的骨架由基础层决定，作用域只换血肉、不改骨架。
@@ -55,8 +59,8 @@ P1 里系统提示词是一整个写死的字符串常量（`DEFAULT_SYSTEM_PROM
 
 ## 后果
 
-- 约束：`harness/prompt/` 是**纯逻辑**——只吃字符串、吐字符串，不依赖 harness 其它子包；
-  装配点集中在 `MiniHarness.open` 一处；基础层重名 fail loud。
+- 约束：`prompt/`（阶段主目录顶层）是**纯逻辑**——只吃字符串、吐字符串，不依赖 harness；
+  `harness/` 基线不改动；基础层重名 fail loud。
 - 收益：提示词可按节替换/遮蔽/追加；15 个新用例覆盖顺序、重名、遮蔽、追加、恢复、
   close、分隔符、接线（共 37 用例含基线）；`demo.py` 新增第 0 节直观演示装配与回卷。
 - 债务：`source` 目前只是打标签，尚未被消费——`_03_Prompt_Trace` 会用它做

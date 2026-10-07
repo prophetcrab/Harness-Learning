@@ -9,13 +9,17 @@ P2 第 1 阶段（对应学习计划 **M4**）。本阶段**只加一个机制**
 ## 本阶段自包含
 
 本目录带一份**完整的 `harness/` 副本**（P2 约定：阶段之间不共享代码，后一阶段从上一阶段的
-`harness/` 复制起点）。`harness/` 里与本阶段相关的部分：
+`harness/` 复制起点）。
 
-| 位置 | 现状（本阶段起点） | 本阶段做了什么 |
+> **代码组织约定（P2）**：`harness/` 是**冻结的 M1–M3 基线库**——各阶段共享、本阶段不动它；
+> 本阶段**新增的机制放在阶段主目录的顶层**，与 `harness/` 平级。所以本阶段的产物是顶层
+> 的 `prompt/` 包，`harness/` 一行未改。
+
+| 位置 | 角色 | 本阶段做了什么 |
 |---|---|---|
-| harness/prompt/ | 占位（只有 __init__.py） | ✅ section 注册表 + 作用域遮蔽 + 装配器 + 默认 section |
-| harness/mini.py | 接收 system_prompt 字符串 | ✅ `open()` 的 system_prompt 接受 `str \| PromptAssembler \| None` |
-| harness/agent/loop.py | 用固定 system_prompt | 未改（提示词仍在装配点归一为文本） |
+| `prompt/`（顶层） | ★ **本阶段新增的机制** | section 注册表 + 作用域遮蔽 + 装配器 + 默认 section |
+| `harness/`（顶层） | M1–M3 基线库（冻结） | 未改动 |
+| `demo.py` / `tests/` | 入口与测试 | 装配点：`assembler.assemble()` → `MiniHarness.open(system_prompt=...)` |
 
 ## 0) 现状基线
 
@@ -43,7 +47,7 @@ python -m pytest -q        # 22 个基线用例 + 15 个本阶段用例 = 37
 
 ## 2) 本阶段新增的东西
 
-`harness/prompt/` 五个模块（纯逻辑，不依赖 harness 其它子包）：
+**顶层 `prompt/` 包**（纯逻辑，不依赖 harness；只吃字符串、吐字符串）：
 
 | 文件 | 内容 |
 |---|---|
@@ -55,6 +59,9 @@ python -m pytest -q        # 22 个基线用例 + 15 个本阶段用例 = 37
 
 排序规则（关键）：作用域**遮蔽一个已有名字时保持它在基础层的位置**，**新增的名字追加到末尾**；
 基础层始终完整，遮蔽发生在解析期——所以 `close()`/`drop()` 后基础层自动恢复。
+
+接入方式：装配器产出**一段文本**，交给基线的 `harness.mini.MiniHarness.open(system_prompt=...)`
+（基线接口未改）。装配点是本阶段的 `demo.py` 与测试。
 
 ## 3) 运行方法
 

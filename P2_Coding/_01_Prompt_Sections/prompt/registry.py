@@ -27,7 +27,7 @@ M4 的第一个机制：把提示词从"一个字符串"变成"一张有序注�
 
 from __future__ import annotations
 
-from harness.prompt.section import Section
+from prompt.section import Section
 
 
 class SectionRegistry:

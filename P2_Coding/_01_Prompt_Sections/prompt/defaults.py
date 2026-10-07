@@ -16,9 +16,9 @@
 
 from __future__ import annotations
 
-from harness.prompt.assembler import PromptAssembler
-from harness.prompt.registry import SectionRegistry
-from harness.prompt.section import Section
+from prompt.assembler import PromptAssembler
+from prompt.registry import SectionRegistry
+from prompt.section import Section
 
 
 def default_sections() -> list[Section]:

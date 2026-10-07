@@ -21,14 +21,14 @@ import pytest
 
 from harness.llm import FakeLLM, text_reply
 from harness.mini import MiniHarness
-from harness.prompt import (
+from harness.session import JsonlStore
+from prompt import (
     PromptAssembler,
     Section,
     SectionRegistry,
     default_assembler,
     default_sections,
 )
-from harness.session import JsonlStore
 
 
 def _reg(*sections: Section) -> SectionRegistry:
@@ -160,19 +160,22 @@ def test_default_sections_are_composable():
 
 
 # =========================================================================
-# 4) 与 MiniHarness 的接线
+# 4) 装配产物接入 MiniHarness（harness/ 基线本阶段未改）
+#
+# 本阶段的机制是"顶层模块 prompt/"：先把 section 装配成一段文本，再把这段文本交给
+# `harness.mini.MiniHarness.open(system_prompt=...)`。所以这里的接线就是"先装配、再传入"。
 # =========================================================================
 
 
-def test_open_accepts_assembler_and_puts_it_in_log(tmp_path):
-    """MiniHarness.open 接受装配器：装配结果写进 session/start，并可投影成 system 消息。"""
+def test_assembled_prompt_goes_into_log(tmp_path):
+    """装配产物写进 session/start，并可投影成 system 消息。"""
     assembler = PromptAssembler(_reg(Section("role", "你是测试助手。"), Section("style", "简短。")))
     harness, _ = MiniHarness.open(
         "s1",
         provider=FakeLLM([text_reply("hi")]),
         root=tmp_path / "sessions",
         workspace=tmp_path / "ws",
-        system_prompt=assembler,
+        system_prompt=assembler.assemble(),   # ← 装配在此，harness 只收成品文本
     )
 
     # session/start 事件里存的就是装配后的文本
@@ -184,8 +187,8 @@ def test_open_accepts_assembler_and_puts_it_in_log(tmp_path):
     assert harness.messages[0].content == "你是测试助手。\n\n简短。"
 
 
-def test_open_uses_scope_override(tmp_path):
-    """装配器带作用域时，写入日志的是**遮蔽后**的结果。"""
+def test_scope_override_flows_into_log(tmp_path):
+    """带作用域遮蔽的装配器，其最终文本被写进日志。"""
     registry = _reg(Section("role", "基础角色。"))
     scope = registry.scoped("custom")
     scope.register(Section("role", "覆盖角色。"))
@@ -195,13 +198,13 @@ def test_open_uses_scope_override(tmp_path):
         provider=FakeLLM([text_reply("hi")]),
         root=tmp_path / "sessions",
         workspace=tmp_path / "ws",
-        system_prompt=PromptAssembler(scope),
+        system_prompt=PromptAssembler(scope).assemble(),
     )
     assert harness.messages[0].content == "覆盖角色。"
 
 
-def test_open_keeps_str_backward_compatible(tmp_path):
-    """向后兼容：仍可直接传一段字符串（M1–M3 基线与 demo 的写法）。"""
+def test_open_keeps_str_api(tmp_path):
+    """M1–M3 基线接口不变：`system_prompt` 仍收一段成品字符串。"""
     harness, _ = MiniHarness.open(
         "s3",
         provider=FakeLLM([text_reply("hi")]),
@@ -212,12 +215,25 @@ def test_open_keeps_str_backward_compatible(tmp_path):
     assert harness.messages[0].content == "系统提示"
 
 
-def test_open_none_uses_default_assembler(tmp_path):
-    """不传 system_prompt（None）时用内置默认装配器。"""
+def test_default_assembler_matches_baseline_semantics(tmp_path):
+    """内置默认装配器与 harness 基线默认提示词语义一致（三句都在）。
+
+    注意：默认装配器用空行分隔各节，而基线 `DEFAULT_SYSTEM_PROMPT` 是无分隔拼接，
+    因此二者**字节不等**、语义等价——这正是"从字符串升级成 section"带来的可见变化。
+    """
+    from harness.mini import DEFAULT_SYSTEM_PROMPT
+
+    assembled = default_assembler().assemble()
+    for sentence in ("你是一名严谨的中文助手", "calculate", "最终回答用中文"):
+        assert sentence in assembled
+        assert sentence in DEFAULT_SYSTEM_PROMPT
+
+    # 装配产物（空行分段）交给 MiniHarness.open，成为 session/start 里的提示词
     harness, _ = MiniHarness.open(
         "s4",
         provider=FakeLLM([text_reply("hi")]),
         root=tmp_path / "sessions",
         workspace=tmp_path / "ws",
+        system_prompt=assembled,
     )
-    assert harness.messages[0].content == default_assembler().assemble()
+    assert harness.messages[0].content == assembled

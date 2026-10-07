@@ -17,7 +17,7 @@
 |---|---|---|---|
 | **P0_Coding** | 单文件预热：把核心机制逐个跑通（模型调用、工具调用、循环、文件沙箱） | M0 前铺垫 | ✅ 完成（4 练习，15 用例） |
 | **P1_Coding** | 结构化骨架：协议化 / 管线化 / 事件化 | M1–M3 | ✅ 完成（5 练习，79 用例） |
-| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | 🔵 进行中（11 阶段脚手架就位） |
+| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | 🔵 进行中（11 阶段就位，`_01` 已完成） |
 
 每个阶段的入口 README：
 
@@ -125,7 +125,7 @@ python demo.py                                   # 离线回归
 
 ```bash
 # 一次跑完所有阶段（从项目根目录）
-python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 336 个用例（P0 15 + P1 79 + P2 242）
+python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 351 个用例（P0 15 + P1 79 + P2 257）
 
 # 只跑某一个练习/阶段
 cd P1_Coding/_03_Tool_Pipeline && python -m pytest -q
@@ -155,6 +155,8 @@ cd P2_Coding && python scripts/check.py
 ## 7. 约定
 
 - **目录命名**：`P<N>_Coding/_NN_主题/`，每个阶段自包含（各带所需的包副本）。
+- **代码组织（P2）**：`harness/` 冻结为 M1–M3 基线库；各阶段新增机制放阶段主目录顶层
+  （与 `harness/` 平级，如 `_01_Prompt_Sections/prompt/`），让「这一阶段加了什么」目录层面可见。
 - **四件套**：入口脚本 + `README.md`（目的/验收/运行）+ `test_*.py` + `run.bat`/`run.sh`。
 - **先写验收标准，再写实现**；验收不过不算完成。
 - **测试离线可重复**：模型调用走 `FakeLLM`；需要网络/真实 API 的路径用旁路 demo 隔离。
