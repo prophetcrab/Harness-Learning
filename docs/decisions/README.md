@@ -45,3 +45,4 @@
 - [0002 turn 与 step：循环抽成类，轨迹成为一等返回值](0002-turn-and-step.md)（P1 `_02`）
 - [0003 工具执行管线：三段式中间件链，审批 fail-closed](0003-tool-pipeline.md)（P1 `_03`）
 - [0004 会话日志：日志是唯一真相，消息由投影派生](0004-event-sourcing.md)（P1 `_04`）
+- [0005 mini harness 组装：接线而非新增机制，副本而非共享包](0005-mini-harness-assembly.md)（P1 `_05`）

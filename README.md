@@ -235,7 +235,7 @@ cd D:/project/AgentDevLearn/P0_Coding/_04_File_Tools_Loop
 ```bash
 # 一次跑完所有练习的测试（从项目根目录）
 cd D:/project/AgentDevLearn
-.venv/Scripts/python.exe -m pytest P0_Coding P1_Coding -q   # 当前共 72 个用例（P0 15 + P1 57）
+.venv/Scripts/python.exe -m pytest P0_Coding P1_Coding -q   # 当前共 85 个用例（P0 15 + P1 70）
 
 # 只跑某一个练习
 cd P1_Coding/_03_Tool_Pipeline
@@ -289,7 +289,7 @@ AgentDevLearn/
 │   ├── _02_Tool_Calling/         ← 工具调用 + 网络搜索（含 inspect_model_calls.py）
 │   ├── _03_Calculator_Loop/      ← 模型→工具→模型 循环（计算器）
 │   └── _04_File_Tools_Loop/      ← 文件读写工具（沙箱 + 审批）
-└── P1_Coding/                    ← 阶段 1：结构化骨架（进行中，M1–M3）
+└── P1_Coding/                    ← 阶段 1：结构化骨架（M1–M3 五个练习已完成）
     ├── README.md                 ← 路线图：_01 Provider → _05 Mini Harness
     ├── _01_Provider_Protocol/    ← 练习 1：LLM 接缝（协议 + FakeLLM + DeepSeek）
     │   ├── llm_seam/                包源码（6 个模块，按依赖顺序阅读）
@@ -311,7 +311,7 @@ AgentDevLearn/
     │   ├── run.bat / run.sh         一键运行
     │   ├── test_tool_pipeline.py    验收测试（19 用例，全离线）
     │   └── README.md
-    └── _04_Session_Log/          ← 练习 4：会话日志（事件溯源 + JSONL + resume）
+    ├── _04_Session_Log/          ← 练习 4：会话日志（事件溯源 + JSONL + resume）
         ├── session/                 包源码（events/projection/log/store/recorder）
         ├── runner.py                胶水：open_session / Runner / fork_session
         ├── cli.py                   会话 list / show / run / fork
@@ -319,6 +319,17 @@ AgentDevLearn/
         ├── demo.py                  入口：全套离线演示（含模拟崩溃恢复）
         ├── run.bat / run.sh         一键运行
         ├── test_session_log.py      验收测试（13 用例，全离线）
+        └── README.md
+    └── _05_Mini_Harness/         ← 练习 5：综合组装（可对话 + 可恢复的小 harness）
+        ├── mini_harness.py          装配核心：MiniHarness（provider + 管线 + 循环 + 日志）
+        ├── workspace_tools.py       工具面：calculate / read_file / write_file / list_files
+        ├── web_search.py            可选工具：Bing 搜索（--search 才注册）
+        ├── app.py                   CLI：chat / run / list / show / fork
+        ├── runner.py agent_loop/ llm_seam/ tool_pipeline/ session/
+        │                            前四个练习的自包含副本（均未修改）
+        ├── demo.py                  入口：离线跑完整故事（对话→工具→退出→resume→分叉）
+        ├── run.bat / run.sh         一键运行
+        ├── test_mini_harness.py     验收测试（13 用例，全离线）
         └── README.md
 ```
 

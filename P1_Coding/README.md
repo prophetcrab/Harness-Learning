@@ -58,7 +58,7 @@ M1（最小 agent loop）→ M2（工具系统）→ M3（会话日志）。
 | `_02_Agent_Loop` | ✅ 已完成 | 2026-10-07 | `pytest _02_Agent_Loop -q`（13 用例全离线） |
 | `_03_Tool_Pipeline` | ✅ 已完成 | 2026-10-07 | `pytest _03_Tool_Pipeline -q`（19 用例全离线） |
 | `_04_Session_Log` | ✅ 已完成 | 2026-10-07 | `pytest _04_Session_Log -q`（13 用例全离线） |
-| `_05_Mini_Harness` | ☐ 未开始 | | |
+| `_05_Mini_Harness` | ✅ 已完成 | 2026-10-07 | `pytest _05_Mini_Harness -q`（13 用例全离线） |
 
 **`_01` 产出速览**：`llm_seam/` 包 6 个模块（词汇 → 协议 → FakeLLM → DeepSeekProvider → 闭环 → 工具箱），
 入口 `demo.py`（`--fake` 离线 / 默认真实 API），12 个单元测试；决策记录
@@ -68,8 +68,16 @@ M1（最小 agent loop）→ M2（工具系统）→ M3（会话日志）。
 `runner.py` 胶水（open_session / resume / fork），`cli.py`（list/show/run/fork），
 13 个单元测试；决策记录 [docs/decisions/0004](../docs/decisions/0004-event-sourcing.md)。
 
-> **全量测试注意**：`_02/_03/_04` 各自带同名顶层包（`agent_loop` / `llm_seam` 等），
-> 每个练习的 `conftest.py` 会在导入前驱逐同名模块，保证全量 `pytest` 不串味。
+**`_05` 产出速览**：`MiniHarness` 装配类（provider + 工具管线 + 主循环 + 会话日志，
+被组装的四个包一行未改），`workspace_tools.py` 工具面（calculate / read_file /
+write_file / list_files，沙箱 + 审批），可选 `web_search.py`；CLI `app.py`
+（chat / run / list / show / fork）；13 个单元测试 + 离线 demo 跑通完整故事；
+决策记录 [docs/decisions/0005](../docs/decisions/0005-mini-harness-assembly.md)。
+**P1 五个练习至此全部完成**，M1–M3 验收全绿。
+
+> **全量测试注意**：`_02`–`_05` 各自带同名顶层包（`agent_loop` / `llm_seam` /
+> `tool_pipeline` / `session` 等），每个练习的 `conftest.py` 会在导入前驱逐同名模块，
+> 保证全量 `pytest` 不串味。`_05` 收敛成单一包后可消除重复（取舍见决策记录 0005）。
 
 ## 运行约定
 
