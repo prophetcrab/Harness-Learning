@@ -339,19 +339,26 @@ AgentDevLearn/
         ├── test_webui.py            可视化服务测试（9 用例，真起 HTTP）
         └── README.md
 └── P2_Coding/                    ← 阶段 2：产品化（M4–M7，进行中，阶段式工作区）
-    ├── README.md                 ← P2 学习计划（模块简介 + 使用方法 + 进度）
+    ├── README.md                 ← P2 学习计划（11 阶段总览 + 模块简介 + 使用方法 + 进度）
     ├── pyproject.toml            ← ruff 配置（阶段式工作区，不做 setuptools 打包）
     ├── scripts/check.py          ← 门禁：ruff（整体）+ pytest（逐阶段）
-    ├── _01_Prompt_Assembly/      ← M4：提示词装配
-    ├── _02_Capability_Seams/     ← M5：能力接缝
-    ├── _03_Profile_Composition/  ← M6：Profile 组装
-    └── _04_Service/              ← M7：服务化
+    ├── _01_Prompt_Sections/      ← M4  section 注册表 + 装配器
+    ├── _02_Prompt_Context/       ← M4  变量插值 + 运行时上下文
+    ├── _03_Prompt_Trace/         ← M4  --dump-prompt + 重建断言
+    ├── _04_Filesystem_Seam/      ← M5  FileSystem 接缝 + Local/Memory
+    ├── _05_Workspace_Jail/       ← M5  WorkspaceJailFS 策略
+    ├── _06_Subprocess_Seam/      ← M5  Subprocess 接缝 + shell
+    ├── _07_Plugin_Effect/        ← M6  插件协议 + effect 回卷
+    ├── _08_Profile_Layers/       ← M6  YAML 分层 patch
+    ├── _09_Dump_Config/          ← M6  dump-config + 错误定位
+    ├── _10_Rpc_Transport/        ← M7  stdio JSON-RPC
+    └── _11_Session_Follow/       ← M7  follow + attach
 ```
 
-每个 `_0N` 阶段目录都**自包含**（与 P1 的练习同构）：
+每个 `_0N` 阶段目录都**自包含**（与 P1 的练习同构，每个 `_0N` = 一次最小扩展）：
 
 ```
-_0N_<主题>/
+_0N_<机制>/
 ├── README.md      本阶段学习计划（读 dsh / 做 / 验收 / 运行）
 ├── harness/       一份完整的 harness 副本（llm/agent/tools/session 基线 + 各阶段子包）
 ├── tests/         基线验收测试（22 用例，M1–M3 组装回归）
@@ -361,5 +368,5 @@ _0N_<主题>/
 
 每个练习目录的内部结构（入口脚本 + `run.bat`/`run.sh` + 测试 + README）见各练习自己的 README。
 **P1 与 P2 的关系**：P1 `_05` 是"组装成产品"的教学快照（自包含四份副本）；P2 把基线代码收敛成
-单一 `harness/` 包，并拆成 `_01`–`_04` 四个自包含阶段（M4–M7，各带一份完整副本）。
-P1 的五个练习保留备查，后续以 P2 为唯一维护对象。
+单一 `harness/` 包，并按"每阶段一个最小扩展"拆成 `_01`–`_11` 十一个自包含阶段（M4–M7，
+各带一份完整副本）。P1 的五个练习保留备查，后续以 P2 为唯一维护对象。

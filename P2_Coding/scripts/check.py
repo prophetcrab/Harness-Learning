@@ -23,10 +23,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]  # P2_Coding
 PY = sys.executable
 STAGES = [
-    "_01_Prompt_Assembly",
-    "_02_Capability_Seams",
-    "_03_Profile_Composition",
-    "_04_Service",
+    "_01_Prompt_Sections",
+    "_02_Prompt_Context",
+    "_03_Prompt_Trace",
+    "_04_Filesystem_Seam",
+    "_05_Workspace_Jail",
+    "_06_Subprocess_Seam",
+    "_07_Plugin_Effect",
+    "_08_Profile_Layers",
+    "_09_Dump_Config",
+    "_10_Rpc_Transport",
+    "_11_Session_Follow",
 ]
 
 

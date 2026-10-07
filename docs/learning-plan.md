@@ -85,8 +85,9 @@ AgentDevLearn/
 
 > **落地位置**：M1–M3 的实际产出在 `P1_Coding/`（五个自包含练习目录）。
 > 上面这棵 `harness/` 包结构自 **P2** 起建立：P2 把 P1 的四份副本收敛成单一 `harness/` 基线，
-> 并补上 `pyproject.toml` + `scripts/check.py` 门禁；然后按阶段拆成 `_01`–`_04` 四个自包含目录
-> （每个目录自带一份完整 `harness/` 副本），M4–M7 分别在其中生长。
+> 并补上 `pyproject.toml` + `scripts/check.py` 门禁；然后按「**每阶段一个最小扩展**」拆成
+> `_01`–`_11` 十一个自包含目录（每个目录自带一份完整 `harness/` 副本），M4–M7 的机制
+> 分别在其中一次加一个。
 
 ---
 
@@ -181,10 +182,16 @@ AgentDevLearn/
 ### ★ P2 阶段：M4–M7（工作区 `P2_Coding/`）
 
 以下 M4–M7 归为 **P2 阶段**，在 `P2_Coding/` 里以**阶段式工作区**推进——
-每个阶段一个自包含目录（各自带一份完整 `harness/` 副本）：`_01_Prompt_Assembly`(M4) →
-`_02_Capability_Seams`(M5) → `_03_Profile_Composition`(M6) → `_04_Service`(M7)。
-对应的实现写在各自目录的 `harness/prompt`、`harness/providers`、`harness/config`、
-`harness/server` 子包里；`pyproject.toml` + `scripts/check.py` 提供门禁。
+延续 P1「一个阶段只加一个机制」的思路，把 M4–M7 拆成 **11 个可独立验收的小阶段**，
+每个阶段一个自包含目录（各自带一份完整 `harness/` 副本）：
+
+`_01_Prompt_Sections`(M4) → `_02_Prompt_Context`(M4) → `_03_Prompt_Trace`(M4) →
+`_04_Filesystem_Seam`(M5) → `_05_Workspace_Jail`(M5) → `_06_Subprocess_Seam`(M5) →
+`_07_Plugin_Effect`(M6) → `_08_Profile_Layers`(M6) → `_09_Dump_Config`(M6) →
+`_10_Rpc_Transport`(M7) → `_11_Session_Follow`(M7)。
+
+实现写在各自目录的 `harness/prompt`、`harness/providers`、`harness/config`、`harness/server`
+子包里；`pyproject.toml` + `scripts/check.py` 提供门禁（逐阶段跑）。
 详见 [P2_Coding/README.md](../P2_Coding/README.md)。
 
 ### M4 系统提示与上下文（3–4 天）
@@ -264,9 +271,9 @@ AgentDevLearn/
 实时搬到浏览器，日志轨迹随对话生长，崩溃修复/审批拒绝/分叉都能一键观察——让 M3 的
 "事件溯源"从日志文件变成看得见的东西；页面直接调用真实 API（读取 `.env` 里的 key）。
 
-**P2 阶段（进行中）**：把 P1 的产物收敛成单一 `harness/` 基线并补上门禁，再按阶段拆成
-`_01`–`_04` 四个自包含目录，做 M4–M7（提示词装配 → 能力接缝 → Profile 组装 → 服务化）。
-工作区与详细计划见 [P2_Coding/README.md](../P2_Coding/README.md)。
+**P2 阶段（进行中）**：把 P1 的产物收敛成单一 `harness/` 基线并补上门禁，再按「每阶段一个
+最小扩展」拆成 `_01`–`_11` 十一个自包含目录，逐步做 M4–M7（提示词装配 → 能力接缝 →
+组合与配置 → 服务化）。工作区与详细计划见 [P2_Coding/README.md](../P2_Coding/README.md)。
 
 | 阶段 | 主题 | 状态 | 完成日期 | 验收命令 |
 |---|---|---|---|---|
@@ -275,15 +282,15 @@ AgentDevLearn/
 | M1 | 最小 agent loop | ✅ 已完成（P1 `_01` + `_02`） | 2026-10-07 | `pytest P1_Coding -q` |
 | M2 | 工具系统 | ✅ 已完成（P1 `_03`） | 2026-10-07 | `pytest P1_Coding -q` |
 | M3 | 会话日志 | ✅ 已完成（P1 `_04` + `_05` 可视化） | 2026-10-07 | `pytest P1_Coding -q` |
-| M4 | 提示词装配 | ☐ 未开始（P2 `_01_Prompt_Assembly`） | | `python -m harness run --dump-prompt` |
-| M5 | 能力接缝 | ☐ 未开始（P2 `_02_Capability_Seams`） | | `pytest -q`（双 provider 全绿） |
-| M6 | Profile 组装 | ☐ 未开始（P2 `_03_Profile_Composition`） | | `python -m harness --profile dev dump-config` |
-| M7 | 服务化 | ☐ 未开始（P2 `_04_Service`） | | `python -m harness serve` + `attach` |
+| M4 | 提示词装配 | ☐ 未开始（P2 `_01`–`_03`） | | `python -m harness run --dump-prompt` |
+| M5 | 能力接缝 | ☐ 未开始（P2 `_04`–`_06`） | | `pytest -q`（双 provider 全绿） |
+| M6 | 组合与配置 | ☐ 未开始（P2 `_07`–`_09`） | | `python -m harness --profile dev dump-config` |
+| M7 | 服务化 | ☐ 未开始（P2 `_10`–`_11`） | | `python -m harness serve` + `attach` |
 | M8 | 选修 | ☐ 未开始 | | 各模块自定义 |
 
 每阶段结束更新此表；设计若变更，同步修改本文件对应阶段。
 M1–M3 的产出落在 `P1_Coding/` 五个练习目录里（各练习自包含，组装见 `_05_Mini_Harness`）；
-M4–M7 在 `P2_Coding/` 的四个自包含阶段目录里继续（各带一份 `harness/` 副本；门禁 `scripts/check.py` 逐阶段运行）。
+M4–M7 在 `P2_Coding/` 的十一个自包含阶段目录里继续（各带一份 `harness/` 副本；门禁 `scripts/check.py` 逐阶段运行）。
 注意：P1 的决策记录已用掉编号 0001–0005，故 M4–M7 的决策记录从 **0006** 起编。
 
 ---
