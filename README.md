@@ -17,7 +17,7 @@
 |---|---|---|---|
 | **P0_Coding** | 单文件预热：把核心机制逐个跑通（模型调用、工具调用、循环、文件沙箱） | M0 前铺垫 | ✅ 完成（4 练习，15 用例） |
 | **P1_Coding** | 结构化骨架：协议化 / 管线化 / 事件化 | M1–M3 | ✅ 完成（5 练习，79 用例） |
-| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | 🔵 进行中（11 阶段就位，`_01` 已完成） |
+| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | 🔵 进行中（11 阶段就位，`_01`、`_02` 已完成） |
 
 每个阶段的入口 README：
 
@@ -66,9 +66,12 @@ python -m pip install openai pydantic pytest ruff
 
 ```
 DEEPSEEK_API_KEY=sk-你的密钥
-DEEPSEEK_MODEL=deepseek-chat                  # 可选
-DEEPSEEK_BASE_URL=https://api.deepseek.com    # 可选
+DEEPSEEK_MODEL=deepseek-flash
+DEEPSEEK_BASE_URL=https://api.deepseek.com
 ```
+
+> `DEEPSEEK_MODEL` 与 `DEEPSEEK_BASE_URL` 可省略（省略时用代码默认值）。
+> **值后面不要写行内注释**——加载器不解析注释，会把注释文字一起带进值里。
 
 > 所有 `run.bat` / `run.sh` / `run_web.*` 启动器优先用项目根的 `.venv/Scripts/python.exe`，
 > **找不到就回退到 PATH 上的 `python`**。所以有没有 `.venv` 都能跑。
@@ -130,10 +133,15 @@ python server.py                                 # 可视化页面（真实 API�
 ### P2_Coding（M4–M7，11 个最小扩展阶段）
 
 ```bash
-cd P2_Coding/_01_Prompt_Sections                 # M4 提示词 section 注册表
-python -m pytest -q                              # 22 基线用例
+cd P2_Coding/_01_Prompt_Sections                 # M4-1 提示词 section 注册表 + 装配器
+python -m pytest -q                              # 41 用例（22 基线 + 19 本阶段）
 python -m harness list                           # 统一入口
-python demo.py                                   # 离线回归
+python chat.py --fake                            # 用装配出的提示词离线对话
+
+cd P2_Coding/_02_Prompt_Context                  # M4-2 变量插值 + 运行时上下文（每 step 渲染）
+python -m pytest -q                              # 57 用例（22 基线 + 35 本阶段）
+python demo.py                                   # 离线演示：插值 / 每步渲染 / system 消息遮蔽
+python chat.py --fake --ask "现在几点？"          # 每 step 渲染 {{time}}（真实 API 去掉 --fake）
 ```
 
 各阶段对应机制见 [P2_Coding/README.md](P2_Coding/README.md) 的 11 行总览表
@@ -145,7 +153,7 @@ python demo.py                                   # 离线回归
 
 ```bash
 # 一次跑完所有阶段（从项目根目录）
-python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 351 个用例（P0 15 + P1 79 + P2 257）
+python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 390 个用例（P0 15 + P1 79 + P2 296）
 
 # 只跑某一个练习/阶段
 cd P1_Coding/_03_Tool_Pipeline && python -m pytest -q

@@ -1,4 +1,4 @@
-"""harness —— mini agent harness（P2 起统一为单一包）。
+"""harness —— mini agent harness 的 M1–M3 基线库（P2 阶段目录里冻结的那一份）。
 
 从 P1 的四份自包含副本收敛而来（消除"每个练习一份同名包"的重复）：
 
@@ -11,11 +11,15 @@
     harness.cli       命令行入口（python -m harness）
     harness.webui     本地可视化页面（stdlib http.server + NDJSON 事件流）
 
-P2（M4–M7）在此包上继续生长，占位子包：
-    harness.prompt       M4 系统提示与上下文装配
-    harness.providers    M5 能力接缝（FileSystem / SubprocessService）
-    harness.config       M6 profile 式组装
-    harness.server       M7 JSON-RPC 服务 + 事件流 follow
+P2 组织约定：**本包是各阶段共享的基线，阶段新增的机制不放这里**。每个阶段目录的结构是
+
+    _0N_<主题>/
+    ├── harness/          ← 本文件所在的基线库（各阶段自带的副本）
+    ├── <新模块>/         ← 该阶段新增的机制，作为顶层模块与 harness/ 平级
+    ├── tests/  demo.py  conftest.py  run.bat/run.sh
+
+`harness/config`、`harness/providers`、`harness/server` 是为后续阶段预留的占位子包，
+但目前按约定，M4 起的新增机制将落在阶段主目录的顶层（见 `_01_Prompt_Sections/prompt/`）。
 """
 
 __version__ = "0.2.0"

@@ -60,7 +60,9 @@ _0N_<主题>/
 > 在目录层面一目了然，前四个阶段的基线也能原样复制给下一阶段。
 
 **当前状态**：11 个阶段都是**同一份基线代码**（`harness/`，P1 `_05` 语义等价的单一包）；
-`_01` 已在其顶层新增 `prompt/` 完成本阶段机制，其余阶段的 M4–M7 实现尚未落地。
+`_01` 已在其顶层新增 `prompt/` 完成"section 注册表 + 装配器"；`_02` 在其上新增
+`context/` 完成"变量插值 + 每 step 渲染 + `system/message` 进日志"，并升级了顶层
+`prompt/`（插值）；其余阶段的 M4–M7 实现尚未落地。
 
 ---
 
@@ -81,7 +83,7 @@ python -m harness.webui.server     # 可视化页面（真实 API，http://127.0
 | 阶段 | 招牌命令 |
 |---|---|
 | `_01_Prompt_Sections` | `python -m harness run "帮我算 1234*56.78" --fake` |
-| `_02_Prompt_Context` | `python -m harness run "现在几点？" --fake`（渲染 `{{time}}`） |
+| `_02_Prompt_Context` | `python chat.py --fake --ask "现在几点？"`（每 step 渲染 `{{time}}`） |
 | `_03_Prompt_Trace` | `python -m harness run "..." --dump-prompt` 【将实现】 |
 | `_04_Filesystem_Seam` | `python -m pytest -q -k provider`（local/memory 双 provider 对照）【将实现】 |
 | `_05_Workspace_Jail` | `python -m harness run "把 x 写到 ../escape.txt" --fake`（应被拒） |
@@ -115,7 +117,7 @@ python scripts/check.py --fix  # 先让 ruff 自动修可修的问题
 | 阶段 | 机制 | 状态 | 完成日期 |
 |---|---|---|---|
 | `_01_Prompt_Sections` | section 注册表 + 装配器 | ✅ 已完成 | 2026-10-08 |
-| `_02_Prompt_Context` | 变量插值 + 运行时上下文 | ☐ 未开始 | |
+| `_02_Prompt_Context` | 变量插值 + 运行时上下文 | ✅ 已完成 | 2026-10-08 |
 | `_03_Prompt_Trace` | `--dump-prompt` + 重建断言 | ☐ 未开始 | |
 | `_04_Filesystem_Seam` | FileSystem 接缝 + Local/Memory | ☐ 未开始 | |
 | `_05_Workspace_Jail` | WorkspaceJailFS 策略 | ☐ 未开始 | |

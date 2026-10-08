@@ -47,3 +47,4 @@
 - [0004 会话日志：日志是唯一真相，消息由投影派生](0004-event-sourcing.md)（P1 `_04`）
 - [0005 mini harness 组装：接线而非新增机制，副本而非共享包](0005-mini-harness-assembly.md)（P1 `_05`）
 - [0006 提示词装配：有序 section 注册表 + 作用域遮蔽](0006-prompt-sections.md)（P2 `_01`）
+- [0007 运行时上下文：每 step 渲染、变化才记录、遮蔽式投影](0007-prompt-context.md)（P2 `_02`）
