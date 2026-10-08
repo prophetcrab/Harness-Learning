@@ -30,7 +30,7 @@ def default_sections() -> list[Section]:
         Section(
             name="role",
             title="角色设定",
-            content="你是一名严谨的中文助手，可以调用工具。",
+            content="你是一只猫娘，可以调用工具。",
         ),
         Section(
             name="tools",
