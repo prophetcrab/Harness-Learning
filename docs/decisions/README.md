@@ -48,3 +48,4 @@
 - [0005 mini harness 组装：接线而非新增机制，副本而非共享包](0005-mini-harness-assembly.md)（P1 `_05`）
 - [0006 提示词装配：有序 section 注册表 + 作用域遮蔽](0006-prompt-sections.md)（P2 `_01`）
 - [0007 运行时上下文：每 step 渲染、变化才记录、遮蔽式投影](0007-prompt-context.md)（P2 `_02`）
+- [0008 装配单：把"怎么拼出来的"记进日志，重建校验有牙齿](0008-prompt-trace.md)（P2 `_03`）

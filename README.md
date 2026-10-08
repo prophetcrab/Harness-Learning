@@ -17,7 +17,7 @@
 |---|---|---|---|
 | **P0_Coding** | 单文件预热：把核心机制逐个跑通（模型调用、工具调用、循环、文件沙箱） | M0 前铺垫 | ✅ 完成（4 练习，15 用例） |
 | **P1_Coding** | 结构化骨架：协议化 / 管线化 / 事件化 | M1–M3 | ✅ 完成（5 练习，79 用例） |
-| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | 🔵 进行中（11 阶段就位，`_01`、`_02` 已完成） |
+| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | 🔵 进行中（11 阶段就位；M4 完成：`_01`–`_03`） |
 
 每个阶段的入口 README：
 
@@ -142,6 +142,11 @@ cd P2_Coding/_02_Prompt_Context                  # M4-2 变量插值 + 运行时
 python -m pytest -q                              # 57 用例（22 基线 + 35 本阶段）
 python demo.py                                   # 离线演示：插值 / 每步渲染 / system 消息遮蔽
 python chat.py --fake --ask "现在几点？"          # 每 step 渲染 {{time}}（真实 API 去掉 --fake）
+
+cd P2_Coding/_03_Prompt_Trace                    # M4-3 装配单 + 来源追溯 + 重建断言（M4 收官）
+python -m pytest -q                              # 49 用例（22 基线 + 27 本阶段）
+python chat.py --fake --ask "现在几点？" --dump-prompt   # 装配单：来源/变量/重建校验
+python demo.py                                   # 离线演示：装配单 / 篡改检测 / 逐步重建
 ```
 
 各阶段对应机制见 [P2_Coding/README.md](P2_Coding/README.md) 的 11 行总览表
@@ -153,7 +158,7 @@ python chat.py --fake --ask "现在几点？"          # 每 step 渲染 {{time}
 
 ```bash
 # 一次跑完所有阶段（从项目根目录）
-python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 390 个用例（P0 15 + P1 79 + P2 296）
+python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 417 个用例（P0 15 + P1 79 + P2 323）
 
 # 只跑某一个练习/阶段
 cd P1_Coding/_03_Tool_Pipeline && python -m pytest -q
