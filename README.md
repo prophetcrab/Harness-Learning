@@ -152,6 +152,11 @@ cd P2_Coding/_04_Filesystem_Seam                 # M5-1 FileSystem 接缝（Loca
 python -m pytest -q                              # 76 用例（22 基线 + 54 本阶段，双 provider 套件）
 python chat.py --fake --fs memory --ask "把 hello 写到 notes/a.txt"  # 磁盘零痕迹
 python demo.py                                   # 离线演示：接缝对照 / 单槽服务 / 双 provider 同结果
+
+cd P2_Coding/_05_Workspace_Jail                  # M5-2 工作区围栏（策略型 provider）
+python -m pytest -q                              # 75 用例（22 基线 + 53 本阶段）
+python chat.py --fake --fs jail --ask "把 x 写到 ../escape.txt"   # 越界 → 结构化拒绝
+python demo.py                                   # 离线演示：围栏 / 审批放行也拦 / 三 provider 对照
 ```
 
 各阶段对应机制见 [P2_Coding/README.md](P2_Coding/README.md) 的 11 行总览表
@@ -163,7 +168,7 @@ python demo.py                                   # 离线演示：接缝对照 /
 
 ```bash
 # 一次跑完所有阶段（从项目根目录）
-python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 471 个用例（P0 15 + P1 79 + P2 377）
+python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 524 个用例（P0 15 + P1 79 + P2 430）
 
 # 只跑某一个练习/阶段
 cd P1_Coding/_03_Tool_Pipeline && python -m pytest -q
