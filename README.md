@@ -17,7 +17,7 @@
 |---|---|---|---|
 | **P0_Coding** | 单文件预热：把核心机制逐个跑通（模型调用、工具调用、循环、文件沙箱） | M0 前铺垫 | ✅ 完成（4 练习，15 用例） |
 | **P1_Coding** | 结构化骨架：协议化 / 管线化 / 事件化 | M1–M3 | ✅ 完成（5 练习，79 用例） |
-| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | 🔵 进行中（M4 完成：`_01`–`_03`；M5 进行中：`_04`✅） |
+| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | 🔵 进行中（M4✅、M5✅：`_01`–`_06`） |
 
 每个阶段的入口 README：
 
@@ -157,6 +157,12 @@ cd P2_Coding/_05_Workspace_Jail                  # M5-2 工作区围栏（策略
 python -m pytest -q                              # 75 用例（22 基线 + 53 本阶段）
 python chat.py --fake --fs jail --ask "把 x 写到 ../escape.txt"   # 越界 → 结构化拒绝
 python demo.py                                   # 离线演示：围栏 / 审批放行也拦 / 三 provider 对照
+
+cd P2_Coding/_06_Subprocess_Seam                 # M5-3 命令执行接缝（M5 收官）
+python -m pytest -q                              # 66 用例（22 基线 + 44 本阶段）
+python chat.py --fake --ask "用 shell 看看目录"    # 离线：命令走剧本，零真实进程
+python chat.py --shell local --ask "用 shell 看看目录"  # 真实执行（需审批）
+python demo.py                                   # 离线演示：两实现对照 / 三种结局渲染 / 超时
 ```
 
 各阶段对应机制见 [P2_Coding/README.md](P2_Coding/README.md) 的 11 行总览表
@@ -168,7 +174,7 @@ python demo.py                                   # 离线演示：围栏 / 审�
 
 ```bash
 # 一次跑完所有阶段（从项目根目录）
-python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 524 个用例（P0 15 + P1 79 + P2 430）
+python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 568 个用例（P0 15 + P1 79 + P2 474）
 
 # 只跑某一个练习/阶段
 cd P1_Coding/_03_Tool_Pipeline && python -m pytest -q
