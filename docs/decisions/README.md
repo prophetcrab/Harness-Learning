@@ -49,3 +49,4 @@
 - [0006 提示词装配：有序 section 注册表 + 作用域遮蔽](0006-prompt-sections.md)（P2 `_01`）
 - [0007 运行时上下文：每 step 渲染、变化才记录、遮蔽式投影](0007-prompt-context.md)（P2 `_02`）
 - [0008 装配单：把"怎么拼出来的"记进日志，重建校验有牙齿](0008-prompt-trace.md)（P2 `_03`）
+- [0009 FileSystem 接缝：三角色分离，机制与策略分层](0009-filesystem-seam.md)（P2 `_04`）

@@ -274,7 +274,8 @@ AgentDevLearn/
 **P2 阶段（进行中）**：把 P1 的产物收敛成单一 `harness/` 基线并补上门禁，再按「每阶段一个
 最小扩展」拆成 `_01`–`_11` 十一个自包含目录，逐步做 M4–M7（提示词装配 → 能力接缝 →
 组合与配置 → 服务化）。`_01`（section 注册表 + 装配器）、`_02`（变量插值 + 每 step 渲染、
-`system/message` 进日志）、`_03`（装配单 + `--dump-prompt` + 重建断言）已完成——**M4 收官**。
+`system/message` 进日志）、`_03`（装配单 + `--dump-prompt` + 重建断言）已完成——**M4 收官**；
+`_04` 开始 M5：文件工具重构成 FileSystem 三角色接缝（LocalFS / MemoryFS 可互换）。
 工作区与详细计划见 [P2_Coding/README.md](../P2_Coding/README.md)。
 
 | 阶段 | 主题 | 状态 | 完成日期 | 验收命令 |
@@ -285,7 +286,7 @@ AgentDevLearn/
 | M2 | 工具系统 | ✅ 已完成（P1 `_03`） | 2026-10-07 | `pytest P1_Coding -q` |
 | M3 | 会话日志 | ✅ 已完成（P1 `_04` + `_05` 可视化） | 2026-10-07 | `pytest P1_Coding -q` |
 | M4 | 提示词装配 | ✅ 已完成（P2 `_01` + `_02` + `_03`） | 2026-10-08 | `python chat.py --ask "..." --dump-prompt`（阶段入口；统一 CLI 待 M6 接线） |
-| M5 | 能力接缝 | ☐ 未开始（P2 `_04`–`_06`） | | `pytest -q`（双 provider 全绿） |
+| M5 | 能力接缝 | 🔵 进行中（P2 `_04`✅ / `_05`–`_06`） | 2026-10-08（`_04`） | `python chat.py --fs local\|memory`（双 provider 对照） |
 | M6 | 组合与配置 | ☐ 未开始（P2 `_07`–`_09`） | | `python -m harness --profile dev dump-config` |
 | M7 | 服务化 | ☐ 未开始（P2 `_10`–`_11`） | | `python -m harness serve` + `attach` |
 | M8 | 选修 | ☐ 未开始 | | 各模块自定义 |

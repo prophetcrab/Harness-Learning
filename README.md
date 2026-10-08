@@ -17,7 +17,7 @@
 |---|---|---|---|
 | **P0_Coding** | 单文件预热：把核心机制逐个跑通（模型调用、工具调用、循环、文件沙箱） | M0 前铺垫 | ✅ 完成（4 练习，15 用例） |
 | **P1_Coding** | 结构化骨架：协议化 / 管线化 / 事件化 | M1–M3 | ✅ 完成（5 练习，79 用例） |
-| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | 🔵 进行中（11 阶段就位；M4 完成：`_01`–`_03`） |
+| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | 🔵 进行中（M4 完成：`_01`–`_03`；M5 进行中：`_04`✅） |
 
 每个阶段的入口 README：
 
@@ -147,6 +147,11 @@ cd P2_Coding/_03_Prompt_Trace                    # M4-3 装配单 + 来源追溯
 python -m pytest -q                              # 49 用例（22 基线 + 27 本阶段）
 python chat.py --fake --ask "现在几点？" --dump-prompt   # 装配单：来源/变量/重建校验
 python demo.py                                   # 离线演示：装配单 / 篡改检测 / 逐步重建
+
+cd P2_Coding/_04_Filesystem_Seam                 # M5-1 FileSystem 接缝（Local/Memory 可换）
+python -m pytest -q                              # 76 用例（22 基线 + 54 本阶段，双 provider 套件）
+python chat.py --fake --fs memory --ask "把 hello 写到 notes/a.txt"  # 磁盘零痕迹
+python demo.py                                   # 离线演示：接缝对照 / 单槽服务 / 双 provider 同结果
 ```
 
 各阶段对应机制见 [P2_Coding/README.md](P2_Coding/README.md) 的 11 行总览表
@@ -158,7 +163,7 @@ python demo.py                                   # 离线演示：装配单 / �
 
 ```bash
 # 一次跑完所有阶段（从项目根目录）
-python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 417 个用例（P0 15 + P1 79 + P2 323）
+python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 471 个用例（P0 15 + P1 79 + P2 377）
 
 # 只跑某一个练习/阶段
 cd P1_Coding/_03_Tool_Pipeline && python -m pytest -q

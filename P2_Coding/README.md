@@ -60,10 +60,9 @@ _0N_<主题>/
 > 在目录层面一目了然，前四个阶段的基线也能原样复制给下一阶段。
 
 **当前状态**：11 个阶段都是**同一份基线代码**（`harness/`，P1 `_05` 语义等价的单一包）；
-`_01` 已在其顶层新增 `prompt/` 完成"section 注册表 + 装配器"；`_02` 在其上新增
-`context/` 完成"变量插值 + 每 step 渲染 + `system/message` 进日志"，并升级了顶层
-`prompt/`（插值）；`_03` 再升级两者——装配单（`prompt/trace.py`）随事件进日志、
-`--dump-prompt` 追溯来源、`rebuild_text` 由日志重建（**M4 至此完成**）；
+`_01`–`_03` 完成 **M4 提示词装配**（section 注册表 → 插值/每 step 渲染 → 装配单/重建）；
+`_04` 开始 **M5 能力接缝**：顶层 `providers/` 把文件工具重构成三角色接缝
+（FileSystem 定义 + LocalFS/MemoryFS + 接缝工具），`chat.py --fs local|memory` 换实现；
 其余阶段的 M5–M7 实现尚未落地。
 
 ---
@@ -87,7 +86,7 @@ python -m harness.webui.server     # 可视化页面（真实 API，http://127.0
 | `_01_Prompt_Sections` | `python -m harness run "帮我算 1234*56.78" --fake` |
 | `_02_Prompt_Context` | `python chat.py --fake --ask "现在几点？"`（每 step 渲染 `{{time}}`） |
 | `_03_Prompt_Trace` | `python chat.py --fake --ask "现在几点？" --dump-prompt`（装配单 + 重建校验） |
-| `_04_Filesystem_Seam` | `python -m pytest -q -k provider`（local/memory 双 provider 对照）【将实现】 |
+| `_04_Filesystem_Seam` | `python chat.py --fs memory --ask "把 hello 写到 notes/a.txt"`（换 provider 换文件世界） |
 | `_05_Workspace_Jail` | `python -m harness run "把 x 写到 ../escape.txt" --fake`（应被拒） |
 | `_06_Subprocess_Seam` | `python -m harness run "用 shell 看看当前目录" --fake` 【将实现】 |
 | `_07_Plugin_Effect` | 卸载插件后注册物自动回卷（见该阶段测试）【将实现】 |
@@ -121,7 +120,7 @@ python scripts/check.py --fix  # 先让 ruff 自动修可修的问题
 | `_01_Prompt_Sections` | section 注册表 + 装配器 | ✅ 已完成 | 2026-10-08 |
 | `_02_Prompt_Context` | 变量插值 + 运行时上下文 | ✅ 已完成 | 2026-10-08 |
 | `_03_Prompt_Trace` | `--dump-prompt` + 重建断言 | ✅ 已完成 | 2026-10-08 |
-| `_04_Filesystem_Seam` | FileSystem 接缝 + Local/Memory | ☐ 未开始 | |
+| `_04_Filesystem_Seam` | FileSystem 接缝 + Local/Memory | ✅ 已完成 | 2026-10-08 |
 | `_05_Workspace_Jail` | WorkspaceJailFS 策略 | ☐ 未开始 | |
 | `_06_Subprocess_Seam` | Subprocess 接缝 + shell | ☐ 未开始 | |
 | `_07_Plugin_Effect` | 插件协议 + effect 回卷 | ☐ 未开始 | |
