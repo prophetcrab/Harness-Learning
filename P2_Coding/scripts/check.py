@@ -1,10 +1,11 @@
 """本地门禁：ruff + pytest（对应学习计划硬约束 #3「门禁不绿不前进」）。
 
-P2 是**阶段式工作区**：`_01`–`_04` 各自自包含（每个目录带一份完整 `harness/`）。
-所以门禁按阶段隔离执行，避免同名顶层包互相干扰：
+P2 是**阶段式工作区**：`_01`–`_11` 各自自包含（每个目录带一份完整 `harness/`），
+外加固化产物的 **`mini_harness/` 整合包**（P2 全部功能的单一可运行目录）。
+所以门禁按目录隔离执行，避免同名顶层包互相干扰：
 
 - ruff：整个 P2_Coding 跑一次（配置见 pyproject.toml）；
-- pytest：逐阶段在各自目录里跑（每个阶段独立 rootdir）；
+- pytest：逐阶段在各自目录里跑（每个阶段独立 rootdir）+ 整合包；
 - mypy：若已安装，对每个阶段的 `harness` 再跑一遍（当前环境未装则跳过）。
 
 用法（在 P2_Coding 目录下）：
@@ -35,6 +36,8 @@ STAGES = [
     "_10_Rpc_Transport",
     "_11_Session_Follow",
 ]
+#: 整合包：与阶段同样验收（存在才检查——便于单独的阶段分支不带上它）。
+PACKAGES = ["mini_harness"]
 
 
 def run(name: str, cmd: list[str], cwd: Path) -> bool:
@@ -59,7 +62,9 @@ def main(argv: list[str]) -> int:
         results.append(run("ruff", [ruff, "check", "."], ROOT))
 
     mypy = shutil.which("mypy")
-    for stage in STAGES:
+    for stage in STAGES + PACKAGES:
+        if not (ROOT / stage).is_dir():
+            continue
         results.append(run(f"pytest {stage}", [PY, "-m", "pytest"], ROOT / stage))
         if mypy:
             results.append(run(f"mypy {stage}", [mypy, "harness"], ROOT / stage))

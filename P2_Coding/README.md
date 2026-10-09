@@ -38,9 +38,17 @@ P2 是"把 harness 长成一个真正的产品"的阶段。它延续 P1 的思�
 P2_Coding/
 ├── README.md            ← 本文件
 ├── pyproject.toml       ← ruff 配置（阶段式工作区，不做 setuptools 打包）
-├── scripts/check.py     ← 门禁：ruff（整体）+ pytest（逐阶段）
+├── scripts/check.py     ← 门禁：ruff（整体）+ pytest（逐阶段 + 整合包）
+├── mini_harness/        ← ★ P2 整合包：全部功能的单一可运行目录（快照，非开发位置）
 └── _01.._11_<主题>/     ← 11 个自包含阶段（见上表）
 ```
+
+**整合包（`mini_harness/`）**：P2 收官后，把 `_11` 完成时的全部代码（基线 + M4–M7
+全部机制 + 四个入口 + 配置与可视化）收敛成**一个自包含目录**——`cd` 进去即可
+使用完整能力（对话 / 服务 / 跟随 / 可视化），测试随包（66 用例，文件名加
+`mini_harness_` 前缀以免与阶段目录在全量运行时重名）。**阶段目录是开发历史，
+整合包是成品快照**；后续修改在阶段/新阶段里做，整合包在里程碑处重新生成。
+详见 [mini_harness/README.md](mini_harness/README.md)。
 
 每个 `_0N` 目录结构一致（**新机制放阶段主目录顶层，与 `harness/` 平级**）：
 

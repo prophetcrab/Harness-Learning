@@ -1,0 +1,125 @@
+"""serve.py —— harness 常驻服务入口：stdio 或 TCP（`_11` 起支持多客户端跟随）。
+
+启动后：
+
+1. 按 profile 配置 boot 装配（`_07`–`_09` 的机制：插件/effect/配置分层）；
+2. **stdio 模式（默认）**：从 stdin 读帧、向 stdout 写响应与事件推送；
+   banner 与日志写 stderr——stdout 是协议线，一个字节都不许混。
+3. **TCP 模式（`--listen 端口` 或 `--listen HOST:端口`）**：多个客户端
+   （如两个 attach）可同时连同一个服务；每连接一线程，会话与订阅在服务里共享。
+   `--listen 0` 让系统分配端口（测试用）。
+
+用法（在 mini_harness 目录下）：
+
+    python serve.py                        # stdio（dev profile：离线装配）
+    python serve.py --profile prod         # stdio（真实 DeepSeek + 本地）
+    python serve.py --listen 8765          # TCP：多客户端服务
+    python serve.py --listen 8765 --auto-approve   # 放开审批（默认 fail-closed）
+
+客户端：`python attach.py --session s1`（stdio 直连 serve.py 子进程）
+或 `python attach.py --connect 127.0.0.1:8765 --session s1`（连 TCP 服务）。
+
+退出：stdio 下 stdin 关闭（客户端断开）即正常收尾；TCP 下 Ctrl+C 停止。
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+from config import ConfigError, load_profile
+from providers import boot_tree
+from server import HarnessService, LineTransport, make_server
+
+HERE = Path(__file__).resolve().parent
+PROFILES_DIR = HERE / "profiles"
+DEFAULT_ROOT = HERE / "sessions"
+DEFAULT_WORKSPACE = HERE / "demo_workspace" / "ws"
+
+
+def build_service(args: argparse.Namespace) -> HarnessService:
+    """按配置 boot 装配并构造服务（配置错误 → 带定位的 ConfigError 上抛）。"""
+    tree = load_profile(args.profile, profiles_dir=PROFILES_DIR)
+    plug_ctx = boot_tree(tree, stage_root=HERE)
+
+    approval = None
+    if args.auto_approve:
+        from harness.tools import AutoApprove
+
+        approval = AutoApprove()
+    return HarnessService(
+        plug_ctx,
+        root=Path(args.root),
+        workspace=Path(args.workspace),
+        approval=approval,
+    )
+
+
+def parse_listen(value: str) -> tuple[str, int]:
+    """解析 `--listen`：`端口` / `:端口` / `host:端口`。"""
+    text = value.strip()
+    if text.isdigit():
+        return "127.0.0.1", int(text)
+    host, _, port_text = text.rpartition(":")
+    if not port_text.isdigit():
+        raise argparse.ArgumentTypeError(f"--listen 需要 端口 或 host:端口，收到 {value!r}")
+    return (host or "127.0.0.1"), int(port_text)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="serve.py",
+        description="harness 常驻服务：stdio 或 TCP JSON-RPC（initialize / session.prompt / session.follow）",
+    )
+    parser.add_argument("--profile", default="dev", help="profile 名（profiles/<name>.yaml）")
+    parser.add_argument("--root", default=str(DEFAULT_ROOT), help="会话日志根目录")
+    parser.add_argument("--workspace", default=str(DEFAULT_WORKSPACE), help="会话工作区")
+    parser.add_argument(
+        "--listen", default=None, metavar="端口|HOST:端口",
+        help="TCP 模式：监听地址（省略则为 stdio 单客户端模式）",
+    )
+    parser.add_argument(
+        "--auto-approve", action="store_true",
+        help="放开审批（默认 fail-closed：服务端无人工应答方，拒绝一切需审批操作）",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        service = build_service(args)
+    except ConfigError as exc:
+        print(f"[配置错误] {exc}", file=sys.stderr)
+        return 2
+
+    mode = f"TCP {args.listen}" if args.listen else "stdio"
+    print(
+        f"[serve] profile={args.profile} 模式={mode} 会话日志根={args.root} "
+        f"审批={'放开' if args.auto_approve else 'fail-closed'}",
+        file=sys.stderr,
+    )
+
+    if args.listen is None:
+        print("[serve] 从 stdin 读 JSON-RPC 帧，向 stdout 写响应与事件；EOF 退出。", file=sys.stderr)
+        LineTransport(sys.stdin, sys.stdout, service).serve_forever()
+        print("[serve] stdin 已关闭，服务正常退出。", file=sys.stderr)
+        return 0
+
+    try:
+        host, port = parse_listen(args.listen)
+    except argparse.ArgumentTypeError as exc:
+        print(f"[参数错误] {exc}", file=sys.stderr)
+        return 2
+    server = make_server(host, port, service)
+    actual_host, actual_port = server.server_address[:2]
+    print(f"[serve] 监听 {actual_host}:{actual_port}（Ctrl+C 停止；每连接一线程）。", file=sys.stderr)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\n[serve] 收到中断，正在关闭。", file=sys.stderr)
+    finally:
+        server.server_close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

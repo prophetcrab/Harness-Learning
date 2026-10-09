@@ -211,7 +211,7 @@ python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 763 个用例（
 # 只跑某一个练习/阶段
 cd P1_Coding/_03_Tool_Pipeline && python -m pytest -q
 
-# P2 有独立门禁（ruff + 逐阶段 pytest）
+# P2 有独立门禁（ruff + 逐阶段 pytest + 整合包）
 cd P2_Coding && python scripts/check.py
 ```
 
@@ -271,7 +271,8 @@ Harness-Learning/
 └── P2_Coding/                    ← 阶段 2：产品化（M4–M7，进度见其 README）
     ├── README.md                 ← 11 阶段总览 + 模块简介 + 使用方法
     ├── pyproject.toml            ← ruff 配置（阶段式工作区）
-    ├── scripts/check.py          ← 门禁：ruff + 逐阶段 pytest
+    ├── scripts/check.py          ← 门禁：ruff + 逐阶段 pytest + 整合包
+    ├── mini_harness/             ← ★ P2 整合包：全部功能的单一可运行目录（快照）
     ├── _01_Prompt_Sections/      ← M4  section 注册表 + 装配器
     ├── _02_Prompt_Context/       ← M4  变量插值 + 运行时上下文
     ├── _03_Prompt_Trace/         ← M4  --dump-prompt + 重建断言

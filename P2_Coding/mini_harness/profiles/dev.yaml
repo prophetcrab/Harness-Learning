@@ -1,0 +1,21 @@
+# dev.yaml —— 开发 profile 补丁：全离线组合（不联网、不碰真实磁盘、不真跑命令）。
+#
+# 它只做三件事：把 llm / fs / subprocess 三行换成离线实现。
+# toolbox 行不需要动——它的参数不随 profile 变（workspace 在 memory 下无实义，
+# 但留着无害；这正是"只改关心的行、其余从下层流过来"的样例）。
+#
+# 注意：patch 替换是**整块替换 config**——这里显式写出完整的新 config，
+# 而不是"只改一个字段"。行数多一点，但每行最终长什么样，一眼可见。
+
+patch:
+  - id: llm
+    name: llm:fake
+    config: {}
+
+  - id: fs
+    name: fs:memory
+    config: {}
+
+  - id: subprocess
+    name: subprocess:scripted
+    config: {}
