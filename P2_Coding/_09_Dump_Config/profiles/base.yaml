@@ -1,0 +1,28 @@
+# base.yaml —— 底座配置树：能力清单 + 中性默认值。
+#
+# 这是"同 base、多 profile"的地基：这里只放**各 profile 共有的结构**——
+# 有哪些行（id）、每行是什么能力（name 给一个中性的选择）、以及不随环境变化的参数。
+# 随环境变化的行（llm / fs / subprocess 具体选哪个实现）在各 profile 层按 id 覆盖。
+#
+# 行序 = 激活顺序：fs / subprocess 在前（被依赖），toolbox 在后（依赖它们）。
+# patch 语义：整块替换而不是字段合并——所以这里每行的 config 都是"完整的一份"。
+
+rows:
+  - id: llm
+    name: llm:fake            # 中性默认：不联网的实现；prod profile 会换成 deepseek
+    config: {}
+
+  - id: fs
+    name: fs:local            # 中性默认：真实磁盘；dev profile 会换成 memory
+    config:
+      root: demo_workspace/ws
+
+  - id: subprocess
+    name: subprocess:scripted # 中性默认：不真跑命令；prod profile 会换成 local
+    config: {}
+
+  - id: toolbox
+    name: toolbox             # 工具面：从 ctx 里已提供的能力组装
+    config:
+      workspace: demo_workspace/ws
+      shell_timeout: 15
