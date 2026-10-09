@@ -1,10 +1,13 @@
 @echo off
 chcp 65001 >nul
-rem One-click launcher for _02_Prompt_Context.
+rem One-click launcher for _11_Session_Follow (P2 final stage).
 rem   run.bat                  offline demo (FakeLLM, no API key)
-rem   run.bat chat             real-API chat with per-step rendered prompt
-rem   run.bat chat --fake      offline chat (no API key)
+rem   run.bat chat             real-API chat (config-driven: --profile dev|prod)
 rem   run.bat chat --ask "hi"  one-shot question
+rem   run.bat attach -s s1     follow client (spawns serve.py over stdio)
+rem   run.bat attach --connect 8765 -s s1   follow a running TCP server
+rem   run.bat serve            stdio JSON-RPC server
+rem   run.bat serve --listen 8765          TCP server (multi-client)
 rem   run.bat list             list stored sessions (baseline CLI)
 cd /d "%~dp0"
 
@@ -25,6 +28,12 @@ if /i "%~1"=="chat" (
 if /i "%~1"=="serve" (
     shift
     "%PY%" "%~dp0serve.py" %1 %2 %3 %4 %5 %6 %7 %8 %9
+    goto :done
+)
+
+if /i "%~1"=="attach" (
+    shift
+    "%PY%" "%~dp0attach.py" %1 %2 %3 %4 %5 %6 %7 %8 %9
     goto :done
 )
 
