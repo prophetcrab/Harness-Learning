@@ -18,6 +18,7 @@ from typing import Protocol, runtime_checkable
 from llm_seam.vocabulary import Message, ToolSpec, Usage
 
 
+# 模型提交请求的格式，包含上下文messages，工具列表tools和要使用的模型model
 @dataclass
 class LLMRequest:
     """一轮模型调用的请求（中立格式）。
