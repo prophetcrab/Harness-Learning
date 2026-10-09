@@ -61,9 +61,9 @@ _0N_<主题>/
 
 **当前状态**：11 个阶段都是**同一份基线代码**（`harness/`，P1 `_05` 语义等价的单一包）；
 `_01`–`_03` 完成 **M4 提示词装配**；`_04`–`_06` 完成 **M5 能力接缝**（fs + subprocess）；
-`_07`–`_09` 完成 **M6 组合与配置**：插件协议与 effect 台账（注册即 effect）→
-配置分层（`profiles/*.yaml`，一行 patch 换 provider）→ 配置可见与可定位
-（dump 带来源层、错误带层/条/拼写建议）；其余阶段的 M7 实现尚未落地。
+`_07`–`_09` 完成 **M6 组合与配置**（插件 effect → 配置分层 → 可见与可定位）；
+`_10` 开始 **M7 服务化**：顶层 `server/` 立下换行 JSON-RPC 传输（`initialize` /
+`session.prompt`，`serve.py` 为 stdio 服务入口）；`_11`（事件流跟随）尚未落地。
 
 ---
 
@@ -92,7 +92,7 @@ python -m harness.webui.server     # 可视化页面（真实 API，http://127.0
 | `_07_Plugin_Effect` | `python chat.py`（会话内 `/ctx` 看台账、`/unload` 看回卷；退出自动整体卸载） |
 | `_08_Profile_Layers` | `python chat.py --profile prod` / `--patch my.yaml`（配置驱动装配） |
 | `_09_Dump_Config` | `python chat.py --dump-config`（带来源）+ 配错定位（层/条/拼写建议） |
-| `_10_Rpc_Transport` | `python -m harness serve`（stdio JSON-RPC）【将实现】 |
+| `_10_Rpc_Transport` | `python serve.py`（stdio JSON-RPC：`initialize` / `session.prompt`） |
 | `_11_Session_Follow` | 两终端 `serve` + `attach`，kill 后重连补齐事件 【将实现】 |
 
 ### 门禁（在 P2_Coding 目录下）
@@ -126,7 +126,7 @@ python scripts/check.py --fix  # 先让 ruff 自动修可修的问题
 | `_07_Plugin_Effect` | 插件协议 + effect 回卷 | ✅ 已完成 | 2026-10-09 |
 | `_08_Profile_Layers` | YAML 分层 patch | ✅ 已完成 | 2026-10-09 |
 | `_09_Dump_Config` | dump-config + 错误定位 | ✅ 已完成 | 2026-10-09 |
-| `_10_Rpc_Transport` | stdio JSON-RPC | ☐ 未开始 | |
+| `_10_Rpc_Transport` | stdio JSON-RPC | ✅ 已完成 | 2026-10-09 |
 | `_11_Session_Follow` | follow + attach | ☐ 未开始 | |
 
 > **阶段名 vs 计划阶段**：目录名是**机制主题**（一次最小扩展），它服务的**学习计划阶段**

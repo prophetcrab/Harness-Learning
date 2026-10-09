@@ -55,3 +55,4 @@
 - [0012 插件与 effect：注册自动登记撤销，故障不留半装状态](0012-plugin-effect.md)（P2 `_07`）
 - [0013 profile 分层：装配变成数据，patch 整块替换不合并](0013-profile-layers.md)（P2 `_08`）
 - [0014 配置可见：字段级来源台账，错误带层与位置](0014-dump-config.md)（P2 `_09`）
+- [0015 stdio JSON-RPC：服务化第一刀，握手门禁与 fail-closed](0015-rpc-transport.md)（P2 `_10`）
