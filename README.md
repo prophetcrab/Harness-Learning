@@ -17,7 +17,7 @@
 |---|---|---|---|
 | **P0_Coding** | 单文件预热：把核心机制逐个跑通（模型调用、工具调用、循环、文件沙箱） | M0 前铺垫 | ✅ 完成（4 练习，15 用例） |
 | **P1_Coding** | 结构化骨架：协议化 / 管线化 / 事件化 | M1–M3 | ✅ 完成（5 练习，79 用例） |
-| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | 🔵 进行中（M4✅、M5✅、M6 进行中：`_01`–`_07`） |
+| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | 🔵 进行中（M4✅、M5✅、M6 进行中：`_01`–`_08`） |
 
 每个阶段的入口 README：
 
@@ -168,6 +168,13 @@ cd P2_Coding/_07_Plugin_Effect                   # M6-1 插件协议 + effect �
 python -m pytest -q                              # 57 用例（22 基线 + 35 本阶段）
 python chat.py --fake                             # /ctx 台账；/unload 看回卷；退出整体卸载
 python demo.py                                   # 离线演示：effect 装载/回卷 / 嵌套 / 故障回卷
+
+cd P2_Coding/_08_Profile_Layers                  # M6-2 profiles 分层 patch（配置驱动装配）
+python -m pytest -q                              # 67 用例（22 基线 + 45 本阶段）
+python chat.py --dump-config                     # 打印最终配置树（dev profile）
+python chat.py --profile prod --ask "你好"        # 真实 API（DeepSeek + 本地）
+python chat.py --patch my.yaml                   # 一层 CLI 补丁：换 provider 只改一行
+python demo.py                                   # 离线演示：四层叠加 / 一行换实现 / 配置 fail loud
 ```
 
 各阶段对应机制见 [P2_Coding/README.md](P2_Coding/README.md) 的 11 行总览表
@@ -179,7 +186,7 @@ python demo.py                                   # 离线演示：effect 装载/
 
 ```bash
 # 一次跑完所有阶段（从项目根目录）
-python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 603 个用例（P0 15 + P1 79 + P2 509）
+python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 648 个用例（P0 15 + P1 79 + P2 554）
 
 # 只跑某一个练习/阶段
 cd P1_Coding/_03_Tool_Pipeline && python -m pytest -q
