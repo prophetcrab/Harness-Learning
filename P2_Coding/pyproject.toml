@@ -29,9 +29,12 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "*/tests/*" = ["E402"]   # 测试里允许在 sys.path 引导后再 import
+# 可视化包：先做 sys.path 引导（直接当脚本跑时顶层包才可见）再 import
+"*/webui/server.py" = ["E402"]
+"*/webui/__init__.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 # P2 阶段新增的机制是各阶段目录下的**顶层模块**（如 _01 的 prompt/、_02 的 context/、
 # _04 的 providers/、_07 的 kernel/），与基线 harness 平级。
 # 这些名字不是包内子模块，ruff 需显式告知它们属于本项目，才能正确分组。
-known-first-party = ["harness", "prompt", "context", "providers", "kernel", "config", "server"]
+known-first-party = ["harness", "prompt", "context", "providers", "kernel", "config", "server", "webui"]

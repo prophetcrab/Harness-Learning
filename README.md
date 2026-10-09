@@ -189,9 +189,10 @@ python serve.py                                  # stdio 服务：stdin 收帧�
 python demo.py                                   # 离线演示：帧词汇 / 握手·接续·错误·审批 / 回归
 
 cd P2_Coding/_11_Session_Follow                  # M7-2 事件流跟随 + 编码工具（P2 收官）
-python -m pytest -q                              # 59 用例（22 基线 + 37 本阶段）
+python -m pytest -q                              # 66 用例（22 基线 + 44 本阶段）
 python attach.py --session s1                    # 跟随（重放+实时、断线补齐）
 python serve.py --listen 8765                    # TCP：多客户端共享同一会话
+python webui/server.py                           # ★ 可视化页面（P2 形态：全工具 + 插件台账）
 python chat.py --profile prod --ask "search_text 找出所有 TODO 并用 edit_file 改掉一处" --no-approve
 python demo.py                                   # 离线演示：follow 帧序/断线补齐 / 新工具 / 回归
 ```
@@ -205,7 +206,7 @@ python demo.py                                   # 离线演示：follow 帧序/
 
 ```bash
 # 一次跑完所有阶段（从项目根目录）
-python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 756 个用例（P0 15 + P1 79 + P2 662）
+python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 763 个用例（P0 15 + P1 79 + P2 669）
 
 # 只跑某一个练习/阶段
 cd P1_Coding/_03_Tool_Pipeline && python -m pytest -q

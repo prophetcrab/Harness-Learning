@@ -17,5 +17,9 @@ case "$1" in
         shift
         exec "$PY" "$cmd.py" "$@"
         ;;
+    web)
+        shift
+        exec "$PY" webui/server.py "$@"
+        ;;
 esac
 exec "$PY" -m harness "$@"

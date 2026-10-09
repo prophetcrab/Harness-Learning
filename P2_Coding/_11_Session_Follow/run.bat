@@ -6,6 +6,7 @@ rem   run.bat chat             real-API chat (config-driven: --profile dev|prod)
 rem   run.bat chat --ask "hi"  one-shot question
 rem   run.bat attach -s s1     follow client (spawns serve.py over stdio)
 rem   run.bat attach --connect 8765 -s s1   follow a running TCP server
+rem   run.bat web              visual page (dev profile; run.bat web --profile prod)
 rem   run.bat serve            stdio JSON-RPC server
 rem   run.bat serve --listen 8765          TCP server (multi-client)
 rem   run.bat list             list stored sessions (baseline CLI)
@@ -34,6 +35,12 @@ if /i "%~1"=="serve" (
 if /i "%~1"=="attach" (
     shift
     "%PY%" "%~dp0attach.py" %1 %2 %3 %4 %5 %6 %7 %8 %9
+    goto :done
+)
+
+if /i "%~1"=="web" (
+    shift
+    "%PY%" "%~dp0webui\server.py" %1 %2 %3 %4 %5 %6 %7 %8 %9
     goto :done
 )
 

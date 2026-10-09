@@ -58,3 +58,4 @@
 - [0015 stdio JSON-RPC：服务化第一刀，握手门禁与 fail-closed](0015-rpc-transport.md)（P2 `_10`）
 - [0016 事件流跟随：follow = 重放 + 订阅，断线补齐靠日志](0016-session-follow.md)（P2 `_11`）
 - [0017 编码工具三件：能力面补齐在既有接缝上，不引入新机制](0017-coding-tools.md)（P2 `_11`）
+- [0018 P2 形态可视化页面：子类化基线 Handler，装配全部走配置](0018-p2-webui.md)（P2 `_11`）

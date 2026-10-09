@@ -24,6 +24,7 @@ P2 第 11 阶段（对应学习计划 **M7**，**P2 收官**）。本阶段加�
 | `providers/toolbox.py` | ★ 新增 edit_file / search_text / find_files（编码能力面） |
 | `serve.py` | ★ `--listen` 支持 TCP 模式 |
 | `attach.py` | ★ 新增：跟随客户端（流式渲染 / 发送 / 断线重连补齐） |
+| `webui/` | ★ 新增：**P2 形态的可视化页面**（配置驱动 + 全工具面 + 插件台账；基线 `harness/webui` 保持不动） |
 
 ## 0) 现状基线
 
@@ -126,6 +127,17 @@ python attach.py --connect 8765 --session s1 --verbose
 # —— 编码工具实战（真实 API）——
 python chat.py --profile prod --ask "search_text 找出所有 TODO，并用 edit_file 把 helper.py 里的一个改掉" --no-approve
 python demo.py    # 离线演示：0a follow 帧序/断线补齐；0b 新工具；0c 配置底座回归
+
+# —— 可视化页面（P2 形态）——
+python webui/server.py                    # dev profile（离线）
+python webui/server.py --profile prod     # 真实 API（读项目根 .env 的 key）
+python webui/server.py --deny-writes      # 看"拒绝"路径（页面无法做 y/n 审批）
+./run.bat web                             # 启动器路由（run.bat web --profile prod）
+
+# 页面能看到的（与基线页面 `python -m harness.webui.server` 的区别）：
+#   头部：profile 徽章（悬停看每行来源层 ← dev.yaml）+ 插件台账（注册即 effect）+ 8 个工具
+#   中部：对话（工具调用可视化）；右侧：日志轨迹实时生长（含 system/message 提示词更新）
+#   按钮：回放轨迹 / 模拟崩溃 / 分叉 / 刷新（会话日志的既有能力，全部保留）
 ```
 
 ## 4) 完成后的去向
