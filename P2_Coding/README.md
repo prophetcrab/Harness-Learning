@@ -59,11 +59,11 @@ _0N_<主题>/
 > 各阶段**新增的机制放在阶段主目录的顶层**，与 `harness/` 平级。这样"这一阶段加了什么"
 > 在目录层面一目了然，前四个阶段的基线也能原样复制给下一阶段。
 
-**当前状态**：11 个阶段都是**同一份基线代码**（`harness/`，P1 `_05` 语义等价的单一包）；
-`_01`–`_03` 完成 **M4 提示词装配**；`_04`–`_06` 完成 **M5 能力接缝**（fs + subprocess）；
-`_07`–`_09` 完成 **M6 组合与配置**（插件 effect → 配置分层 → 可见与可定位）；
-`_10` 开始 **M7 服务化**：顶层 `server/` 立下换行 JSON-RPC 传输（`initialize` /
-`session.prompt`，`serve.py` 为 stdio 服务入口）；`_11`（事件流跟随）尚未落地。
+**当前状态**：11 个阶段全部完成 ✅。`_01`–`_03` 完成 **M4 提示词装配**；
+`_04`–`_06` 完成 **M5 能力接缝**（fs + subprocess）；`_07`–`_09` 完成
+**M6 组合与配置**（插件 effect → 配置分层 → 可见与可定位）；`_10`–`_11` 完成
+**M7 服务化**（stdio/TCP JSON-RPC → 事件流跟随 + attach 断线补齐），并把工具面
+补成基本 coding agent（edit/search/find）。**P2（M4–M7）收官。**
 
 ---
 
@@ -93,7 +93,7 @@ python -m harness.webui.server     # 可视化页面（真实 API，http://127.0
 | `_08_Profile_Layers` | `python chat.py --profile prod` / `--patch my.yaml`（配置驱动装配） |
 | `_09_Dump_Config` | `python chat.py --dump-config`（带来源）+ 配错定位（层/条/拼写建议） |
 | `_10_Rpc_Transport` | `python serve.py`（stdio JSON-RPC：`initialize` / `session.prompt`） |
-| `_11_Session_Follow` | 两终端 `serve` + `attach`，kill 后重连补齐事件 【将实现】 |
+| `_11_Session_Follow` | `python attach.py --connect 8765 --session s1`（跟随 + 断线补齐）；编码工具补齐 |
 
 ### 门禁（在 P2_Coding 目录下）
 
@@ -127,7 +127,7 @@ python scripts/check.py --fix  # 先让 ruff 自动修可修的问题
 | `_08_Profile_Layers` | YAML 分层 patch | ✅ 已完成 | 2026-10-09 |
 | `_09_Dump_Config` | dump-config + 错误定位 | ✅ 已完成 | 2026-10-09 |
 | `_10_Rpc_Transport` | stdio JSON-RPC | ✅ 已完成 | 2026-10-09 |
-| `_11_Session_Follow` | follow + attach | ☐ 未开始 | |
+| `_11_Session_Follow` | follow + attach | ✅ 已完成 | 2026-10-09 |
 
 > **阶段名 vs 计划阶段**：目录名是**机制主题**（一次最小扩展），它服务的**学习计划阶段**
 > 是 M4–M7，见各阶段 README 顶部标注。

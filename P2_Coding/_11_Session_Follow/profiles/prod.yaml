@@ -1,0 +1,23 @@
+# prod.yaml —— 生产 profile 补丁：真实实现组合（DeepSeek + 真实磁盘 + 真实进程）。
+#
+# 与 dev 的差异全部落在这三行上——"换 LLM provider 只改一行"在这里是字面事实：
+#   - id: llm        name: llm:fake     →  llm:deepseek
+#   - id: fs         name: fs:memory    →  fs:local
+#   - id: subprocess name: subprocess:scripted → subprocess:local
+#
+# llm:deepseek 的 config 留空表示"从环境读"（model / base_url 由 .env 决定）；
+# 想钉死某个模型时在这里写 model 即可（配置 > 环境变量 > 内置默认）。
+
+patch:
+  - id: llm
+    name: llm:deepseek
+    config: {}
+
+  - id: fs
+    name: fs:local
+    config:
+      root: demo_workspace/ws
+
+  - id: subprocess
+    name: subprocess:local
+    config: {}

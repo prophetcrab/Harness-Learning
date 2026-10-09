@@ -1,44 +1,65 @@
-"""_11_Session_Follow 的入口脚本：把 mini harness 完整跑一遍（全离线）。
+"""_10_Rpc_Transport 的入口脚本：把 mini harness 完整跑一遍（全离线）。
 
 运行方式（在本阶段目录下）：
 
-    python demo.py            # 全离线，FakeLLM 驱动，故事固定（每次清空 demo_run/ 重演）
+    python demo.py            # 全离线（FakeLLM / MemoryFS / 剧本命令）
     python demo.py --keep     # 保留 demo_run/（默认每次清空重建）
 
-故事线 = M1–M3 的组装验收（基线行为回归，改动任何底层后都该保持全绿）：
-    1. 新会话，多轮对话：算数（工具）、写文件（工具 + 审批）、闲聊
-    2. 打印会话日志：能看到 session/start、turn/step、assistant/message、tool/result
-    3. 模拟"退出"：丢掉进程内对象，只留下磁盘上的日志
-    4. resume：同一个 session_id 重新打开 —— 历史完整、turn 编号接续
-    5. 恢复后继续用工具（list_files / read_file），验证第 1 步写入的文件还在
-    6. 同构断言：重放日志得到的历史 == 在线产生的历史
-    7. 分叉：从某个 seq 派生新会话，原会话不受影响
+故事线 = 本阶段机制演示 + 前序机制回归：
+
+    0a. [M7 _10 新增] 换行 JSON-RPC 协议层：帧解析/构造的词汇与错误码
+    0b. 服务化：HarnessService 经 LineTransport 收发——握手（init 前门禁）/
+        session.prompt 跑 turn（会话缓存、turn 接续）/ 落盘 / 审批 fail-closed
+    0c. 前序机制回归：配置装配（_08/_09）仍是服务的底座（banner 用 dump 树）
+    1. 主故事：boot dev profile 跑多轮对话；结束后整体卸载看回卷
+    2. 打印会话日志；3. 模拟退出；4. resume；5. 同构断言；6. 分叉
 """
 
 from __future__ import annotations
 
+import io
+import json
 import shutil
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from config import (
+    load_profile,
+    render_tree,
+)
+from context import (
+    collect_runtime_context,
+    effective_system_prompt,
+    latest_prompt_trace,
+    open_context_harness,
+    project,
+)
 from harness.llm import FakeLLM, text_reply, tool_call_reply
-from harness.mini import MiniHarness
 from harness.runner import fork_session, load_messages
 from harness.session import JsonlStore
 from harness.tools import ScriptedApprover
 from harness.tools.approval import ApprovalDecision
+from prompt import rebuild_text
+from providers import (
+    LLM_CAPABILITY,
+    TOOLBOX_CAPABILITY,
+    boot_tree,
+)
+from server import (
+    HarnessService,
+    LineTransport,
+)
 
 sys.stdout.reconfigure(encoding="utf-8")
 
 HERE = Path(__file__).resolve().parent
 DEMO_RUN = HERE / "demo_run"
 SESSIONS = DEMO_RUN / "sessions"
-WORKSPACE = DEMO_RUN / "demo_workspace"
-SYSTEM_PROMPT = (
-    "你是一名严谨的中文助手，可以调用 calculate 做算术、用 read_file/write_file/list_files 读写文件。"
-)
+PROFILES = HERE / "profiles"
 
-NOTE = "harness 学习笔记\n- M1 主循环\n- M2 工具管线\n- M3 会话日志"
+TZ = timezone(timedelta(hours=8))
+STORY_MOMENT = datetime(2026, 10, 8, 9, 0, 0, tzinfo=TZ)
 
 
 def plain(messages):
@@ -49,98 +70,197 @@ def plain(messages):
     ]
 
 
+def _write_bad(path: Path, text: str) -> Path:
+    """往临时文件写一段（demo 里构造"坏配置"用）。"""
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def rpc(service: HarnessService, lines: list[str]) -> list[str]:
+    """把一串请求行喂给服务，返回响应帧列表（StringIO 驱动——与 stdio 同一路径）。"""
+    reader = io.StringIO("\n".join(lines) + "\n")
+    writer = io.StringIO()
+    LineTransport(reader, writer, service).serve_forever()
+    return writer.getvalue().splitlines()
+
+
 def main() -> None:
     keep = "--keep" in sys.argv
     if DEMO_RUN.exists() and not keep:
         shutil.rmtree(DEMO_RUN)
-    WORKSPACE.mkdir(parents=True, exist_ok=True)
+    DEMO_RUN.mkdir(parents=True, exist_ok=True)
 
     # =====================================================================
-    # 1) 新会话：多轮对话（工具 + 审批 + 闲聊），事件逐条落盘
+    # 0a) [本阶段新增] follow = 重放 + 订阅（无缝衔接）
     # =====================================================================
     print("=" * 68)
-    print("1) 新会话，多轮对话（FakeLLM 剧本驱动）")
-    provider = FakeLLM(
+    print("0a) session.follow：先重放（seq > from_seq），再订阅实时事件")
+    rpc_ctx = boot_tree(load_profile("dev", profiles_dir=PROFILES), stage_root=HERE)
+    rpc_ws = DEMO_RUN / "rpc_ws"
+    rpc_ws.mkdir(parents=True, exist_ok=True)
+    service = HarnessService(rpc_ctx, root=DEMO_RUN / "follow_sessions", workspace=rpc_ws)
+
+    # 先攒一段历史（一个完成的 turn）
+    rpc(service, [
+        '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}',
+        '{"jsonrpc":"2.0","id":2,"method":"session.prompt","params":{"session":"f1","text":"第一句"}}',
+    ])
+    # 再 follow + prompt：一次性观察到 重放 → 响应 → 实时
+    lines = rpc(service, [
+        '{"jsonrpc":"2.0","id":3,"method":"session.follow","params":{"session":"f1","from_seq":0}}',
+        '{"jsonrpc":"2.0","id":4,"method":"session.prompt","params":{"session":"f1","text":"第二句"}}',
+    ])
+    seqs = [json.loads(line)["params"]["event"]["seq"] for line in lines if '"session.event"' in line]
+    follow_at = next(i for i, line in enumerate(lines) if json.loads(line).get("id") == 3)
+    replay_count = follow_at  # 响应之前全是重放事件
+    live_count = len(seqs) - replay_count  # 其余是实时事件
+    print(f"   帧序（{len(lines)} 帧）：重放事件 ×{replay_count} → follow 响应 → 实时事件 ×{live_count} → prompt 响应")
+    print(f"   事件 seq：{seqs}（单调递增、不重不漏）")
+    print(f"   follow 响应：{json.loads(lines[follow_at])['result']}")
+    assert seqs == sorted(set(seqs)) and seqs == list(range(1, len(seqs) + 1))
+
+    # 断线补齐：从某个 seq 之后重连，只重放缺口
+    gap_from = 7
+    lines = rpc(service, [
+        f'{{"jsonrpc":"2.0","id":5,"method":"session.follow","params":{{"session":"f1","from_seq":{gap_from}}}}}',
+    ])
+    replayed = [json.loads(line)["params"]["event"]["seq"] for line in lines if '"session.event"' in line]
+    print(f"\n   断线重连：from_seq={gap_from} → 只重放缺口 {replayed}")
+    assert replayed == list(range(gap_from + 1, seqs[-1] + 1))
+    print("   ✓ 断线期间的事件全部由服务端重放补齐（'日志是唯一真相'的红利）")
+
+    # =====================================================================
+    # 0b) [本阶段新增] 编码工具：edit_file / search_text / find_files
+    # =====================================================================
+    print("\n" + "=" * 68)
+    print("0b) 编码工具补齐：edit（精确替换）/ search（内容）/ find（按名）")
+    tool_ctx = boot_tree(load_profile("dev", profiles_dir=PROFILES), stage_root=HERE)
+    registry = tool_ctx.require(TOOLBOX_CAPABILITY)
+    print(f"   工具面：{registry.names}（_11 起为基本编码代理补齐）")
+    assert {"edit_file", "search_text", "find_files"} <= set(registry.names)
+
+    write = registry.resolve("write_file").func
+    edit = registry.resolve("edit_file").func
+    search = registry.resolve("search_text").func
+    find = registry.resolve("find_files").func
+
+    write(path="src/app.py", content="import os\n# TODO: 修这个问题\nprint(1)\n")
+    write(path="tests/test_app.py", content="def test_ok():\n    assert True\n")
+    print(f"   edit_file：{edit(path='src/app.py', old='print(1)', new='print(2)')}")
+    print(f"   search_text('TODO'): {search(pattern='TODO')['matches']}")
+    print(f"   find_files('test_*'): {find(pattern='test_*')['files']}")
+    no_match = edit(path="src/app.py", old="不存在的文本", new="x")
+    ambiguous = edit(path="src/app.py", old="o", new="x")  # 出现多次 → 拒绝猜
+    print(f"   防误改：no_match → {no_match['code']}；ambiguous → {ambiguous['code']}")
+
+    # =====================================================================
+    # 0c) 前序机制回归：配置装配仍是服务的底座
+    # =====================================================================
+    print("\n" + "=" * 68)
+    print("0c) 前序机制回归：服务由配置装配（_08/_09）boot 而来")
+    print(render_tree(load_profile("dev", profiles_dir=PROFILES), title="服务使用的配置（dev）")[:300] + "……")
+    dev = load_profile("dev", profiles_dir=PROFILES)
+    assert dev.source_of("llm", "name") == "dev.yaml"   # 来源追踪（_09）仍在
+    print(f"   ✓ 来源台账仍在：llm.name ← {dev.source_of('llm', 'name')}")
+
+    # =====================================================================
+    # 1) 主故事：boot dev profile 跑多轮对话
+    # =====================================================================
+    print("\n" + "=" * 68)
+    print("1) 主故事：boot dev profile（FakeLLM + MemoryFS + 剧本命令）")
+    story_ctx = boot_tree(load_profile("dev", profiles_dir=PROFILES), stage_root=HERE)
+    llm = story_ctx.require(LLM_CAPABILITY)
+    registry = story_ctx.require(TOOLBOX_CAPABILITY)
+    print(f"   插件台账：{story_ctx.effect_names}")
+    print(f"   工具面：{registry.names}")
+
+    workspace = DEMO_RUN / "ws"
+    workspace.mkdir(parents=True, exist_ok=True)
+    approval = ScriptedApprover(
         [
-            # turn 1：算数（走 calculate 工具）
-            tool_call_reply("calculate", {"expression": "1234*56.78"}),
-            text_reply("1234 × 56.78 = 70066.52。"),
-            # turn 2：写文件（需审批，本 demo 用剧本审批直接批准）
-            tool_call_reply("write_file", {"path": "notes/todo.txt", "content": NOTE}),
-            text_reply("已把笔记写入 notes/todo.txt。"),
-            # turn 3：闲聊（无工具）
-            text_reply("好的，我记住了。"),
+            ApprovalDecision(True, "demo：批准执行命令（剧本，不真跑）"),
+            ApprovalDecision(True, "demo：批准写入"),
         ]
     )
-    approval = ScriptedApprover([ApprovalDecision(True, "demo：批准写入")])
-    harness, report = MiniHarness.open(
+    ctx = open_context_harness(
         "demo",
-        provider=provider,
+        provider=llm,
         root=SESSIONS,
-        workspace=WORKSPACE,
-        system_prompt=SYSTEM_PROMPT,
+        workspace=workspace,
         approval=approval,
-        on_event=lambda kind, payload: None,  # demo 自己控制打印节奏
+        context_source=lambda: collect_runtime_context(
+            workspace, now=lambda: STORY_MOMENT, platform_name="DemoOS"
+        ),
+        tool_registry=registry,
     )
-    for question in ["帮我算 1234*56.78", "把要点记到 notes/todo.txt", "记住了吗？"]:
-        result = harness.send(question)
+    for question in [
+        "帮我算 1234*56.78",
+        "用 shell 看一眼目录",
+        "把要点记到 notes/todo.txt",
+    ]:
+        result = ctx.harness.send(question)
         print(f"   你：{question}")
         print(f"   助手：{result.final_text}")
 
-    online_history = plain(harness.history)  # 供第 5 步同构对照
-    provider.assert_all_consumed()
+    online_history = plain(ctx.harness.history)
     approval.assert_all_consumed()
-    print(f"   在线历史角色序列：{[m.role for m in harness.history]}")
+    print("   ✓ 命令与写入两次审批都用在了正确的位置（dev：全离线，零真实副作用）")
+    assert list(workspace.iterdir()) == []  # dev 的 fs 是 MemoryFS：磁盘无痕迹
+    print("   ✓ MemoryFS 生效：工作区目录里没有任何文件（写只进内存）")
+
+    print(f"   整体卸载前槽位：{story_ctx.slots}")
+    for name in reversed(story_ctx.effect_names):
+        story_ctx.unload(name)
+    print(f"   整体卸载后槽位：{story_ctx.slots}")
+    assert story_ctx.slots == []
 
     # =====================================================================
     # 2) 打印会话日志
     # =====================================================================
     print("\n" + "=" * 68)
     print("2) 会话日志（append-only 事件序列，逐条落盘）")
-    for event in harness.session.events:
-        print(f"   #{event.seq:>2} {event.type}")
+    for event in ctx.session.events:
+        mark = "  <-trace" if event.data.get("prompt_trace") else ""
+        print(f"   #{event.seq:>2} {event.type}{mark}")
     print(f"   日志文件：{JsonlStore(SESSIONS).path('demo')}")
 
     # =====================================================================
-    # 3) 模拟"退出"：丢掉进程内对象，只剩磁盘上的日志
+    # 3) 模拟"退出"
     # =====================================================================
     print("\n" + "=" * 68)
     print("3) 退出：丢弃进程内的 harness 对象（历史只留在磁盘日志里）")
-    del harness
+    del ctx
     print("   进程内已无任何会话状态。")
 
     # =====================================================================
-    # 4) resume：同一个 session_id 重新打开
+    # 4) resume（重新 boot 一份配置）
     # =====================================================================
     print("\n" + "=" * 68)
-    print("4) resume：重新打开同一个会话（对旧 id 是恢复，对新 id 是创建 —— 同一段代码）")
-    provider2 = FakeLLM(
+    print("4) resume：重新加载配置、重新打开会话（对旧 id 是恢复 —— 同一段代码）")
+    resume_ctx = boot_tree(load_profile("dev", profiles_dir=PROFILES), stage_root=HERE)
+    resume_script = FakeLLM(
         [
-            # turn 4：列出工作区文件（证明第 1 步写的文件还在）
             tool_call_reply("list_files", {"path": "."}),
-            text_reply("工作区里有 notes/todo.txt。"),
-            # turn 5：读回文件内容
-            tool_call_reply("read_file", {"path": "notes/todo.txt"}),
-            text_reply("已读回笔记内容，确认落盘成功。"),
+            text_reply("内存里记着笔记（MemoryFS 不跨进程）。"),
         ]
     )
-    resumed, report2 = MiniHarness.open(
+    resumed_harness_ctx = open_context_harness(
         "demo",
-        provider=provider2,
+        provider=resume_script,
         root=SESSIONS,
-        workspace=WORKSPACE,
-        system_prompt=SYSTEM_PROMPT,
+        workspace=workspace,
         approval=ScriptedApprover([]),
-        on_event=lambda kind, payload: None,
+        context_source=lambda: collect_runtime_context(
+            workspace, now=lambda: STORY_MOMENT, platform_name="DemoOS"
+        ),
+        tool_registry=resume_ctx.require(TOOLBOX_CAPABILITY),
     )
+    resumed = resumed_harness_ctx.harness
     print(f"   resume 时的历史角色序列：{[m.role for m in resumed.messages]}")
     print(f"   接续 turn 编号：{resumed.session.last_turn_number}")
     r4 = resumed.send("工作区里有哪些文件？")
     print(f"   你：工作区里有哪些文件？\n   助手：{r4.final_text}")
-    r5 = resumed.send("读一下 notes/todo.txt")
-    print(f"   你：读一下 notes/todo.txt\n   助手：{r5.final_text}")
-    print(f"   接续后 turn 编号：{r5.turn}（从 resume 前接续，不是从 1 重来）")
-    provider2.assert_all_consumed()
+    resume_script.assert_all_consumed()
 
     # =====================================================================
     # 5) 同构断言
@@ -149,9 +269,13 @@ def main() -> None:
     print("5) 同构断言：重放日志得到的历史 == 在线产生的历史")
     replayed = plain(load_messages("demo", JsonlStore(SESSIONS)))
     assert replayed == plain(resumed.history), "重放历史与在线历史不一致！"
-    # 第 1 步（退出前）的在线快照必须是重放历史的前缀 —— 证明历史是"长出"的，不是被改写的
     assert replayed[: len(online_history)] == online_history, "前期在线历史与重放前缀不一致！"
+    extended = plain(project(resumed_harness_ctx.session.events))
+    assert extended == plain(resumed.history), "扩展投影与在线历史不一致！"
     print("   ✓ 一致（消息历史完全由日志投影而来，且前期快照是重放前缀）")
+    latest = latest_prompt_trace(resumed_harness_ctx.session.events)
+    assert rebuild_text(latest) == effective_system_prompt(resumed_harness_ctx.session.events)
+    print("   ✓ 当前生效提示词 == rebuild(日志装配单)（提示词机制在配置装配下照常工作）")
 
     # =====================================================================
     # 6) 分叉
@@ -164,7 +288,7 @@ def main() -> None:
     print(f"   原会话 demo 仍是 {len(resumed.session.events)} 条（未被改动）")
     print(f"   现有会话：{store.list_sessions()}")
 
-    print("\n全部步骤完成。可再试 CLI：python -m harness list / show demo")
+    print("\n全部步骤完成。可再试：python chat.py --dump-config / python chat.py --profile prod")
 
 
 if __name__ == "__main__":

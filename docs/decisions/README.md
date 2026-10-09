@@ -56,3 +56,5 @@
 - [0013 profile 分层：装配变成数据，patch 整块替换不合并](0013-profile-layers.md)（P2 `_08`）
 - [0014 配置可见：字段级来源台账，错误带层与位置](0014-dump-config.md)（P2 `_09`）
 - [0015 stdio JSON-RPC：服务化第一刀，握手门禁与 fail-closed](0015-rpc-transport.md)（P2 `_10`）
+- [0016 事件流跟随：follow = 重放 + 订阅，断线补齐靠日志](0016-session-follow.md)（P2 `_11`）
+- [0017 编码工具三件：能力面补齐在既有接缝上，不引入新机制](0017-coding-tools.md)（P2 `_11`）

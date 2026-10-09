@@ -284,6 +284,9 @@ AgentDevLearn/
 （每项带来源层）且错误可定位（层/条/拼写建议）——**M6 收官**。
 `_10` 开始 M7：stdio 换行 JSON-RPC（`initialize` 握手 / `session.prompt` 跑 turn，
 会话缓存 + 落盘；审批 fail-closed）——harness 成为可被连接的常驻服务。
+`_11` 收官 M7：`session.follow`（重放 + 订阅，断线重连按 seq 补齐）+ TCP 多客户端
++ `attach` 客户端；并把工具面补成基本 coding agent（edit/search/find）。
+**P2（M4–M7）全部完成。**
 工作区与详细计划见 [P2_Coding/README.md](../P2_Coding/README.md)。
 
 | 阶段 | 主题 | 状态 | 完成日期 | 验收命令 |
@@ -296,7 +299,7 @@ AgentDevLearn/
 | M4 | 提示词装配 | ✅ 已完成（P2 `_01` + `_02` + `_03`） | 2026-10-08 | `python chat.py --ask "..." --dump-prompt`（阶段入口；统一 CLI 待 M6 接线） |
 | M5 | 能力接缝 | ✅ 已完成（P2 `_04` + `_05` + `_06`） | 2026-10-08 | `python chat.py --fs local\|jail\|memory --shell local\|fake` |
 | M6 | 组合与配置 | ✅ 已完成（P2 `_07` + `_08` + `_09`） | 2026-10-09 | `python chat.py --profile dev --dump-config` |
-| M7 | 服务化 | 🔵 进行中（P2 `_10`✅ / `_11`） | 2026-10-09（`_10`） | `python serve.py`（stdio JSON-RPC） |
+| M7 | 服务化 | ✅ 已完成（P2 `_10` + `_11`） | 2026-10-09 | `python serve.py --listen 8765` + `python attach.py --connect 8765` |
 | M8 | 选修 | ☐ 未开始 | | 各模块自定义 |
 
 每阶段结束更新此表；设计若变更，同步修改本文件对应阶段。

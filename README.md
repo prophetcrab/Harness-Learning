@@ -17,7 +17,7 @@
 |---|---|---|---|
 | **P0_Coding** | 单文件预热：把核心机制逐个跑通（模型调用、工具调用、循环、文件沙箱） | M0 前铺垫 | ✅ 完成（4 练习，15 用例） |
 | **P1_Coding** | 结构化骨架：协议化 / 管线化 / 事件化 | M1–M3 | ✅ 完成（5 练习，79 用例） |
-| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | 🔵 进行中（M4✅、M5✅、M6✅、M7 进行中：`_01`–`_10`） |
+| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | ✅ 完成（11 个阶段全绿；附基本 coding agent 工具面） |
 
 每个阶段的入口 README：
 
@@ -187,6 +187,13 @@ python -m pytest -q                              # 62 用例（22 基线 + 40 �
 python serve.py                                  # stdio 服务：stdin 收帧、stdout 出帧、EOF 退出
 ./run.bat serve                                  # 启动器也路由 serve
 python demo.py                                   # 离线演示：帧词汇 / 握手·接续·错误·审批 / 回归
+
+cd P2_Coding/_11_Session_Follow                  # M7-2 事件流跟随 + 编码工具（P2 收官）
+python -m pytest -q                              # 59 用例（22 基线 + 37 本阶段）
+python attach.py --session s1                    # 跟随（重放+实时、断线补齐）
+python serve.py --listen 8765                    # TCP：多客户端共享同一会话
+python chat.py --profile prod --ask "search_text 找出所有 TODO 并用 edit_file 改掉一处" --no-approve
+python demo.py                                   # 离线演示：follow 帧序/断线补齐 / 新工具 / 回归
 ```
 
 各阶段对应机制见 [P2_Coding/README.md](P2_Coding/README.md) 的 11 行总览表
@@ -198,7 +205,7 @@ python demo.py                                   # 离线演示：帧词汇 / �
 
 ```bash
 # 一次跑完所有阶段（从项目根目录）
-python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 719 个用例（P0 15 + P1 79 + P2 625）
+python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 756 个用例（P0 15 + P1 79 + P2 662）
 
 # 只跑某一个练习/阶段
 cd P1_Coding/_03_Tool_Pipeline && python -m pytest -q

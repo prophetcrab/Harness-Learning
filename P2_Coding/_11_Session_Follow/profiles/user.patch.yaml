@@ -1,0 +1,21 @@
+# user.patch.yaml —— 用户补丁层（可选；本文件是"空补丁"示例）。
+#
+# 层序：base.yaml → <profile>.yaml → **user.patch.yaml** → CLI --patch。
+# 按惯例这份文件用来放**个人覆盖**（不入库的本地偏好），随层叠加、后写胜出。
+# 仓库里保留一份空壳，让"这层存在、且在哪儿"是可见的。
+#
+# 示例（取消注释即生效；也会被 demo 里的分层演示复用）：
+#
+#   patch:
+#     - id: toolbox
+#       config:
+#         workspace: demo_workspace/ws
+#         shell_timeout: 5        # 本机把命令期限收紧到 5 秒
+#
+# 也支持整行禁用（行留在树里但不激活）：
+#
+#   patch:
+#     - id: subprocess
+#       disabled: true
+
+patch: []
