@@ -52,3 +52,4 @@
 - [0009 FileSystem 接缝：三角色分离，机制与策略分层](0009-filesystem-seam.md)（P2 `_04`）
 - [0010 工作区围栏：策略是独立一层 provider，装饰机制而非侵入机制](0010-workspace-jail.md)（P2 `_05`）
 - [0011 命令接缝：结果与异常分离，超时杀整棵树](0011-subprocess-seam.md)（P2 `_06`）
+- [0012 插件与 effect：注册自动登记撤销，故障不留半装状态](0012-plugin-effect.md)（P2 `_07`）

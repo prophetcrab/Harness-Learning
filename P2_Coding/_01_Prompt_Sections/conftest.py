@@ -1,7 +1,7 @@
-"""_01_Prompt_Sections 的 pytest 引导（同名顶层包/模块的隔离）。
+"""_02_Prompt_Context 的 pytest 引导（同名顶层包/模块的隔离）。
 
 本阶段有若干与相邻阶段**同名**的顶层包/模块：`harness`（基线副本）、`prompt`
-（本阶段新增，与 _02 重名）、`chat`（入口，与 _02 重名）。
+（与 _01 重名）、`chat`（入口，与 _01 重名）、`context`（本阶段新增）。
 
 pytest 在"多阶段同进程"运行（如 `pytest P2_Coding/_01_... P2_Coding/_02_...`
 或从项目根一次跑完）时会有两个串味来源：
@@ -21,7 +21,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 # 需要"隔离"的同名顶层包/模块（基线 + 各阶段新增模块 + 入口模块）。
-SHARED_NAMES = ("harness", "prompt", "context", "chat", "providers", "config", "server")
+SHARED_NAMES = ("harness", "prompt", "context", "providers", "kernel", "chat", "config", "server")
 
 
 def _activate() -> None:

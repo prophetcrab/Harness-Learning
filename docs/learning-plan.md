@@ -278,7 +278,9 @@ AgentDevLearn/
 `_04` 开始 M5：文件工具重构成 FileSystem 三角色接缝（LocalFS / MemoryFS 可互换），
 `_05` 加策略型 provider `WorkspaceJailFS`（越界改动被拒，`FS_SANDBOX_DENIED`），
 `_06` 给命令执行建第二条接缝 `SubprocessService`（LocalSubprocess / ScriptedSubprocess）
-——**M5 收官**。工作区与详细计划见 [P2_Coding/README.md](../P2_Coding/README.md)。
+——**M5 收官**。`_07` 开始 M6：顶层 `kernel/` 立下插件协议与 effect 台账
+（`setup(ctx) -> disposer`；注册即 effect，卸载自动回卷）。
+工作区与详细计划见 [P2_Coding/README.md](../P2_Coding/README.md)。
 
 | 阶段 | 主题 | 状态 | 完成日期 | 验收命令 |
 |---|---|---|---|---|
@@ -289,7 +291,7 @@ AgentDevLearn/
 | M3 | 会话日志 | ✅ 已完成（P1 `_04` + `_05` 可视化） | 2026-10-07 | `pytest P1_Coding -q` |
 | M4 | 提示词装配 | ✅ 已完成（P2 `_01` + `_02` + `_03`） | 2026-10-08 | `python chat.py --ask "..." --dump-prompt`（阶段入口；统一 CLI 待 M6 接线） |
 | M5 | 能力接缝 | ✅ 已完成（P2 `_04` + `_05` + `_06`） | 2026-10-08 | `python chat.py --fs local\|jail\|memory --shell local\|fake` |
-| M6 | 组合与配置 | ☐ 未开始（P2 `_07`–`_09`） | | `python -m harness --profile dev dump-config` |
+| M6 | 组合与配置 | 🔵 进行中（P2 `_07`✅ / `_08`–`_09`） | 2026-10-09（`_07`） | `python chat.py`（`/ctx` 台账、`/unload` 回卷） |
 | M7 | 服务化 | ☐ 未开始（P2 `_10`–`_11`） | | `python -m harness serve` + `attach` |
 | M8 | 选修 | ☐ 未开始 | | 各模块自定义 |
 

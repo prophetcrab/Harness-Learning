@@ -60,11 +60,10 @@ _0N_<主题>/
 > 在目录层面一目了然，前四个阶段的基线也能原样复制给下一阶段。
 
 **当前状态**：11 个阶段都是**同一份基线代码**（`harness/`，P1 `_05` 语义等价的单一包）；
-`_01`–`_03` 完成 **M4 提示词装配**（section 注册表 → 插值/每 step 渲染 → 装配单/重建）；
-`_04`–`_06` 完成 **M5 能力接缝**：顶层 `providers/` 里两条三角色接缝——
-FileSystem（LocalFS / MemoryFS / WorkspaceJailFS 策略型）与 SubprocessService
-（LocalSubprocess / ScriptedSubprocess），消费者是 read/write/list + **shell** 工具；
-`chat.py --fs local|jail|memory --shell local|fake` 随意组合；其余阶段的 M6–M7 实现尚未落地。
+`_01`–`_03` 完成 **M4 提示词装配**；`_04`–`_06` 完成 **M5 能力接缝**（fs + subprocess
+两条三角色接缝，五个可替换实现）；`_07` 开始 **M6 组合与配置**：顶层 `kernel/` 立下
+插件协议与 effect 台账——**注册即 effect**，卸载自动回卷（含嵌套与故障）；
+其余阶段的 M6–M7 实现尚未落地。
 
 ---
 
@@ -90,7 +89,7 @@ python -m harness.webui.server     # 可视化页面（真实 API，http://127.0
 | `_04_Filesystem_Seam` | `python chat.py --fs memory --ask "把 hello 写到 notes/a.txt"`（换 provider 换文件世界） |
 | `_05_Workspace_Jail` | `python chat.py --fake --fs jail --ask "把 x 写到 ../escape.txt"`（应被拒） |
 | `_06_Subprocess_Seam` | `python chat.py --shell local --ask "用 shell 看看当前目录"`（真实执行，需审批） |
-| `_07_Plugin_Effect` | 卸载插件后注册物自动回卷（见该阶段测试）【将实现】 |
+| `_07_Plugin_Effect` | `python chat.py`（会话内 `/ctx` 看台账、`/unload` 看回卷；退出自动整体卸载） |
 | `_08_Profile_Layers` | `python -m harness --profile dev run "帮我算 2+3"` 【将实现】 |
 | `_09_Dump_Config` | `python -m harness --profile dev dump-config` 【将实现】 |
 | `_10_Rpc_Transport` | `python -m harness serve`（stdio JSON-RPC）【将实现】 |
@@ -124,7 +123,7 @@ python scripts/check.py --fix  # 先让 ruff 自动修可修的问题
 | `_04_Filesystem_Seam` | FileSystem 接缝 + Local/Memory | ✅ 已完成 | 2026-10-08 |
 | `_05_Workspace_Jail` | WorkspaceJailFS 策略 | ✅ 已完成 | 2026-10-08 |
 | `_06_Subprocess_Seam` | Subprocess 接缝 + shell | ✅ 已完成 | 2026-10-08 |
-| `_07_Plugin_Effect` | 插件协议 + effect 回卷 | ☐ 未开始 | |
+| `_07_Plugin_Effect` | 插件协议 + effect 回卷 | ✅ 已完成 | 2026-10-09 |
 | `_08_Profile_Layers` | YAML 分层 patch | ☐ 未开始 | |
 | `_09_Dump_Config` | dump-config + 错误定位 | ☐ 未开始 | |
 | `_10_Rpc_Transport` | stdio JSON-RPC | ☐ 未开始 | |

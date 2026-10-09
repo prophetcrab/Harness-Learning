@@ -21,7 +21,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 # 需要"隔离"的同名顶层包/模块（基线 + 各阶段新增模块 + 入口模块）。
-SHARED_NAMES = ("harness", "prompt", "context", "chat", "providers", "config", "server")
+SHARED_NAMES = ("harness", "prompt", "context", "providers", "kernel", "chat", "config", "server")
 
 
 def _activate() -> None:
