@@ -1,0 +1,35 @@
+[project]
+name = "p3-mini-harness"
+version = "0.3.0"
+description = "P3 基础包：完全插件化的 mini harness（插件内核 + 能力插件 + 构件层）"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+# P3 与 P2 一样是阶段式工作区：mini_harness/ 目录自包含（cd 进去就能用），
+# 因此这里不做 setuptools 打包；门禁由 scripts/check.py 驱动。
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["demo_run", "sessions", "demo_workspace"]
+
+[tool.ruff.lint]
+# E/W pycodestyle、F pyflakes、I import 排序、UP pyupgrade、B bugbear
+select = ["E", "W", "F", "I", "UP", "B"]
+ignore = [
+    "E501",   # 行长由 line-length 约束，不逐行报
+    "B008",   # 允许在默认参数里调用（如 Field(...)）
+]
+
+[tool.ruff.lint.per-file-ignores]
+"*/tests/*" = ["E402"]   # 测试里允许在 sys.path 引导后再 import
+
+[tool.ruff.lint.isort]
+# P3 的顶层包：内核 / 构件 / 插件（都位于 mini_harness/ 下）。
+known-first-party = ["kernel", "components", "plugins"]

@@ -1,0 +1,171 @@
+"""demo.py —— 全离线演示：插件化 harness 的一生（装载 → 对话 → 回卷）。
+
+六节，全部离线（FakeLLM + MemoryFS + 剧本命令，零副作用、不需要 key）：
+
+    0) 装载：插件列表 → ctx（顺序打乱也能装配 —— inject 驱动）
+    1) 台账：插件 / 服务 / 工具面（谁提供什么，一眼可读）
+    2) 对话：一个 turn 的完整事件流（含工具调用）
+    3) 日志：append-only 事件 + 落盘 + resume（重开进程续聊）
+    4) 热插拔：运行时换 fs 插件（依赖者自动停用/重新激活）
+    5) 卸载：整体回卷（服务归零；这就是"注册即 effect"）
+
+运行：python demo.py            （--keep 保留 demo_run 目录供翻看）
+"""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+from pathlib import Path
+
+from components.llm import text_reply, tool_call_reply
+from plugins import (
+    AgentPlugin,
+    Booted,
+    PromptPlugin,
+    SessionsPlugin,
+    ToolsPlugin,
+    boot_offline,
+    fake_llm_plugin,
+    local_fs_plugin,
+    memory_fs_plugin,
+)
+
+HERE = Path(__file__).resolve().parent
+RUN_DIR = HERE / "demo_run"
+
+
+def banner(title: str) -> None:
+    print("\n" + "=" * 68)
+    print(title)
+    print("=" * 68)
+
+
+def show_ledger(booted: Booted) -> None:
+    print("  插件台账（顺序 = 装载顺序）：")
+    for info in booted.ctx.plugins:
+        inject = f"  inject={list(info.inject)}" if info.inject else ""
+        print(f"    - {info.name:<28} [{info.status}]{inject}")
+    print(f"  服务：{booted.ctx.services}")
+    tools = booted.ctx.require("tools")
+    print(f"  工具面（{len(tools.names)}）：{'、'.join(tools.names)}")
+
+
+def section_0(root: Path, workspace: Path) -> None:
+    banner("0) 装载：插件列表 → ctx（故意打乱顺序）")
+    from kernel import Context
+
+    # 顺序打乱：tools 在 fs 之前、agent 在 llm 之前——inject 会让它们等
+    ctx = Context()
+    ctx.load_plugins(
+        [
+            ToolsPlugin(workspace=workspace),   # 依赖 fs：此刻 fs 还没提供
+            AgentPlugin(),                       # 依赖 llm/tools/sessions/prompt
+            fake_llm_plugin([text_reply("hello")]),
+            memory_fs_plugin(),
+            SessionsPlugin(root),
+            PromptPlugin(workspace=workspace),
+        ]
+    )
+    print(f"  装载后活跃插件：{ctx.active_plugins}")
+    print(f"  待激活：{ctx.pending_plugins}（空 = 全部就绪）")
+    print("  → 装载顺序无关：依赖齐备的那一刻，插件自动激活。")
+    for name in reversed(ctx.active_plugins):
+        ctx.unload_plugin(name)
+
+
+def section_1_2(root: Path, workspace: Path) -> None:
+    banner("1) 台账 + 2) 对话：一个 turn 的完整事件流")
+    booted = boot_offline(
+        root=root,
+        workspace=workspace,
+        script=[
+            tool_call_reply("calculate", {"expression": "2+3"}),
+            text_reply("2+3=5，已用计算器核对。"),
+        ],
+    )
+    show_ledger(booted)
+
+    print("\n  你：帮我算 2+3")
+    result = booted.agent.ask("帮我算 2+3", session_id="demo")
+    print(f"  助手：{result.final_text}   （{len(result.steps)} 步，status={result.status}）")
+    events = booted.agent.open("demo").session.events
+    print(f"\n  事件流（{len(events)} 条，落盘 {root / 'demo' / 'session.jsonl'}）：")
+    for event in events:
+        print(f"    #{event.seq:<3} {event.type}")
+    booted.close()
+    print("\n  （已整体卸载——下一节重新装配，验证 resume）")
+
+
+def section_3(root: Path, workspace: Path) -> None:
+    banner("3) 日志：resume（重开进程、同名会话续聊）")
+    booted = boot_offline(root=root, workspace=workspace, script=[text_reply("不客气，随时问。")])
+    opened = booted.agent.open("demo")
+    print(f"  重开会话 demo：resumed={opened.resumed}  repaired={opened.repaired}")
+    print(f"  历史（由日志投影）：{[m.role for m in opened.messages]}")
+    result = booted.agent.ask("谢谢", session_id="demo")
+    print(f"  turn 接续：第 {result.turn} 个 turn（不是从 1 重来）")
+    booted.close()
+
+
+def section_4(root: Path, workspace: Path) -> None:
+    banner("4) 热插拔：运行时换 fs 插件（依赖者自动停用/重激活）")
+    booted = boot_offline(root=root, workspace=workspace, script=[text_reply("好的")])
+    fs_name = next(name for name in booted.ctx.active_plugins if name.startswith("fs:"))
+    print(f"  初始：fs 槽由 {fs_name} 提供")
+
+    booted.ctx.unload_plugin(fs_name)
+    print(f"  卸载 fs:MemoryFS → 活跃：{booted.ctx.active_plugins}")
+    print(f"    待激活：{booted.ctx.pending_plugins}（tools/agent 依赖 fs，自动退位）")
+
+    disk_ws = workspace.parent / "disk_ws"
+    booted.ctx.load_plugin(local_fs_plugin(disk_ws))
+    print(f"  换入 fs:LocalFS → 活跃：{booted.ctx.active_plugins}")
+    print(f"    服务：{booted.ctx.services}")
+
+    result = booted.agent.ask("现在用什么文件系统？", session_id="demo2")
+    print(f"  新会话用新组合对话成功：{result.final_text}")
+    booted.close()
+
+
+def section_5(root: Path, workspace: Path) -> None:
+    banner("5) 卸载：整体回卷（注册即 effect）")
+    booted = boot_offline(root=root, workspace=workspace, script=[text_reply("ok")])
+    booted.agent.ask("随便问一句", session_id="demo3")
+    print(f"  卸载前：活跃插件 {booted.ctx.active_plugins}")
+    print(f"          服务 {booted.ctx.services}")
+    print(f"          事件订阅 {booted.ctx.event_names}")
+    booted.close()
+    print(f"  卸载后：活跃插件 {booted.ctx.active_plugins}")
+    print(f"          服务 {booted.ctx.services}")
+    print(f"          事件订阅 {booted.ctx.event_names}")
+    print("  → 每样登记物都被各自的 effect 回卷；没有任何残留。")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="demo.py", description="P3 插件化 harness 全离线演示")
+    parser.add_argument("--keep", action="store_true", help="保留 demo_run 目录")
+    args = parser.parse_args(argv)
+
+    if RUN_DIR.exists():
+        shutil.rmtree(RUN_DIR)
+    root = RUN_DIR / "sessions"
+    workspace = RUN_DIR / "ws"
+    workspace.mkdir(parents=True)
+
+    print("P3 基础包演示：完全插件化的 mini harness（全离线）")
+    section_0(root, workspace)
+    section_1_2(root, workspace)
+    section_3(root, workspace)
+    section_4(root, workspace)
+    section_5(root, workspace)
+
+    banner("完成")
+    print(f"  {'保留' if args.keep else '清理'} demo_run：{RUN_DIR}")
+    if not args.keep:
+        shutil.rmtree(RUN_DIR)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

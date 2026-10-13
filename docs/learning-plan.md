@@ -300,12 +300,22 @@ AgentDevLearn/
 | M5 | 能力接缝 | ✅ 已完成（P2 `_04` + `_05` + `_06`） | 2026-10-08 | `python chat.py --fs local\|jail\|memory --shell local\|fake` |
 | M6 | 组合与配置 | ✅ 已完成（P2 `_07` + `_08` + `_09`） | 2026-10-09 | `python chat.py --profile dev --dump-config` |
 | M7 | 服务化 | ✅ 已完成（P2 `_10` + `_11`） | 2026-10-09 | `python serve.py --listen 8765` + `python attach.py --connect 8765` |
-| M8 | 选修 | ☐ 未开始 | | 各模块自定义 |
+| M8 | 选修 | 🚧 地基先行（P3 基础包） | 2026-10-13 | `cd P3_Coding/mini_harness && python -m pytest -q`（40 用例） |
 
 每阶段结束更新此表；设计若变更，同步修改本文件对应阶段。
 M1–M3 的产出落在 `P1_Coding/` 五个练习目录里（各练习自包含，组装见 `_05_Mini_Harness`）；
 M4–M7 在 `P2_Coding/` 的十一个自包含阶段目录里继续（各带一份 `harness/` 副本；门禁 `scripts/check.py` 逐阶段运行）。
 注意：P1 的决策记录已用掉编号 0001–0005，故 M4–M7 的决策记录从 **0006** 起编。
+
+**P3 阶段（2026-10-13 起）**：先交付**插件化基础包**——`P3_Coding/mini_harness/`
+把整个 harness 重表达为插件：三层结构（`kernel` 插件内核 / `components` 纯构件 /
+`plugins` 能力插件），内核提供"服务 + 事件 + effect + inject"五件套，七个标准插件
+（llm / fs / proc / tools / sessions / prompt / agent）在 `boot_offline` /
+`boot_realtime` 两个组合下装配（装载顺序无关、卸载自动回卷、运行时可热插拔）。
+M8 的能力增量（流式、预算计量、压缩、任务管理 goal/plan/todo…）在这个底座上
+按垂类裁剪逐项补、各以插件形式落地。详细计划与门禁见
+[P3_Coding/README.md](../P3_Coding/README.md)，决策记录
+[0020](../docs/decisions/0020-p3-plugin-core.md)。
 
 ---
 
