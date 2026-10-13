@@ -4,7 +4,7 @@
 ——同一个 `open(id)` 对新会话是创建、对已有会话是装载后继续，没有单独的恢复
 分支（P1 定下的语义，此处原样沿用）。
 
-服务接口（agent 插件只认它）：
+服务接口（agent / rpc 插件只认它）：
 
     open(session_id, system_prompt, prompt_trace=None) -> Session
         装载日志；若是新会话则写 session/start（携带初始渲染与装配单）。
@@ -13,18 +13,51 @@
     list_sessions() -> list[str]
     fork(src, new, upto_seq=None) -> Session
 
-崩溃尾部修复、append-only、fsync 语义都在构件层（components/session/store.py），
-本插件不重复实现，只负责把它接进 ctx 并广播 `session/opened`。
+**每条会话事件都发内核事件**（`session/event`）：本服务产出的 Session 是
+`ObservableSession`——每次 `append` 成功后立刻 `ctx.emit("session/event", ...)`。
+这就是 RPC `session.follow` 的推送源：推送的粒度是"每条会话事件"（长 turn
+进行中也能看到事件流生长），而**真相仍在日志里**——重放读日志、订阅收事件，
+两者是同一条记录的两个视图。
+
+崩溃尾部修复、append-only 语义都在构件层（components/session/store.py），
+本插件不重复实现，只负责把它接进 ctx 并广播 `session/opened` / `session/event`。
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
-from components.session import JsonlStore, RepairReport, Session
+from components.session import Event, JsonlStore, RepairReport, Session
 from kernel import Context
-from plugins.events import SESSION_OPENED
+from plugins.events import SESSION_EVENT, SESSION_OPENED
 from plugins.services import SESSIONS_SERVICE
+
+
+class ObservableSession(Session):
+    """Session + append 时回调（本服务用它发 `session/event` 内核事件）。
+
+    只加一个回调、不改任何写入路径：先走基线 `append`（校验/落盘/入内存），
+    成功后再回调——事件流看到的永远是**已确认落盘**的事实。
+    """
+
+    def __init__(
+        self,
+        session_id: str,
+        *,
+        store: Any | None = None,
+        events: Any | None = None,
+        on_append: Callable[[Event], None] | None = None,
+    ) -> None:
+        super().__init__(session_id, store=store, events=events)
+        self._on_append = on_append
+
+    def append(self, event_type: str, data: dict[str, Any] | None = None) -> Event:
+        event = super().append(event_type, data)
+        if self._on_append is not None:
+            self._on_append(event)
+        return event
 
 
 class SessionsService:
@@ -42,6 +75,24 @@ class SessionsService:
     def root(self) -> Path:
         return self._store.root
 
+    # ------------------------------------------------------------------
+    # 内部：产出带事件广播的会话
+    # ------------------------------------------------------------------
+
+    def _make_session(self, session_id: str, events: list[Event]) -> Session:
+        on_append: Callable[[Event], None] | None = None
+        if self._ctx is not None:
+            def on_append(event: Event) -> None:
+                self._ctx.emit(SESSION_EVENT, session=session_id, record=event)
+
+        return ObservableSession(
+            session_id, store=self._store, events=events, on_append=on_append
+        )
+
+    # ------------------------------------------------------------------
+    # 服务接口
+    # ------------------------------------------------------------------
+
     def open(
         self,
         session_id: str,
@@ -55,7 +106,7 @@ class SessionsService:
         - 新会话：写 session/start（system_prompt + 装配单），resumed=False。
         """
         events, report = self._store.load(session_id)
-        session = Session(session_id, store=self._store, events=events)
+        session = self._make_session(session_id, events)
         resumed = session.has_started
         if not resumed:
             data: dict = {"session_id": session_id, "system_prompt": system_prompt}
@@ -71,7 +122,7 @@ class SessionsService:
             )
         return session, resumed, report
 
-    def load(self, session_id: str) -> tuple[list, RepairReport]:
+    def load(self, session_id: str) -> tuple[list[Event], RepairReport]:
         """只读装载会话事件（不打开、不写任何东西）。"""
         return self._store.load(session_id)
 
@@ -86,7 +137,7 @@ class SessionsService:
         if upto_seq is not None:
             events = [event for event in events if event.seq <= upto_seq]
 
-        forked = Session(new_id, store=self._store, events=[])
+        forked = self._make_session(new_id, [])
         for event in events:
             forked.append(event.type, event.data)
         return forked
@@ -105,4 +156,4 @@ class SessionsPlugin:
         ctx.provide(SESSIONS_SERVICE, SessionsService(self._root, ctx))
 
 
-__all__ = ["SessionsPlugin", "SessionsService"]
+__all__ = ["ObservableSession", "SessionsPlugin", "SessionsService"]

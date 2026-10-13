@@ -4,6 +4,7 @@
 #   bash run.sh chat               offline interactive chat
 #   bash run.sh chat --realtime    real combination (DeepSeek + disk + real shell)
 #   bash run.sh web                web UI plugin (add --realtime for real API)
+#   bash run.sh rpc [--listen N]   JSON-RPC server (stdio; optional TCP)
 #   bash run.sh test               run the test suite
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -27,6 +28,10 @@ case "${1:-}" in
   web)
     shift
     "$PY" chat.py --web "$@"
+    ;;
+  rpc)
+    shift
+    "$PY" chat.py --rpc "$@"
     ;;
   test)
     "$PY" -m pytest -q

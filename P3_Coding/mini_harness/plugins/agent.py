@@ -25,6 +25,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable, Sequence
 
 from components.agent import AgentLoop, TurnResult
@@ -79,7 +80,13 @@ class HarnessSession:
 
 
 class AgentService:
-    """会话管理器：按 session_id 打开/缓存/复用会话（对外唯一入口）。"""
+    """会话管理器：按 session_id 打开/缓存/复用会话（对外唯一入口）。
+
+    **线程安全**：`open` / `ask` 用一把可重入锁串行化——会话缓存（`_open`）、
+    观察者注册、以及底层 provider（剧本队列不是线程安全的）都不允许并发触碰。
+    界面（webui）与 RPC 可能从不同线程同时发起 turn；这把锁是**底层保障**，
+    各入口自己的锁只负责它那层的语义（如 webui 的"标签页 → 观察者"绑定）。
+    """
 
     def __init__(
         self,
@@ -105,6 +112,7 @@ class AgentService:
         self._middlewares = tuple(middlewares)
         self._open: dict[str, HarnessSession] = {}
         self._observers: dict[str, LoopObserver] = {}
+        self._lock = threading.RLock()  # 见类文档：多线程入口的底层保障
 
     # ------------------------------------------------------------------
     # 会话打开（打开即恢复）
@@ -112,6 +120,12 @@ class AgentService:
 
     def open(self, session_id: str = "default", *, on_event: LoopObserver | None = None) -> HarnessSession:
         """打开（或恢复）一条会话；同名复用缓存。返回开场信息（resumed/repaired）。"""
+        with self._lock:
+            return self._open_locked(session_id, on_event=on_event)
+
+    def _open_locked(
+        self, session_id: str, *, on_event: LoopObserver | None = None
+    ) -> HarnessSession:
         if on_event is not None:
             self._observers[session_id] = on_event
         cached = self._open.get(session_id)
@@ -177,19 +191,25 @@ class AgentService:
     # ------------------------------------------------------------------
 
     def ask(self, text: str, session_id: str = "default") -> TurnResult:
-        """跑一个 turn：打开（或恢复）会话 → 排空输入 → 返回结果。"""
-        opened = self.open(session_id)
-        self._ctx.emit(TURN_START, session=session_id, turn=opened.session.last_turn_number + 1, text=text)
-        result = opened.ask(text)
-        self._ctx.emit(
-            TURN_END,
-            session=session_id,
-            turn=result.turn,
-            status=result.status,
-            steps=len(result.steps),
-            final_text=result.final_text,
-        )
-        return result
+        """跑一个 turn：打开（或恢复）会话 → 排空输入 → 返回结果（全程持锁）。"""
+        with self._lock:
+            opened = self._open_locked(session_id)
+            self._ctx.emit(
+                TURN_START,
+                session=session_id,
+                turn=opened.session.last_turn_number + 1,
+                text=text,
+            )
+            result = opened.ask(text)
+            self._ctx.emit(
+                TURN_END,
+                session=session_id,
+                turn=result.turn,
+                status=result.status,
+                steps=len(result.steps),
+                final_text=result.final_text,
+            )
+            return result
 
     @property
     def open_sessions(self) -> list[str]:

@@ -13,10 +13,11 @@
     fs         提供 `fs`（LocalFS / MemoryFS / WorkspaceJailFS）
     proc       提供 `subprocess`（LocalSubprocess / ScriptedSubprocess；可选）
     tools      提供 `tools`（ToolRegistry；inject fs，可选用 subprocess）
-    sessions   提供 `sessions`（打开即恢复 + 崩溃修复 + 分叉）
+    sessions   提供 `sessions`（打开即恢复 + 崩溃修复 + 分叉；append 时发 `session/event`）
     prompt     提供 `prompt`（section 装配 + 变量瀑布 + 装配单）
     agent      提供 `agent`（会话管理：ask 一个 turn；inject 以上四个）
     webui      提供 `webui`（浏览器界面；inject agent/sessions；装载即起、卸载即停）
+    rpc        提供 `rpc`（JSON-RPC 服务端：initialize / prompt / follow；stdio / TCP）
 
 装配入口在 boot.py：`boot_offline` / `boot_realtime` / `boot`。
 """
@@ -28,6 +29,7 @@ from plugins.events import (
     LLM_RESPONSE,
     LOOP_EVENT,
     PROMPT_VARIABLES,
+    SESSION_EVENT,
     SESSION_OPENED,
     TURN_END,
     TURN_START,
@@ -43,22 +45,31 @@ from plugins.llm import (
 )
 from plugins.proc import ProcPlugin, local_proc_plugin, scripted_proc_plugin
 from plugins.prompt import PromptPlugin, PromptService
+from plugins.rpc import (
+    EVENT_NOTIFICATION,
+    RpcPlugin,
+    RpcService,
+    rpc_plugin,
+    serve_stdio,
+)
 from plugins.services import (
     AGENT_SERVICE,
     FS_SERVICE,
     LLM_SERVICE,
     PROMPT_SERVICE,
+    RPC_SERVICE,
     SESSIONS_SERVICE,
     SUBPROCESS_SERVICE,
     TOOLS_SERVICE,
     WEBUI_SERVICE,
 )
-from plugins.sessions import SessionsPlugin, SessionsService
+from plugins.sessions import ObservableSession, SessionsPlugin, SessionsService
 from plugins.tools import ToolsPlugin
 from plugins.webui import WebUiPlugin, WebUiService, webui_plugin
 
 __all__ = [
     "AGENT_SERVICE",
+    "EVENT_NOTIFICATION",
     "FS_SERVICE",
     "LLM_REQUEST",
     "LLM_RESPONSE",
@@ -67,7 +78,9 @@ __all__ = [
     "OFFLINE_DEMO_REPLY",
     "PROMPT_SERVICE",
     "PROMPT_VARIABLES",
+    "RPC_SERVICE",
     "SESSIONS_SERVICE",
+    "SESSION_EVENT",
     "SESSION_OPENED",
     "SUBPROCESS_SERVICE",
     "TOOLS_SERVICE",
@@ -80,10 +93,13 @@ __all__ = [
     "FsPlugin",
     "HarnessSession",
     "LlmPlugin",
+    "ObservableSession",
     "ProcPlugin",
     "PromptPlugin",
     "PromptService",
     "RepeatingLLM",
+    "RpcPlugin",
+    "RpcService",
     "SessionsPlugin",
     "SessionsService",
     "ToolsPlugin",
@@ -99,6 +115,8 @@ __all__ = [
     "local_proc_plugin",
     "memory_fs_plugin",
     "offline_llm_plugin",
+    "rpc_plugin",
     "scripted_proc_plugin",
+    "serve_stdio",
     "webui_plugin",
 ]

@@ -28,7 +28,7 @@ P3 基础包把这件事反过来：**内核只认"插件"和"它声明依赖的
 ## 2. 三层结构（依赖单向）
 
 ```
-plugins/     能力插件：把构件装成服务（llm / fs / proc / tools / sessions / prompt / agent / webui）
+plugins/     能力插件：把构件装成服务（llm / fs / proc / tools / sessions / prompt / agent / webui / rpc）
     ↓ 只 import 下两层
 components/  纯构件：从 P1/P2 沉淀的可复用实现（不 import kernel，不认识"插件"）
     ↓ 无依赖
@@ -39,9 +39,10 @@ kernel/      插件内核：ctx（服务 / 事件 / effect）+ 插件生命周�
 |---|---|---|
 | `kernel/` | `context.py` | **Context**：服务槽位（provide/retract/require/get）、事件（on/emit/waterfall）、effect 台账（装载即登记、卸载自动回卷、子先父后）、插件生命周期 |
 | | `plugin.py` | **Plugin** 协议与声明（name / inject / setup 的读取） |
-| `components/` | `llm/ session/ prompt/ tools/ fs/ proc/ agent/` | P1/P2 的构件原样沉淀（provider 接缝、事件日志、提示词装配、工具管线、能力实现、主循环）；`session/projection.py` 合并了 P2 的 `system/message` 遮蔽 |
+| `components/` | `llm/ session/ prompt/ tools/ fs/ proc/ agent/ rpc/` | P1/P2 的构件原样沉淀（provider 接缝、事件日志、提示词装配、工具管线、能力实现、主循环、JSON-RPC 帧与传输）；`session/projection.py` 合并了 P2 的 `system/message` 遮蔽 |
 | `plugins/` | `llm.py fs.py proc.py tools.py sessions.py prompt.py agent.py` | 七个能力插件 + 服务名/事件名常量 + `boot.py` 标准装配 |
 | | `webui.py` + `webui/index.html` | ★ **界面插件**（本机 HTTP 服务 + 零依赖页面）——装载即起、卸载即停 |
+| | `rpc.py` | ★ **RPC 插件**（JSON-RPC 服务端：initialize / prompt / follow；stdio 或 TCP）——装载即起、卸载即停 |
 
 `components/` 是本包唯一"搬过来"的部分（来自 P2 冻结基线；只改 import 与两处小升级：
 `ToolRegistry.unregister`、事件表加 `system/message`）。
@@ -68,7 +69,7 @@ kernel/      插件内核：ctx（服务 / 事件 / effect）+ 插件生命周�
 **boot**：`boot(plugins=[...])` 装载并检查"没有残留 pending"（依赖写错
 fail loud）；`Booted.close()` 逆序卸载全部插件。
 
-## 4. 八个标准插件
+## 4. 九个标准插件
 
 | 插件 | 提供 | inject | 说明 |
 |---|---|---|---|
@@ -80,8 +81,9 @@ fail loud）；`Booted.close()` 逆序卸载全部插件。
 | `prompt` | `prompt` | — | section 装配 + `prompt/variables` 瀑布 + 装配单 |
 | `agent` | `agent` | `llm` `tools` `sessions` `prompt` | 会话管理：`ask(text, session_id)` 跑一个 turn |
 | `webui` | `webui` | `agent` `sessions` | ★ **浏览器界面**：本机 HTTP 服务；**装载即起、卸载即停**（端口释放）；页面看插件台账 / 会话 / 实时事件流 |
+| `rpc` | `rpc` | `agent` `sessions` | ★ **JSON-RPC 服务端**：`initialize` / `session.prompt` / `session.follow`（重放+订阅）；stdio 或 TCP（`listen=` 装载即起、卸载即停） |
 
-**界面也是插件**（`plugins/webui.py`）——它比多数能力更能说明 effect 的价值：
+**界面与 RPC 都是插件**（`plugins/webui.py`、`plugins/rpc.py`）——它比多数能力更能说明 effect 的价值：
 HTTP 服务天然带生命周期（线程 + 端口），P2 时代的页面服务是手工起的、
 没有卸载路径；现在
 
@@ -96,11 +98,26 @@ ctx.unload_plugin("webui")              # 停服 + 端口释放，零残留
 不是线程安全的，多标签页同时提问会踩）；**缺依赖装载期就报错**，而不是
 打开页面才 500。
 
+RPC 插件把这套语义给了**协议面**（跨进程、多客户端）：
+
+```python
+ctx.load_plugin(rpc_plugin(listen=0))   # 装载即起 TCP（默认只听本机；0 = 系统分配）
+ctx.require("rpc").address              # ('127.0.0.1', <port>)
+ctx.unload_plugin("rpc")                # 卸载即停（端口释放 + 订阅台账清空）
+```
+
+**`session.follow` = 重放 + 订阅**：先重放日志里 `seq > from_seq` 的既有事件，
+再登记实时推送——**推送粒度是"每条会话事件"**（长 turn 进行中也能看到事件流
+生长），来源是 `sessions` 插件在每次 append 后发出的 `session/event` 内核事件。
+断线重连带 `from_seq` 即补齐：**补缺靠重放日志，不靠缓存**（事件溯源的红利）。
+stdio 模式有一条硬纪律：**stdout 只出帧**（banner/台账全走 stderr），
+有真实子进程的回归测试钉住。
+
 ## 5. 运行方法
 
 ```bash
 cd P3_Coding/mini_harness
-python -m pytest -q                       # 53 个用例（全离线）
+python -m pytest -q                       # 66 个用例（全离线）
 
 # 离线组合（默认）：离线模型 + MemoryFS + 剧本命令
 python chat.py
@@ -110,6 +127,11 @@ python demo.py                            # 七节演示：装配 / 台账 / 对
 # ★ 界面（离线；装载即起服务、Ctrl+C 卸载退出）
 python chat.py --web                      # 自动开浏览器；--port 0 让系统分配端口
 ./run.bat web                             # 启动器等价入口
+
+# ★ RPC 服务（stdio JSON-RPC；--listen N 同时开 TCP，多客户端共享会话）
+python chat.py --rpc
+python chat.py --rpc --listen 8771
+./run.bat rpc --listen 8771               # 启动器等价入口
 
 # 真实组合：DeepSeek + 真实磁盘 + 真实进程（读项目根 .env 的 key）
 python chat.py --realtime
@@ -128,7 +150,7 @@ bash run.sh chat --realtime
 
 ## 6. demo 与界面里看得到的东西
 
-`python demo.py` 七节，全离线：
+`python demo.py` 八节，全离线：
 
 ```
 0) 装载：故意打乱插件顺序 → 全部就绪（inject 驱动，顺序无关）
@@ -138,6 +160,7 @@ bash run.sh chat --realtime
 4) 热插拔：卸载 fs → tools/agent 自动退位（pending）；换入 LocalFS → 自动重激活
 5) 卸载：整体回卷——服务、订阅、工具面全部归零，无残留
 6) 界面插件：装载即起服务（HTTP 可访问）→ 卸载即停服（端口真的被释放）
+7) RPC 插件：握手门禁 → prompt → follow（重放 + 订阅、跨连接实时推送、from_seq 补齐）
 ```
 
 `python chat.py --web` 打开页面（P3 形态）：左栏是**插件台账**（每个插件的
@@ -151,16 +174,19 @@ status 与 inject 依赖一眼可见），中栏对话（NDJSON 流式推事件�
 - **装配变了**：P2 用 YAML 配置树 + 工厂注册表；P3 用**插件列表 + inject**。
   P2 的配置分层（`profiles` / `--dump-config`）尚未移植——它是"配置数据 → 插件"
   的一层，在 P3 底座上重做属于后续工作；
-- **界面回来了，且是插件**：P2 的 `webui/` 是手工起的服务；P3 的 `webui` 插件
-  有完整的装载/卸载语义。**RPC / 事件流跟随**仍未移植（平台档）。
+- **界面与 RPC 都回来了，且都是插件**：P2 的 `webui/` 与 `serve.py` 是手工起的
+  服务；P3 里 `webui` / `rpc` 两个插件都有完整的装载/卸载语义（含 TCP 端口释放、
+  订阅随连接注销）。
 
 ## 8. 已知边界（本包**没有**的东西）
 
 - 流式输出（`complete()` 仍是一次性返回）；无重试与错误分类；
 - 没有预算计量、上下文压缩、spill、任务管理（goal/plan/todo）；
 - 事件无优先级/异步；中间件同步串行；单进程单写者（无写锁）；
-- **界面插件与 RPC 的边界**：只绑本机、无鉴权；事件流只推给发起请求的那个
-  客户端（多客户端广播属于 RPC / 事件流跟随的题目）；
+- **界面与 RPC 的边界**：只绑本机、无鉴权；webui 的事件流只推给发起 turn 的那个
+  客户端，需要多客户端广播 / 断线补齐请走 `rpc` 插件的 `session.follow`；
+- **没有随附 attach 客户端**（P2 的 `attach.py` 未移植）：实时跟随可以直接用
+  `chat.py --rpc --listen N` + 任意 JSON-RPC 客户端；
 - **级联重启**：换底层插件（如 fs）会让依赖链上的 `webui` 一并退位重启
   （端口随之更换）。需要"换底层而不中断界面"时应走稳定门面（RPC 服务），
   而不是让界面硬依赖 agent；

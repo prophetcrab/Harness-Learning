@@ -11,13 +11,14 @@ P3 的**地基**：一个把"能力"全部表达为插件的 mini harness。三�
 
 ```bash
 cd P3_Coding/mini_harness
-python -m pytest -q                    # 53 用例，全离线
-python demo.py                         # 七节演示（装配 / 台账 / 对话 / resume / 热插拔 / 回卷 / 界面插件）
+python -m pytest -q                    # 66 用例，全离线
+python demo.py                         # 八节演示（装配 / 台账 / 对话 / resume / 热插拔 / 回卷 / 界面插件 / RPC）
 python chat.py --ask "帮我算 2+3"       # 离线一个 turn
 python chat.py                         # 离线交互（/web 现场装卸界面插件）
 python chat.py --web                   # ★ 界面插件：起网页，Ctrl+C 停服退出
+python chat.py --rpc --listen 8771     # ★ RPC 插件：stdio JSON-RPC + TCP 监听
 python chat.py --realtime              # 真实组合（DeepSeek + 磁盘 + 进程；需 .env）
-./run.bat                              # 一键：demo；run.bat chat / run.bat web / run.bat test
+./run.bat                              # 一键：demo；run.bat chat / run.bat web / run.bat rpc / run.bat test
 ```
 
 ## 目录
@@ -33,14 +34,16 @@ components/    纯构件（P1/P2 沉淀；不 import kernel）
   tools/         注册表 + pre/execute/post 管线 + 审批策略 + 参数模型 + 计算器
   fs/ proc/      FileSystem 与 Subprocess 接缝的实现
   agent/         主循环（turn/step + 轨迹 + 取消）
+  rpc/           换行 JSON-RPC 帧词汇 + 传输（协议线纪律）
   env.py         .env 与真实 provider 构造
 plugins/       能力插件（把构件装成 ctx 服务）
   services.py    服务名常量；events.py 事件名常量
   llm.py fs.py proc.py tools.py sessions.py prompt.py agent.py
   webui.py       ★ 界面插件（本机 HTTP；装载即起、卸载即停）
+  rpc.py         ★ RPC 插件（initialize / prompt / follow；stdio 或 TCP）
   boot.py        boot / boot_offline / boot_realtime
 webui/         界面插件的静态页面（index.html，原生 JS 零依赖）
-tests/         53 个用例（内核 21 + 插件 10 + 端到端 9 + 界面 9 + 离线模型 4）
+tests/         66 个用例（内核 21 + 插件 10 + 端到端 9 + 界面 9 + 离线模型 4 + RPC 10 + RPC 入口 3）
 chat.py demo.py run.bat run.sh conftest.py
 ```
 

@@ -20,12 +20,15 @@ PROMPT_SERVICE = "prompt"
 AGENT_SERVICE = "agent"
 #: 浏览器界面（本机 HTTP 服务；装载即起、卸载即停）。
 WEBUI_SERVICE = "webui"
+#: JSON-RPC 服务端（stdio / TCP；initialize / session.prompt / session.follow）。
+RPC_SERVICE = "rpc"
 
 __all__ = [
     "AGENT_SERVICE",
     "FS_SERVICE",
     "LLM_SERVICE",
     "PROMPT_SERVICE",
+    "RPC_SERVICE",
     "SESSIONS_SERVICE",
     "SUBPROCESS_SERVICE",
     "TOOLS_SERVICE",

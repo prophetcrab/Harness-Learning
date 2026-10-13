@@ -2,20 +2,22 @@
 
 用法：
 
-    python chat.py                      # 全离线：FakeLLM + 内存文件 + 剧本命令
+    python chat.py                      # 全离线：离线模型 + 内存文件 + 剧本命令
     python chat.py --ask "帮我算 2+3"    # 离线跑一个 turn 后退出
     python chat.py --realtime           # 真实：DeepSeek + 真实磁盘 + 真实进程
     python chat.py --realtime --ask "..."       # 同上，一次提问
     python chat.py --no-approve         # 需审批的操作自动放行（默认：终端 y/n）
     python chat.py --web                # ★ 界面插件：起网页，Ctrl+C 停服退出
     python chat.py --web --port 0       # 端口交给系统分配（URL 打印在控制台）
+    python chat.py --rpc                # ★ RPC 服务（stdio JSON-RPC；EOF 退出）
+    python chat.py --rpc --listen 8771  # RPC 服务同时监听 TCP（多客户端）
 
 会话内命令：/plugins 插件台账；/services 服务清单；/tools 工具面；
             /history 历史；/web 起/停界面插件；/exit 退出（整体卸载，可见回卷）。
 
 与 P2 的差别：装配不再是"读 YAML 配置树"，而是**直接列插件**——P3 基础包
 把"完全插件化"作为地基，配置分层（P2 `_08`/`_09`）留待后续在这个底座上重做。
-**界面也是插件**（plugins/webui.py）：装载即起服务、卸载即停服、端口释放。
+**界面与 RPC 都是插件**（plugins/webui.py、plugins/rpc.py）：装载即起、卸载即停。
 """
 
 from __future__ import annotations
@@ -66,16 +68,21 @@ def print_event(kind: str, payload: dict) -> None:
         print(f"  {mark} {payload['name']} → {text[:100]}")
 
 
-def show_ledger(booted: Booted) -> None:
-    """打印插件台账与工具面（"完全插件化"的可见性）。"""
-    print("\n插件台账：")
+def show_ledger(booted: Booted, *, stream=None) -> None:
+    """打印插件台账与工具面（"完全插件化"的可见性）。
+
+    `stream` 默认 stdout；**RPC 模式必须传 stderr**——stdout 是协议线，
+    一个字节都不许混（P2 `_10` 定下的纪律，这里靠参数落实）。
+    """
+    stream = stream if stream is not None else sys.stdout
+    print("\n插件台账：", file=stream)
     for info in booted.ctx.plugins:
         state = info.status if info.status != "active" else "active"
         inject = f"  inject={list(info.inject)}" if info.inject else ""
-        print(f"  - {info.name}  [{state}]{inject}")
-    print(f"服务：{booted.ctx.services}")
+        print(f"  - {info.name}  [{state}]{inject}", file=stream)
+    print(f"服务：{booted.ctx.services}", file=stream)
     tools = booted.ctx.require(TOOLS_SERVICE)
-    print(f"工具面（{len(tools.names)}）：{', '.join(tools.names)}")
+    print(f"工具面（{len(tools.names)}）：{', '.join(tools.names)}", file=stream)
 
 
 def start_webui(booted: Booted, *, port: int) -> str:
@@ -107,6 +114,30 @@ def serve_web(booted: Booted, *, port: int, open_browser: bool) -> int:
         print()
     stop_webui(booted)
     print("[webui] 已卸载：服务停止、端口释放")
+    return 0
+
+
+def serve_rpc(booted: Booted, *, listen: int | None) -> int:
+    """--rpc 模式：装载 RPC 插件（可选 TCP），把 stdin/stdout 当传输跑 stdio。
+
+    - stdout 是**协议线**：只出帧；banner 一律走 stderr；
+    - EOF（客户端断开）即正常收尾；TCP 模式（--listen）下服务持续到 EOF。
+    """
+    from plugins import RPC_SERVICE, rpc_plugin, serve_stdio
+
+    booted.ctx.load_plugin(rpc_plugin(listen=listen))
+    service = booted.ctx.require(RPC_SERVICE)
+    if listen is not None:
+        host, port = service.address or ("127.0.0.1", listen)
+        print(f"[rpc] TCP 正在监听 {host}:{port}（stdio 同时可用）", file=sys.stderr)
+    print("[rpc] 从 stdin 读 JSON-RPC 帧，向 stdout 写帧；EOF 退出。", file=sys.stderr)
+    try:
+        serve_stdio(service)
+    except KeyboardInterrupt:
+        print(file=sys.stderr)
+    finally:
+        booted.ctx.unload_plugin("rpc")
+        print("[rpc] 已卸载：服务停止（TCP 端口释放）", file=sys.stderr)
     return 0
 
 
@@ -169,6 +200,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--web", action="store_true", help="装载界面插件并服务到 Ctrl+C")
     parser.add_argument("--port", type=int, default=8766, help="界面端口（0 = 系统分配空闲端口）")
     parser.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
+    parser.add_argument("--rpc", action="store_true", help="装载 RPC 插件：stdio JSON-RPC 服务")
+    parser.add_argument("--listen", type=int, default=None, help="--rpc 同时监听 TCP 端口（0 = 系统分配）")
     args = parser.parse_args(argv)
 
     approval = build_approval(args)
@@ -184,11 +217,15 @@ def main(argv: list[str] | None = None) -> int:
         mode = f"真实组合（DeepSeek + {args.fs} + shell={args.shell}）"
     else:
         booted = boot_offline(root=args.root, workspace=args.workspace, approval=approval)
-        mode = "离线组合（FakeLLM + MemoryFS + 剧本命令）"
-    print(f"装配完成：{mode}")
-    show_ledger(booted)
+        mode = "离线组合（离线模型 + MemoryFS + 剧本命令）"
+    # RPC 模式：所有人类可读输出走 stderr（stdout 只出协议帧）。
+    banner_stream = sys.stderr if args.rpc else sys.stdout
+    print(f"装配完成：{mode}", file=banner_stream)
+    show_ledger(booted, stream=banner_stream)
 
     try:
+        if args.rpc:
+            return serve_rpc(booted, listen=args.listen)
         if args.web:
             return serve_web(booted, port=args.port, open_browser=not args.no_open)
         if args.ask is not None:
@@ -198,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
         return repl(booted, args.session, web_port=args.port)
     finally:
         booted.close()  # 整体卸载：一切登记物回卷（退出前看得见）
-        print(f"[退出] 插件已全部卸载；服务：{booted.ctx.services}")
+        print(f"[退出] 插件已全部卸载；服务：{booted.ctx.services}", file=banner_stream)
 
 
 if __name__ == "__main__":

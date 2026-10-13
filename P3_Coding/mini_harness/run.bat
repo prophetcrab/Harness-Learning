@@ -6,6 +6,7 @@ rem   run.bat chat               offline interactive chat
 rem   run.bat chat --realtime    real combination (DeepSeek + disk + real shell)
 rem   run.bat chat --ask "hi"    one-shot question (offline)
 rem   run.bat web                web UI plugin (offline; --realtime for real API)
+rem   run.bat rpc [--listen N]   JSON-RPC server (stdio; optional TCP)
 rem   run.bat test               run the test suite
 cd /d "%~dp0"
 
@@ -26,6 +27,12 @@ if /i "%~1"=="chat" (
 if /i "%~1"=="web" (
     shift
     "%PY%" "%~dp0chat.py" --web %1 %2 %3 %4 %5 %6 %7 %8
+    goto :done
+)
+
+if /i "%~1"=="rpc" (
+    shift
+    "%PY%" "%~dp0chat.py" --rpc %1 %2 %3 %4 %5 %6 %7 %8
     goto :done
 )
 

@@ -7,6 +7,8 @@
     turn/start     一个 turn 开始（payload: session, turn, text）
     turn/end       一个 turn 结束（payload: session, turn, status, steps, final_text）
     session/opened 会话被打开（payload: session, resumed, repaired）
+    session/event  会话**追加了一条事件**（payload: session, record）——每条一推，
+                   RPC `session.follow` 的推送源（sessions 插件的 ObservableSession 发）
     loop/event     主循环的原始事件（payload: session, kind, payload）
 
 **瀑布**（`ctx.waterfall`，可改写值；handler 用 `(value, **context)` 接，返回非 None 即替换）
@@ -34,6 +36,7 @@ LLM_RESPONSE = "llm/response"
 TURN_START = "turn/start"
 TURN_END = "turn/end"
 SESSION_OPENED = "session/opened"
+SESSION_EVENT = "session/event"
 LOOP_EVENT = "loop/event"  # 主循环的原始事件（kind + payload），观测用
 
 # 瀑布
@@ -45,6 +48,7 @@ __all__ = [
     "LLM_RESPONSE",
     "LOOP_EVENT",
     "PROMPT_VARIABLES",
+    "SESSION_EVENT",
     "SESSION_OPENED",
     "TURN_END",
     "TURN_START",

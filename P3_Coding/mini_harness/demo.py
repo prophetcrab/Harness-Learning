@@ -1,6 +1,6 @@
 """demo.py —— 全离线演示：插件化 harness 的一生（装载 → 对话 → 回卷）。
 
-七节，全部离线（FakeLLM + MemoryFS + 剧本命令，零副作用、不需要 key）：
+八节，全部离线（离线模型 + MemoryFS + 剧本命令，零副作用、不需要 key）：
 
     0) 装载：插件列表 → ctx（顺序打乱也能装配 —— inject 驱动）
     1) 台账：插件 / 服务 / 工具面（谁提供什么，一眼可读）
@@ -9,6 +9,7 @@
     4) 热插拔：运行时换 fs 插件（依赖者自动停用/重新激活）
     5) 卸载：整体回卷（服务归零；这就是"注册即 effect"）
     6) 界面也是插件：装载即起服务（端口可用）→ 卸载即停服（端口释放）
+    7) RPC 也是插件：握手 → prompt → follow（重放 + 订阅，事件流实时生长）
 
 运行：python demo.py            （--keep 保留 demo_run 目录供翻看）
 """
@@ -16,11 +17,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 from pathlib import Path
 
 from components.llm import text_reply, tool_call_reply
+from components.rpc import LineTransport
 from plugins import (
+    RPC_SERVICE,
     WEBUI_SERVICE,
     AgentPlugin,
     Booted,
@@ -31,6 +35,7 @@ from plugins import (
     fake_llm_plugin,
     local_fs_plugin,
     memory_fs_plugin,
+    rpc_plugin,
 )
 
 HERE = Path(__file__).resolve().parent
@@ -182,6 +187,67 @@ def section_6(root: Path, workspace: Path) -> None:
     booted.close()
 
 
+def section_7(root: Path, workspace: Path) -> None:
+    banner("7) RPC 也是插件：握手 → prompt → follow（重放 + 订阅）")
+    import io
+
+    booted = boot_offline(root=root, workspace=workspace, script=[text_reply("RPC 里的回答。")])
+    booted.ctx.load_plugin(rpc_plugin())  # stdio 模式：不起端口，传输由入口驱动
+    service = booted.ctx.require(RPC_SERVICE)
+
+    out = io.StringIO()
+    transport = LineTransport(io.StringIO(""), out, service)
+
+    def call(method: str, params: dict, id: int) -> None:
+        transport.handle_line(json.dumps({"jsonrpc": "2.0", "id": id, "method": method, "params": params}))
+
+    def last() -> dict:
+        return json.loads(out.getvalue().strip().splitlines()[-1])
+
+    call("session.prompt", {"session": "rpc-demo", "text": "握手前调用"}, 1)
+    print(f"  未握手就 prompt → 错误码 {last()['error']['code']}（-32002 NOT_INITIALIZED）")
+
+    call("initialize", {}, 2)
+    caps = last()["result"]
+    print(f"  握手 → {caps['server']['name']} v{caps['server']['version']}，"
+          f"方法 {caps['capabilities']['methods']}，工具面 {len(caps['capabilities']['tools'])} 件")
+
+    call("session.follow", {"session": "rpc-demo", "from_seq": 0}, 3)
+    print(f"  follow（空会话）→ {last()['result']}")
+
+    def event_count() -> int:
+        return len(
+            [line for line in out.getvalue().strip().splitlines() if "session.event" in line]
+        )
+
+    call("session.prompt", {"session": "rpc-demo", "text": "第一问"}, 4)
+    first = last()["result"]
+    total = event_count()
+    print(f"  prompt → turn={first['turn']} status={first['status']}；"
+          f"订阅者实时收到 {total} 条 session.event（长 turn 中边跑边推）")
+
+    max_seq = max(
+        json.loads(line)["params"]["seq"]
+        for line in out.getvalue().strip().splitlines()
+        if "session.event" in line
+    )
+    fresh = io.StringIO()
+    t2 = LineTransport(io.StringIO(""), fresh, service)
+    t2.handle_line(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}))
+    t2.handle_line(json.dumps(
+        {"jsonrpc": "2.0", "id": 2, "method": "session.follow",
+         "params": {"session": "rpc-demo", "from_seq": max_seq}}
+    ))
+    print(f"  重连（from_seq={max_seq}）→ {json.loads(fresh.getvalue().strip().splitlines()[-1])['result']}"
+          "（不重不漏：补缺靠重放日志，不靠缓存）")
+
+    transport.serve_forever()  # reader 为空 → EOF → 注销该连接的订阅
+    print(f"  连接 1 断开后订阅数：{service.subscription_count}（连接 2 仍在）")
+    booted.ctx.unload_plugin("rpc")
+    print(f"  卸载 rpc 插件 → 服务：{booted.ctx.services}")
+    booted.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="demo.py", description="P3 插件化 harness 全离线演示")
     parser.add_argument("--keep", action="store_true", help="保留 demo_run 目录")
@@ -200,6 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     section_4(root, workspace)
     section_5(root, workspace)
     section_6(root, workspace)
+    section_7(root, workspace)
 
     banner("完成")
     print(f"  {'保留' if args.keep else '清理'} demo_run：{RUN_DIR}")
