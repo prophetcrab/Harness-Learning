@@ -23,7 +23,7 @@ from components.tools import ApprovalPolicy
 from kernel import Context
 from plugins.agent import AgentPlugin, AgentService
 from plugins.fs import jail_fs_plugin, local_fs_plugin, memory_fs_plugin
-from plugins.llm import deepseek_llm_plugin, fake_llm_plugin
+from plugins.llm import deepseek_llm_plugin, fake_llm_plugin, offline_llm_plugin
 from plugins.proc import local_proc_plugin, scripted_proc_plugin
 from plugins.prompt import PromptPlugin
 from plugins.services import AGENT_SERVICE
@@ -85,16 +85,18 @@ def boot_offline(
     max_steps: int = 8,
     script: list | None = None,
 ) -> Booted:
-    """全离线装配：FakeLLM + 内存文件系统 + 剧本命令。
+    """全离线装配：离线模型 + 内存文件系统 + 剧本命令。
 
     - root：会话日志根目录；workspace：文件工具的工作区（内存实现下只是
       "相对路径的根"，不落盘）；
-    - script：FakeLLM 的剧本（缺省一条简短回答）；测试按需给多步剧本。
+    - script：给了 → **严格剧本**（FakeLLM，用完还调就报错；测试用）；
+      没给 → **固定回复、不限轮数**（交互界面/长演示用，人聊多少轮都答得上）。
     """
     Path(workspace).mkdir(parents=True, exist_ok=True)
+    llm = fake_llm_plugin(script) if script is not None else offline_llm_plugin()
     return boot(
         plugins=[
-            fake_llm_plugin(script),
+            llm,
             memory_fs_plugin(),
             scripted_proc_plugin(),
             SessionsPlugin(root),

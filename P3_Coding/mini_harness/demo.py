@@ -1,6 +1,6 @@
 """demo.py —— 全离线演示：插件化 harness 的一生（装载 → 对话 → 回卷）。
 
-六节，全部离线（FakeLLM + MemoryFS + 剧本命令，零副作用、不需要 key）：
+七节，全部离线（FakeLLM + MemoryFS + 剧本命令，零副作用、不需要 key）：
 
     0) 装载：插件列表 → ctx（顺序打乱也能装配 —— inject 驱动）
     1) 台账：插件 / 服务 / 工具面（谁提供什么，一眼可读）
@@ -8,6 +8,7 @@
     3) 日志：append-only 事件 + 落盘 + resume（重开进程续聊）
     4) 热插拔：运行时换 fs 插件（依赖者自动停用/重新激活）
     5) 卸载：整体回卷（服务归零；这就是"注册即 effect"）
+    6) 界面也是插件：装载即起服务（端口可用）→ 卸载即停服（端口释放）
 
 运行：python demo.py            （--keep 保留 demo_run 目录供翻看）
 """
@@ -20,6 +21,7 @@ from pathlib import Path
 
 from components.llm import text_reply, tool_call_reply
 from plugins import (
+    WEBUI_SERVICE,
     AgentPlugin,
     Booted,
     PromptPlugin,
@@ -142,6 +144,44 @@ def section_5(root: Path, workspace: Path) -> None:
     print("  → 每样登记物都被各自的 effect 回卷；没有任何残留。")
 
 
+def section_6(root: Path, workspace: Path) -> None:
+    banner("6) 界面也是插件：装载即起服务 → 卸载即停服（端口释放）")
+    import socket
+    import urllib.request
+
+    from plugins import webui_plugin
+
+    booted = boot_offline(root=root, workspace=workspace, script=[text_reply("你好，我是界面里的回答。")])
+
+    # 装载：端口交给系统分配（port=0），真实地址从 `webui` 服务里取。
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    url = booted.ctx.require(WEBUI_SERVICE).url
+    print(f"  装载 webui 插件 → {url}")
+    print(f"  活跃插件：{booted.ctx.active_plugins}")
+
+    with urllib.request.urlopen(url + "api/ledger", timeout=5) as response:
+        import json
+
+        ledger = json.load(response)
+    print(f"  GET /api/ledger：{len(ledger['plugins'])} 个插件、"
+          f"{len(ledger['services'])} 个服务、{len(ledger['tools'])} 件工具")
+    print(f"  页面上看得到：{'、'.join(p['name'] for p in ledger['plugins'])}")
+
+    port = booted.ctx.require(WEBUI_SERVICE).port
+
+    def port_open() -> bool:
+        with socket.socket() as probe:
+            probe.settimeout(0.5)
+            return probe.connect_ex(("127.0.0.1", port)) == 0
+
+    print(f"  卸载前端口 {port} 可用：{port_open()}")
+    booted.ctx.unload_plugin("webui")
+    print(f"  卸载 webui 插件 → 活跃：{booted.ctx.active_plugins}")
+    print(f"  卸载后端口 {port} 可用：{port_open()}（服务停止、端口释放，无残留）")
+    print(f"  服务：{booted.ctx.services}")
+    booted.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="demo.py", description="P3 插件化 harness 全离线演示")
     parser.add_argument("--keep", action="store_true", help="保留 demo_run 目录")
@@ -159,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     section_3(root, workspace)
     section_4(root, workspace)
     section_5(root, workspace)
+    section_6(root, workspace)
 
     banner("完成")
     print(f"  {'保留' if args.keep else '清理'} demo_run：{RUN_DIR}")

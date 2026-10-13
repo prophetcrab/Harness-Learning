@@ -7,12 +7,15 @@
     python chat.py --realtime           # 真实：DeepSeek + 真实磁盘 + 真实进程
     python chat.py --realtime --ask "..."       # 同上，一次提问
     python chat.py --no-approve         # 需审批的操作自动放行（默认：终端 y/n）
+    python chat.py --web                # ★ 界面插件：起网页，Ctrl+C 停服退出
+    python chat.py --web --port 0       # 端口交给系统分配（URL 打印在控制台）
 
 会话内命令：/plugins 插件台账；/services 服务清单；/tools 工具面；
-            /history 历史；/exit 退出（整体卸载插件，可见回卷）。
+            /history 历史；/web 起/停界面插件；/exit 退出（整体卸载，可见回卷）。
 
 与 P2 的差别：装配不再是"读 YAML 配置树"，而是**直接列插件**——P3 基础包
 把"完全插件化"作为地基，配置分层（P2 `_08`/`_09`）留待后续在这个底座上重做。
+**界面也是插件**（plugins/webui.py）：装载即起服务、卸载即停服、端口释放。
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ import sys
 from pathlib import Path
 
 from components.tools import ApprovalPolicy, PromptApprover
-from plugins import TOOLS_SERVICE, Booted, boot_offline, boot_realtime
+from plugins import TOOLS_SERVICE, WEBUI_SERVICE, Booted, boot_offline, boot_realtime
 
 HERE = Path(__file__).resolve().parent
 PROJECT_ROOT = HERE.parents[1]  # 项目根（.env 所在处）
@@ -75,8 +78,40 @@ def show_ledger(booted: Booted) -> None:
     print(f"工具面（{len(tools.names)}）：{', '.join(tools.names)}")
 
 
-def repl(booted: Booted, session_id: str) -> int:
-    """交互循环：一条输入 = 一个 turn。"""
+def start_webui(booted: Booted, *, port: int) -> str:
+    """装载界面插件并返回它的 URL（装载即起服务）。"""
+    from plugins import webui_plugin
+
+    booted.ctx.load_plugin(webui_plugin(port=port))
+    return booted.ctx.require(WEBUI_SERVICE).url
+
+
+def stop_webui(booted: Booted) -> None:
+    """卸载界面插件（卸载即停服、端口释放）。"""
+    booted.ctx.unload_plugin("webui")
+
+
+def serve_web(booted: Booted, *, port: int, open_browser: bool) -> int:
+    """--web 模式：起界面插件 → 打印地址 → 阻塞到 Ctrl+C → 停服。"""
+    url = start_webui(booted, port=port)
+    print(f"\n界面插件已装载：{url}")
+    print("  （插件台账见页面左栏；对话与事件流实时更新；Ctrl+C 停服退出）")
+    if open_browser:
+        import webbrowser
+
+        webbrowser.open(url)
+    try:
+        while True:
+            input()  # 回车/Ctrl+C 都用来退出；Ctrl+C 走 except
+    except (KeyboardInterrupt, EOFError):
+        print()
+    stop_webui(booted)
+    print("[webui] 已卸载：服务停止、端口释放")
+    return 0
+
+
+def repl(booted: Booted, session_id: str, *, web_port: int = 8766) -> int:
+    """交互循环：一条输入 = 一个 turn；`/web` 现场装卸界面插件。"""
     opened = booted.agent.open(session_id, on_event=print_event)
     if opened.repaired:
         print("[提示] 上次会话被强杀，日志尾部已自动修复。")
@@ -105,6 +140,13 @@ def repl(booted: Booted, session_id: str) -> int:
                 head = (message.content or "").replace("\n", " ")[:70]
                 print(f"  [{message.role}] {head}")
             continue
+        if text == "/web":
+            if "webui" in booted.ctx.active_plugins:
+                stop_webui(booted)
+                print("  [webui] 已卸载（服务停止、端口释放）")
+            else:
+                print(f"  [webui] {start_webui(booted, port=web_port)}")
+            continue
         result = booted.agent.ask(text, session_id=session_id)
         print(f"助手：{result.final_text}")
         if result.status != "done":
@@ -124,6 +166,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--shell", choices=("local", "none"), default="local", help="--realtime 是否装 shell")
     parser.add_argument("--no-approve", action="store_true", help="需审批操作自动放行")
     parser.add_argument("--deny", action="store_true", help="禁止一切需审批操作")
+    parser.add_argument("--web", action="store_true", help="装载界面插件并服务到 Ctrl+C")
+    parser.add_argument("--port", type=int, default=8766, help="界面端口（0 = 系统分配空闲端口）")
+    parser.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
     args = parser.parse_args(argv)
 
     approval = build_approval(args)
@@ -144,11 +189,13 @@ def main(argv: list[str] | None = None) -> int:
     show_ledger(booted)
 
     try:
+        if args.web:
+            return serve_web(booted, port=args.port, open_browser=not args.no_open)
         if args.ask is not None:
             result = booted.agent.ask(args.ask, session_id=args.session)
             print(f"\n助手：{result.final_text}")
             return 0 if result.status == "done" else 1
-        return repl(booted, args.session)
+        return repl(booted, args.session, web_port=args.port)
     finally:
         booted.close()  # 整体卸载：一切登记物回卷（退出前看得见）
         print(f"[退出] 插件已全部卸载；服务：{booted.ctx.services}")

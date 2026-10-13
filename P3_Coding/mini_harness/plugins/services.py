@@ -18,6 +18,8 @@ SESSIONS_SERVICE = "sessions"
 PROMPT_SERVICE = "prompt"
 #: agent 服务（对外入口：ask 一个 turn）。
 AGENT_SERVICE = "agent"
+#: 浏览器界面（本机 HTTP 服务；装载即起、卸载即停）。
+WEBUI_SERVICE = "webui"
 
 __all__ = [
     "AGENT_SERVICE",
@@ -27,4 +29,5 @@ __all__ = [
     "SESSIONS_SERVICE",
     "SUBPROCESS_SERVICE",
     "TOOLS_SERVICE",
+    "WEBUI_SERVICE",
 ]

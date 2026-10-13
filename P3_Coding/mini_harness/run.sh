@@ -3,6 +3,7 @@
 #   bash run.sh                    offline demo (FakeLLM + MemoryFS + scripted shell)
 #   bash run.sh chat               offline interactive chat
 #   bash run.sh chat --realtime    real combination (DeepSeek + disk + real shell)
+#   bash run.sh web                web UI plugin (add --realtime for real API)
 #   bash run.sh test               run the test suite
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -22,6 +23,10 @@ case "${1:-}" in
   chat)
     shift
     "$PY" chat.py "$@"
+    ;;
+  web)
+    shift
+    "$PY" chat.py --web "$@"
     ;;
   test)
     "$PY" -m pytest -q

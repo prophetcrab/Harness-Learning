@@ -16,6 +16,7 @@
     sessions   提供 `sessions`（打开即恢复 + 崩溃修复 + 分叉）
     prompt     提供 `prompt`（section 装配 + 变量瀑布 + 装配单）
     agent      提供 `agent`（会话管理：ask 一个 turn；inject 以上四个）
+    webui      提供 `webui`（浏览器界面；inject agent/sessions；装载即起、卸载即停）
 
 装配入口在 boot.py：`boot_offline` / `boot_realtime` / `boot`。
 """
@@ -32,7 +33,14 @@ from plugins.events import (
     TURN_START,
 )
 from plugins.fs import FsPlugin, jail_fs_plugin, local_fs_plugin, memory_fs_plugin
-from plugins.llm import LlmPlugin, deepseek_llm_plugin, fake_llm_plugin
+from plugins.llm import (
+    OFFLINE_DEMO_REPLY,
+    LlmPlugin,
+    RepeatingLLM,
+    deepseek_llm_plugin,
+    fake_llm_plugin,
+    offline_llm_plugin,
+)
 from plugins.proc import ProcPlugin, local_proc_plugin, scripted_proc_plugin
 from plugins.prompt import PromptPlugin, PromptService
 from plugins.services import (
@@ -43,9 +51,11 @@ from plugins.services import (
     SESSIONS_SERVICE,
     SUBPROCESS_SERVICE,
     TOOLS_SERVICE,
+    WEBUI_SERVICE,
 )
 from plugins.sessions import SessionsPlugin, SessionsService
 from plugins.tools import ToolsPlugin
+from plugins.webui import WebUiPlugin, WebUiService, webui_plugin
 
 __all__ = [
     "AGENT_SERVICE",
@@ -54,6 +64,7 @@ __all__ = [
     "LLM_RESPONSE",
     "LLM_SERVICE",
     "LOOP_EVENT",
+    "OFFLINE_DEMO_REPLY",
     "PROMPT_SERVICE",
     "PROMPT_VARIABLES",
     "SESSIONS_SERVICE",
@@ -62,6 +73,7 @@ __all__ = [
     "TOOLS_SERVICE",
     "TURN_END",
     "TURN_START",
+    "WEBUI_SERVICE",
     "AgentPlugin",
     "AgentService",
     "Booted",
@@ -71,9 +83,12 @@ __all__ = [
     "ProcPlugin",
     "PromptPlugin",
     "PromptService",
+    "RepeatingLLM",
     "SessionsPlugin",
     "SessionsService",
     "ToolsPlugin",
+    "WebUiPlugin",
+    "WebUiService",
     "boot",
     "boot_offline",
     "boot_realtime",
@@ -83,5 +98,7 @@ __all__ = [
     "local_fs_plugin",
     "local_proc_plugin",
     "memory_fs_plugin",
+    "offline_llm_plugin",
     "scripted_proc_plugin",
+    "webui_plugin",
 ]

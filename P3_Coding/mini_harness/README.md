@@ -11,12 +11,13 @@ P3 的**地基**：一个把"能力"全部表达为插件的 mini harness。三�
 
 ```bash
 cd P3_Coding/mini_harness
-python -m pytest -q                    # 40 用例，全离线
-python demo.py                         # 六节演示（装配 / 台账 / 对话 / resume / 热插拔 / 回卷）
+python -m pytest -q                    # 53 用例，全离线
+python demo.py                         # 七节演示（装配 / 台账 / 对话 / resume / 热插拔 / 回卷 / 界面插件）
 python chat.py --ask "帮我算 2+3"       # 离线一个 turn
-python chat.py                         # 离线交互
+python chat.py                         # 离线交互（/web 现场装卸界面插件）
+python chat.py --web                   # ★ 界面插件：起网页，Ctrl+C 停服退出
 python chat.py --realtime              # 真实组合（DeepSeek + 磁盘 + 进程；需 .env）
-./run.bat                              # 一键：demo；run.bat chat / run.bat test
+./run.bat                              # 一键：demo；run.bat chat / run.bat web / run.bat test
 ```
 
 ## 目录
@@ -36,8 +37,10 @@ components/    纯构件（P1/P2 沉淀；不 import kernel）
 plugins/       能力插件（把构件装成 ctx 服务）
   services.py    服务名常量；events.py 事件名常量
   llm.py fs.py proc.py tools.py sessions.py prompt.py agent.py
+  webui.py       ★ 界面插件（本机 HTTP；装载即起、卸载即停）
   boot.py        boot / boot_offline / boot_realtime
-tests/         40 个用例（内核 21 + 插件 10 + 端到端 9）
+webui/         界面插件的静态页面（index.html，原生 JS 零依赖）
+tests/         53 个用例（内核 21 + 插件 10 + 端到端 9 + 界面 9 + 离线模型 4）
 chat.py demo.py run.bat run.sh conftest.py
 ```
 
@@ -82,3 +85,24 @@ class ClockPlugin:
 
 装载：`ctx.load_plugin(ClockPlugin())`；或走进 `boot(plugins=[...])`。
 卸载：`ctx.unload_plugin("clock")`——服务、订阅一起回卷。
+
+## 界面插件（webui）
+
+`plugins/webui.py` 把"浏览器界面"做成了插件——它比多数能力更能说明 effect 的价值：
+HTTP 服务天然带生命周期（线程 + 端口），而"卸载时把端口干净地放掉"正是 disposer
+的用武之地。
+
+```python
+ctx.load_plugin(webui_plugin(port=0))   # 装载：起服务；port=0 由系统分配空闲端口
+ctx.require("webui").url               # → http://127.0.0.1:<port>/
+ctx.unload_plugin("webui")             # 卸载：shutdown + join + 端口释放，零残留
+```
+
+页面三栏：**插件台账**（每个插件的 status 与 inject）、对话（NDJSON 流式推事件）、
+**append-only 事件流**。API：`/api/ledger`、`/api/sessions`、
+`/api/sessions/<id>/events`、`POST /api/sessions/<id>/send`。
+
+三条实现纪律：**生命周期只在主线程**（内核无锁）；服务线程只调服务、不改 ctx；
+**跑 turn 用一把锁串行化**（agent 的会话缓存不是线程安全的，多标签页同时提问
+会踩）。已知边界：只绑本机、无鉴权；事件流只推给发起的那个客户端。
+
