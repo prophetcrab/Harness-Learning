@@ -157,10 +157,14 @@ class AgentService:
 
         # 3) 事件流：先落日志（唯一真相），再给观察者，再广播到内核事件总线。
         recorder = SessionRecorder(session)
-        observer = self._observers.get(session_id)
 
         def sink(kind: str, payload: dict) -> None:
             recorder(kind, payload)
+            # 观察者**每步现取**（不在这里捕获）：观察者是"当前这个 turn 的发起方"
+            # （如界面某次请求的推流器），会随每个 turn 更换。曾经在这里捕获
+            # 第一次打开时的观察者——第二轮起就会往**已经关掉的旧连接**上推流，
+            # 写死套接字抛 OSError 把 turn 打断（"只聊了一轮就死"的根因）。
+            observer = self._observers.get(session_id)
             if observer is not None:
                 observer(kind, payload)
             self._ctx.emit(LOOP_EVENT, session=session_id, kind=kind, payload=payload)

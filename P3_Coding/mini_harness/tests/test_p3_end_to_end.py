@@ -131,6 +131,40 @@ def test_prompt_trace_in_log_rebuilds_recorded_text(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
+# 观察者与多轮（根因级回归）
+# ---------------------------------------------------------------------------
+
+
+def test_observer_is_resolved_per_turn_not_captured_at_open(tmp_path: Path):
+    """观察者是"每轮现取"：换观察者后，事件必须落在**当前**观察者上。
+
+    根因级回归（"只聊一轮就死"）：sink 曾在会话首次打开时捕获观察者，
+    第二轮起事件被推给第一轮留下的旧观察者（现实中是已关闭的 HTTP 连接），
+    写死套接字抛 OSError 打断整轮。这里在两个 turn 之间更换观察者并断言归属。
+    """
+    booted = _offline(tmp_path, [text_reply("第一"), text_reply("第二"), text_reply("第三")])
+    first_calls: list[str] = []
+    second_calls: list[str] = []
+
+    booted.agent.open("s1", on_event=lambda kind, payload: first_calls.append(kind))
+    booted.agent.ask("第一问", session_id="s1")
+    assert "turn_start" in first_calls and "turn_end" in first_calls
+
+    booted.agent.open("s1", on_event=lambda kind, payload: second_calls.append(kind))
+    booted.agent.ask("第二问", session_id="s1")
+
+    # 第二轮的每个事件都给了新观察者；旧观察者从换人那一刻起不再增长。
+    assert "turn_start" in second_calls and "turn_end" in second_calls
+    assert first_calls.count("turn_end") == 1  # 只有第一轮那一次
+    assert second_calls.count("turn_end") == 1
+
+    booted.agent.ask("第三问", session_id="s1")
+    assert second_calls.count("turn_end") == 2  # 第三轮仍在"当前"观察者
+    assert first_calls.count("turn_end") == 1  # 旧观察者没有再收到
+    booted.close()
+
+
+# ---------------------------------------------------------------------------
 # 热插拔与回卷
 # ---------------------------------------------------------------------------
 

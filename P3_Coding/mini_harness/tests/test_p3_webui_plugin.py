@@ -124,6 +124,40 @@ def test_ledger_reports_plugins_services_and_tools(tmp_path: Path):
     booted.close()
 
 
+def test_two_consecutive_turns_on_same_session(tmp_path: Path):
+    """同一会话连发两条，第二轮的 turn 必须能跑完。
+
+    曾经的回归（"只聊了一轮就死"）：AgentLoop 的 sink 在**首次打开会话时**
+    捕获了观察者（第一轮请求的推流器，绑定在第一个 HTTP 连接上）。第一轮结束
+    后连接被关；第二轮起，事件在记录完 turn/start + user/message 后就被推给
+    那个**已关闭的旧套接字**，写死套接字抛 OSError，把整轮打断——于是每一轮
+    都停在同一个位置。这个用例用真实 HTTP 连发两轮把它钉住。
+    """
+    booted = _boot(tmp_path, [text_reply("第一轮回答"), text_reply("第二轮回答")])
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    url = booted.ctx.require(WEBUI_SERVICE).url
+
+    first = _post_ndjson(url + "api/sessions/same/send", {"text": "第一问"})
+    assert first[-1]["kind"] == "__done"
+    assert first[-1]["payload"]["turn"] == 1
+
+    second = _post_ndjson(url + "api/sessions/same/send", {"text": "第二问"})
+    assert second[-1]["kind"] == "__done", f"第二轮应跑完，实际：{second[-1]}"
+    assert second[-1]["payload"]["turn"] == 2
+    assert second[-1]["payload"]["final_text"] == "第二轮回答"
+    # 第二轮的事件也要**实时推给当轮的那个连接**（修前：被推给第一轮的旧连接）
+    kinds = [frame["kind"] for frame in second]
+    assert "turn_start" in kinds and "step_response" in kinds and "turn_end" in kinds
+
+    # 两条 turn/end 都在日志里（没有半截 turn）
+    _, detail = _get(url + "api/sessions/same/events")
+    types = [event["type"] for event in detail["events"]]
+    assert types.count("turn/start") == 2 and types.count("turn/end") == 2
+
+    booted.ctx.unload_plugin("webui")
+    booted.close()
+
+
 def test_sessions_and_event_api_reflect_turns(tmp_path: Path):
     booted = _boot(
         tmp_path,

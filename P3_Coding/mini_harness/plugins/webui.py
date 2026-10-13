@@ -233,8 +233,11 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
             try:
                 self.wfile.write(line.encode("utf-8") + b"\n")
                 self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError):
-                self._alive = False  # 客户端走了：不再写，但让 turn 跑完
+            except (OSError, ValueError):
+                # 客户端走了/连接已收尾：不再写，但让 turn 跑完。
+                # OSError 覆盖 WinError 10038/10053/10054 等各平台断线错误；
+                # ValueError = 底层文件已关闭（请求处理结束后 wfile 被关）。
+                self._alive = False
 
     return Handler
 
