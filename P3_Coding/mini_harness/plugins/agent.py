@@ -30,7 +30,6 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from components.agent import AgentLoop, TurnResult
-from components.goal import GOAL_ROUND_SOURCE
 from components.llm import LLMProvider
 from components.prompt import PromptRenderer
 from components.prompt.provider import RuntimePromptProvider
@@ -43,8 +42,6 @@ from plugins.services import (
     AGENT_SERVICE,
     APPROVAL_SERVICE,
     COMPACTER_SERVICE,
-    CONTINUATION_SERVICE,
-    GOALS_SERVICE,
     LLM_SERVICE,
     PROMPT_SERVICE,
     SESSIONS_SERVICE,
@@ -84,14 +81,9 @@ class HarnessSession:
         """当前模型历史（由日志投影而来——权威视图）。"""
         return self.session.derive_messages()
 
-    def ask(self, text: str, *, source: str = "human") -> TurnResult:
-        """跑一个 turn：一条用户输入排空到最终回答。
-
-        `source` 进 `user/message` 事件（`_06`）：`"human"` 是真人说的，
-        `"goal-round"` 是目标续跑自动替真人说的——**区分开是为了让目标折叠
-        能数清"跑了几轮"**（只有续跑算轮次，人插话不算）。
-        """
-        return self.loop.run(text, tools=self.registry.specs(), source=source)
+    def ask(self, text: str) -> TurnResult:
+        """跑一个 turn：一条用户输入排空到最终回答。"""
+        return self.loop.run(text, tools=self.registry.specs())
 
     def compact(self) -> Any | None:
         """手动压缩一次（`/compact`）：跳过阈值、保住最后一轮，返回结果或 None。
@@ -229,24 +221,9 @@ class AgentService:
     # ------------------------------------------------------------------
 
     def ask(self, text: str, session_id: str = "default") -> TurnResult:
-        """跑一个 turn：打开（或恢复）会话 → 排空输入 → 返回结果（全程持锁）。
-
-        **目标续跑（`_06`）在这里发生**：一轮跑完之后问一次续跑闸门
-        （`goal.continuation` 服务，没装 goal 插件时不存在 → 一轮就结束，
-        行为与 `_05` 完全一致）。闸门说该续，就自动再跑一轮。
-
-        为什么放在这一层而不是循环里：循环只认识"一个 turn"，
-        **"要不要再开一个 turn"是会话级的决策**——而会话归 `AgentService` 管。
-        放这里的好处是两个入口（REPL / 网页）都自动获得续跑，一处都不用改。
-        """
+        """跑一个 turn：打开（或恢复）会话 → 排空输入 → 返回结果（全程持锁）。"""
         with self._lock:
             opened = self._open_locked(session_id)
-            # 人工入口：重置续跑记账（这是"新一轮"的唯一定义处；续跑的 turn
-            # 走 _continue_goal_rounds，不经过这里）。
-            continuation = self._ctx.get(CONTINUATION_SERVICE)
-            if continuation is not None:
-                continuation.begin(session_id)
-            self._tell_goal_service(session_id)
             self._ctx.emit(
                 TURN_START,
                 session=session_id,
@@ -262,49 +239,7 @@ class AgentService:
                 steps=len(result.steps),
                 final_text=result.final_text,
             )
-            return self._continue_goal_rounds(session_id, result)
-
-    def _tell_goal_service(self, session_id: str) -> None:
-        """告诉目标服务"现在跑的是哪个会话"——模型工具是全局的，目标要落到
-        这次对话的日志里（见 plugins/goal.py 的 `session_of_record`）。
-        可选依赖：没装 goal 插件时静默跳过。"""
-        goals = self._ctx.get(GOALS_SERVICE)
-        if goals is not None and hasattr(goals, "set_current_session"):
-            goals.set_current_session(session_id)
-
-    def _continue_goal_rounds(self, session_id: str, result: TurnResult) -> TurnResult:
-        """目标处于 active 且还有预算时，自动续跑（见 plugins/goal.py 的三道闸门）。
-
-        每轮续跑走的仍是 `ask` 的完整路径（日志、事件、投影都一样）——
-        区别只在用户消息带 `source="goal-round"` 标记，目标折叠靠它数轮次。
-
-        返回**最后一轮**的结果（调用方看到的是"最终停在哪儿"）。
-        """
-        continuation = self._ctx.get(CONTINUATION_SERVICE)
-        if continuation is None:
             return result
-        while True:  # noqa: SIM110 - 每轮都要重新问一次闸门
-            prompt = continuation.should_continue(session_id)
-            if prompt is None:
-                return result
-            opened = self._open_locked(session_id)
-            self._tell_goal_service(session_id)
-            self._ctx.emit(
-                TURN_START,
-                session=session_id,
-                turn=opened.session.last_turn_number + 1,
-                text=prompt,
-            )
-            # 续跑的消息要带来源标记：投影与日志都照常，只有折叠知道它是"续跑"
-            result = opened.ask(prompt, source=GOAL_ROUND_SOURCE)
-            self._ctx.emit(
-                TURN_END,
-                session=session_id,
-                turn=result.turn,
-                status=result.status,
-                steps=len(result.steps),
-                final_text=result.final_text,
-            )
 
     def compact(self, session_id: str = "default") -> Any | None:
         """手动压缩一次（`/compact`）：打开（或恢复）会话 → 立即折叠历史。

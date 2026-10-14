@@ -788,11 +788,9 @@ def test_command_menu_is_declarative_not_a_dedicated_button(tmp_path: Path):
     assert "function cmdCandidates(" in js      # 前缀过滤
     assert "function renderCmdMenu(" in js      # 弹菜单
     assert "function runCommand(" in js         # 执行
-    assert 'name: "/goal"' in js                # `_06` 新增的带子参数命令
     for key in ("ArrowDown", "ArrowUp", "Tab", "Escape"):   # 键盘契约
         assert key in js, f"键盘支持缺少 {key}"
-    assert "COMMANDS.find(" in js and "c.name === text" in js   # 命令名直接执行
-    assert "takesArgs" in js                    # `_06`：带子参数的命令
+    assert "COMMANDS.find((c) => c.name === text)" in js     # 完整命令名直接执行
     booted.close()
 
 

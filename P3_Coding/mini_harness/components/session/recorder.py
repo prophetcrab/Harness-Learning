@@ -43,13 +43,7 @@ class SessionRecorder:
         if kind == "turn_start":
             self._session.append("turn/start", {"turn": payload["turn"]})
             # 用户消息单独落一条 user/message —— 投影靠它产生 user 消息。
-            # source（`_06`）：谁说的——human / goal-round；缺省即 human，
-            # 所以 `_05` 及以前的日志原样可读。
-            data: dict[str, Any] = {"content": payload["user"]}
-            source = payload.get("source")
-            if source and source != "human":
-                data["source"] = source
-            self._session.append("user/message", data)
+            self._session.append("user/message", {"content": payload["user"]})
         elif kind == "step_request":
             self._session.append(
                 "step/start",

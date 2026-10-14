@@ -26,7 +26,6 @@ from plugins.agent import AgentPlugin, AgentService
 from plugins.compact import compact_plugin
 from plugins.context_meter import context_meter_plugin
 from plugins.fs import jail_fs_plugin, local_fs_plugin, memory_fs_plugin
-from plugins.goal import goal_plugin
 from plugins.llm import deepseek_llm_plugin, fake_llm_plugin, offline_llm_plugin
 from plugins.proc import local_proc_plugin, scripted_proc_plugin
 from plugins.prompt import PromptPlugin
@@ -120,7 +119,6 @@ def boot_offline(
     plugins.append(token_usage_plugin())   # `_03`：用量账本 + 用量页面（8767）
     plugins.append(context_meter_plugin(capacity=context_window))  # `_04`：仪表（8768）
     plugins.append(compact_plugin(capacity=context_window))        # `_05`：压缩
-    plugins.append(goal_plugin())                                  # `_06`：目标
     if self_tools:
         # 装了自扩展工具就一并装浏览器审批：装卸/安装类操作要有人点头，
         # 没有终端可问时由界面弹卡片（无界面时该策略 fail-closed）。
@@ -164,7 +162,6 @@ def boot_realtime(
     plugins.append(token_usage_plugin())   # `_03`：用量账本 + 用量页面（8767）
     plugins.append(context_meter_plugin(capacity=context_window))  # `_04`：仪表（8768）
     plugins.append(compact_plugin(capacity=context_window))        # `_05`：压缩
-    plugins.append(goal_plugin())                                  # `_06`：目标
     if self_tools:
         # 装了自扩展工具就一并装浏览器审批：装卸/安装类操作要有人点头，
         # 没有终端可问时由界面弹卡片（无界面时该策略 fail-closed）。

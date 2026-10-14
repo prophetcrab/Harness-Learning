@@ -30,7 +30,6 @@ STAGES = [
     "_03_Usage_Budget",
     "_04_Context_Meter",
     "_05_Compaction",
-    "_06_Goal",
 ]
 #: 整合包/基线：与阶段同样验收（存在才检查——便于单独阶段分支不带上它）。
 PACKAGES = ["mini_harness"]

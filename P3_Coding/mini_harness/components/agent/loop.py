@@ -147,14 +147,8 @@ class AgentLoop:
         tools: Sequence[ToolSpec],
         *,
         should_stop: Callable[[], bool] | None = None,
-        source: str = "human",
     ) -> TurnResult:
-        """处理一个 turn：把一条用户输入排空到最终回答 / 预算用尽 / 取消。
-
-        `source`（`_06`）：这条用户消息是谁说的——`"human"` 或 `"goal-round"`。
-        它随 `turn_start` 事件流转，最终落到 `user/message` 的 source 字段；
-        目标折叠靠它数"这个目标跑了几轮"（人插话不算轮次）。
-        """
+        """处理一个 turn：把一条用户输入排空到最终回答 / 预算用尽 / 取消。"""
         self._turn += 1
         turn = self._turn
         self._history.append(user(user_text))
@@ -162,7 +156,7 @@ class AgentLoop:
         # 而折叠会让历史变短、下标漂移——所以记"条数"不记"下标"，
         # 每步用 len(history) - own 现算边界（见 _maybe_compact 的调用点）。
         turn_own = 1
-        self._emit("turn_start", turn=turn, user=user_text, source=source)
+        self._emit("turn_start", turn=turn, user=user_text)
 
         steps: list[Step] = []
         turn_usage = Usage()

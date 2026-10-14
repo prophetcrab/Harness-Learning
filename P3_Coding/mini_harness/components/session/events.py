@@ -27,7 +27,6 @@ from typing import Any
 #   usage/step        一次模型调用的 token 用量（`_03`）
 #   budget/exceeded   用量超出预算上限（`_03`）
 #   compact/checkpoint 上下文压缩检查点（`_05`）：早前的一段已折叠成一条摘要
-#   goal/change       目标变更（`_06`）：携带变更后的完整目标快照（CAS 版本号在内）
 EVENT_TYPES = frozenset(
     {
         "session/start",
@@ -42,7 +41,6 @@ EVENT_TYPES = frozenset(
         "usage/step",
         "budget/exceeded",
         "compact/checkpoint",
-        "goal/change",
     }
 )
 
@@ -51,8 +49,6 @@ _REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "session/start": ("session_id",),
     "turn/start": ("turn",),
     "turn/end": ("turn", "status"),
-    # user/message 另有一个可选的 source 字段（缺省视为 "human"；`_06` 起
-    # 自动续跑写成 "goal-round"——目标折叠靠它数轮次）。可选字段不进必填表。
     "user/message": ("content",),
     "step/start": ("turn", "step"),
     "step/end": ("turn", "step"),
@@ -62,7 +58,6 @@ _REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "usage/step": ("turn", "step", "prompt_tokens", "completion_tokens", "turn_total"),
     "budget/exceeded": ("turn", "used", "budget"),
     "compact/checkpoint": ("summary", "folded"),
-    "goal/change": ("operation",),
 }
 
 

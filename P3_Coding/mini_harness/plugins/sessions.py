@@ -66,13 +66,6 @@ class SessionsService:
     def __init__(self, root: str | Path, ctx: Context | None = None) -> None:
         self._store = JsonlStore(Path(root))
         self._ctx = ctx
-        #: 会话对象缓存：**同一个 session_id 只能有一个 Session 实例**。
-        #: 起初 open() 每次新建，结果两个消费者（agent 与 `_06` 的 goal 存储）
-        #: 各拿一份内存副本：一方 append 的事件另一方在内存里永远看不到
-        #: （磁盘上是写进去了，但各自的 `_events` 列表互不知情），
-        #: 于是"目标轮次"数成 0、`goal/change` 折不出来（实测踩到）。
-        #: 日志是唯一真相，**真相的句柄也应当唯一**。
-        self._sessions: dict[str, Session] = {}
 
     @property
     def store(self) -> JsonlStore:
@@ -110,17 +103,10 @@ class SessionsService:
         """打开（或恢复）会话；返回 (会话, 是否新建, 修复报告)。
 
         - 已存在的会话：装载事件（顺带修复崩溃尾行），不重复写 session/start；
-        - 新会话：写 session/start（system_prompt + 装配单），resumed=False；
-        - **同名会话复用同一个 Session 实例**（见 `_sessions` 的说明）——
-          第二次 open 不再重新读文件，拿到的就是当前那份活日志。
+        - 新会话：写 session/start（system_prompt + 装配单），resumed=False。
         """
-        cached = self._sessions.get(session_id)
-        if cached is not None:
-            return cached, cached.has_started, RepairReport()
-
         events, report = self._store.load(session_id)
         session = self._make_session(session_id, events)
-        self._sessions[session_id] = session
         resumed = session.has_started
         if not resumed:
             data: dict = {"session_id": session_id, "system_prompt": system_prompt}

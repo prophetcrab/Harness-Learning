@@ -57,12 +57,6 @@ from plugins.events import (
     TURN_START,
 )
 from plugins.fs import FsPlugin, jail_fs_plugin, local_fs_plugin, memory_fs_plugin
-from plugins.goal import (
-    GoalContinuation,
-    GoalPlugin,
-    GoalService,
-    goal_plugin,
-)
 from plugins.llm import (
     OFFLINE_DEMO_REPLY,
     LlmPlugin,
@@ -94,9 +88,7 @@ from plugins.services import (
     CLOCK_SERVICE,
     COMPACTER_SERVICE,
     CONTEXT_METER_SERVICE,
-    CONTINUATION_SERVICE,
     FS_SERVICE,
-    GOALS_SERVICE,
     LLM_SERVICE,
     PROMPT_SERVICE,
     RPC_SERVICE,
@@ -131,8 +123,6 @@ __all__ = [
     "CLOCK_SERVICE",
     "COMPACTER_SERVICE",
     "CONTEXT_METER_SERVICE",
-    "CONTINUATION_SERVICE",
-    "GOALS_SERVICE",
     "DEFAULT_CONTEXT_WINDOW",
     "DEFAULT_CATALOG_NAMES",
     "DEFAULT_UNLOADABLE",
@@ -163,9 +153,6 @@ __all__ = [
     "Booted",
     "ClockPlugin",
     "CompactPlugin",
-    "GoalContinuation",
-    "GoalPlugin",
-    "GoalService",
     "ContextMeter",
     "ContextMeterEndpoint",
     "ContextMeterPlugin",
@@ -199,7 +186,6 @@ __all__ = [
     "boot_realtime",
     "clock_plugin",
     "compact_plugin",
-    "goal_plugin",
     "context_meter_plugin",
     "deepseek_llm_plugin",
     "default_catalog",
