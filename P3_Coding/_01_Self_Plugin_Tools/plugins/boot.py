@@ -26,6 +26,7 @@ from plugins.fs import jail_fs_plugin, local_fs_plugin, memory_fs_plugin
 from plugins.llm import deepseek_llm_plugin, fake_llm_plugin, offline_llm_plugin
 from plugins.proc import local_proc_plugin, scripted_proc_plugin
 from plugins.prompt import PromptPlugin
+from plugins.self_tools import self_tools_plugin
 from plugins.services import AGENT_SERVICE
 from plugins.sessions import SessionsPlugin
 from plugins.tools import ToolsPlugin
@@ -84,28 +85,30 @@ def boot_offline(
     approval: ApprovalPolicy | None = None,
     max_steps: int = 8,
     script: list | None = None,
+    self_tools: bool = False,
 ) -> Booted:
     """全离线装配：离线模型 + 内存文件系统 + 剧本命令。
 
     - root：会话日志根目录；workspace：文件工具的工作区（内存实现下只是
       "相对路径的根"，不落盘）；
     - script：给了 → **严格剧本**（FakeLLM，用完还调就报错；测试用）；
-      没给 → **固定回复、不限轮数**（交互界面/长演示用，人聊多少轮都答得上）。
+      没给 → **固定回复、不限轮数**（交互界面/长演示用，人聊多少轮都答得上）；
+    - self_tools：装上 `_01` 的自扩展工具（模型可装卸白名单插件）。
     """
     Path(workspace).mkdir(parents=True, exist_ok=True)
     llm = fake_llm_plugin(script) if script is not None else offline_llm_plugin()
-    return boot(
-        plugins=[
-            llm,
-            memory_fs_plugin(),
-            scripted_proc_plugin(),
-            SessionsPlugin(root),
-            PromptPlugin(workspace=workspace),
-            ToolsPlugin(workspace=workspace),
-            AgentPlugin(approval=approval, max_steps=max_steps),
-        ],
-        workspace=workspace,
-    )
+    plugins: list[Any] = [
+        llm,
+        memory_fs_plugin(),
+        scripted_proc_plugin(),
+        SessionsPlugin(root),
+        PromptPlugin(workspace=workspace),
+        ToolsPlugin(workspace=workspace),
+    ]
+    if self_tools:
+        plugins.append(self_tools_plugin())
+    plugins.append(AgentPlugin(approval=approval, max_steps=max_steps))
+    return boot(plugins=plugins, workspace=workspace)
 
 
 def boot_realtime(
@@ -117,11 +120,13 @@ def boot_realtime(
     fs: str = "local",
     shell: str = "local",
     max_steps: int = 8,
+    self_tools: bool = False,
 ) -> Booted:
     """真实组合：DeepSeek + 真实磁盘（local/jail）+ 真实进程（local/无）。
 
     - project_root：读 .env 的位置（缺 key 时 fail loud——真实模式的要求）；
-    - fs="local" | "jail"；shell="local" | "none"。
+    - fs="local" | "jail"；shell="local" | "none"；
+    - self_tools：装上 `_01` 的自扩展工具（模型可装卸白名单插件）。
     """
     plugins: list[Any] = [deepseek_llm_plugin(project_root)]
     plugins.append(jail_fs_plugin(workspace) if fs == "jail" else local_fs_plugin(workspace))
@@ -131,8 +136,10 @@ def boot_realtime(
         SessionsPlugin(root),
         PromptPlugin(workspace=workspace),
         ToolsPlugin(workspace=workspace),
-        AgentPlugin(approval=approval, max_steps=max_steps),
     ]
+    if self_tools:
+        plugins.append(self_tools_plugin())
+    plugins.append(AgentPlugin(approval=approval, max_steps=max_steps))
     return boot(plugins=plugins, workspace=workspace)
 
 

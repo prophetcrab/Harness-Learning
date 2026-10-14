@@ -202,6 +202,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
     parser.add_argument("--rpc", action="store_true", help="装载 RPC 插件：stdio JSON-RPC 服务")
     parser.add_argument("--listen", type=int, default=None, help="--rpc 同时监听 TCP 端口（0 = 系统分配）")
+    parser.add_argument(
+        "--self-tools", action="store_true",
+        help="★ 装上自扩展工具（_01 机制）：模型可装卸白名单插件（需审批）",
+    )
     args = parser.parse_args(argv)
 
     approval = build_approval(args)
@@ -213,11 +217,17 @@ def main(argv: list[str] | None = None) -> int:
             approval=approval,
             fs=args.fs,
             shell=args.shell,
+            self_tools=args.self_tools,
         )
         mode = f"真实组合（DeepSeek + {args.fs} + shell={args.shell}）"
     else:
-        booted = boot_offline(root=args.root, workspace=args.workspace, approval=approval)
+        booted = boot_offline(
+            root=args.root, workspace=args.workspace, approval=approval,
+            self_tools=args.self_tools,
+        )
         mode = "离线组合（离线模型 + MemoryFS + 剧本命令）"
+    if args.self_tools:
+        mode += " + 自扩展工具"
     # RPC 模式：所有人类可读输出走 stderr（stdout 只出协议帧）。
     banner_stream = sys.stderr if args.rpc else sys.stdout
     print(f"装配完成：{mode}", file=banner_stream)

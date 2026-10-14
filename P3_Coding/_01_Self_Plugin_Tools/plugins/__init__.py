@@ -18,16 +18,23 @@
     agent      提供 `agent`（会话管理：ask 一个 turn；inject 以上四个）
     webui      提供 `webui`（浏览器界面；inject agent/sessions；装载即起、卸载即停）
     rpc        提供 `rpc`（JSON-RPC 服务端：initialize / prompt / follow；stdio / TCP）
+    self-tools ★ 提供 `self-tools`（`_01` 的机制：三件自扩展工具，模型装卸自身插件；
+               白名单限定 + 装卸需审批 + 留痕；inject tools）
+    clock      ★ 示例可装卸插件（不是默认装配的一部分；装载它才多出 `now` 工具）
 
-装配入口在 boot.py：`boot_offline` / `boot_realtime` / `boot`。
+装配入口在 boot.py：`boot_offline` / `boot_realtime` / `boot`
+（`self_tools=True` 时额外装上自扩展工具）。
 """
 
 from plugins.agent import AgentPlugin, AgentService, HarnessSession
 from plugins.boot import Booted, boot, boot_offline, boot_realtime
+from plugins.clock import ClockPlugin, ClockService, clock_plugin
 from plugins.events import (
     LLM_REQUEST,
     LLM_RESPONSE,
     LOOP_EVENT,
+    PLUGIN_LOADED,
+    PLUGIN_UNLOADED,
     PROMPT_VARIABLES,
     SESSION_EVENT,
     SESSION_OPENED,
@@ -52,12 +59,22 @@ from plugins.rpc import (
     rpc_plugin,
     serve_stdio,
 )
+from plugins.self_tools import (
+    DEFAULT_CATALOG_NAMES,
+    DEFAULT_UNLOADABLE,
+    SelfToolsPlugin,
+    SelfToolsService,
+    default_catalog,
+    self_tools_plugin,
+)
 from plugins.services import (
     AGENT_SERVICE,
+    CLOCK_SERVICE,
     FS_SERVICE,
     LLM_SERVICE,
     PROMPT_SERVICE,
     RPC_SERVICE,
+    SELF_TOOLS_SERVICE,
     SESSIONS_SERVICE,
     SUBPROCESS_SERVICE,
     TOOLS_SERVICE,
@@ -69,6 +86,9 @@ from plugins.webui import WebUiPlugin, WebUiService, webui_plugin
 
 __all__ = [
     "AGENT_SERVICE",
+    "CLOCK_SERVICE",
+    "DEFAULT_CATALOG_NAMES",
+    "DEFAULT_UNLOADABLE",
     "EVENT_NOTIFICATION",
     "FS_SERVICE",
     "LLM_REQUEST",
@@ -76,9 +96,12 @@ __all__ = [
     "LLM_SERVICE",
     "LOOP_EVENT",
     "OFFLINE_DEMO_REPLY",
+    "PLUGIN_LOADED",
+    "PLUGIN_UNLOADED",
     "PROMPT_SERVICE",
     "PROMPT_VARIABLES",
     "RPC_SERVICE",
+    "SELF_TOOLS_SERVICE",
     "SESSIONS_SERVICE",
     "SESSION_EVENT",
     "SESSION_OPENED",
@@ -90,6 +113,8 @@ __all__ = [
     "AgentPlugin",
     "AgentService",
     "Booted",
+    "ClockPlugin",
+    "ClockService",
     "FsPlugin",
     "HarnessSession",
     "LlmPlugin",
@@ -100,6 +125,8 @@ __all__ = [
     "RepeatingLLM",
     "RpcPlugin",
     "RpcService",
+    "SelfToolsPlugin",
+    "SelfToolsService",
     "SessionsPlugin",
     "SessionsService",
     "ToolsPlugin",
@@ -108,7 +135,9 @@ __all__ = [
     "boot",
     "boot_offline",
     "boot_realtime",
+    "clock_plugin",
     "deepseek_llm_plugin",
+    "default_catalog",
     "fake_llm_plugin",
     "jail_fs_plugin",
     "local_fs_plugin",
@@ -117,6 +146,7 @@ __all__ = [
     "offline_llm_plugin",
     "rpc_plugin",
     "scripted_proc_plugin",
+    "self_tools_plugin",
     "serve_stdio",
     "webui_plugin",
 ]

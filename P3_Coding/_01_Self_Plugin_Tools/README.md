@@ -3,67 +3,76 @@
 P3 第 1 阶段（对应 [PLAN.md](../PLAN.md)）。**本阶段只加一个机制**：
 
 > 给模型三件"插件管理"工具（`list_plugins` / `load_plugin` / `unload_plugin`），
-> 让它能查看并装卸自己所在进程的插件——白名单限定、装卸需审批、fail-closed。
+> 让它能查看并装卸自己所在进程的插件——白名单限定、装卸需审批、留痕。
 
-**状态：🚧 起步中（目录已从 `mini_harness/` 基线复制，机制尚未实现）**
+**状态：✅ 已完成（2026-10-14）**
 
-## 本阶段自包含
+## 本阶段做了什么
 
-本目录从 P3 基线 `mini_harness/`（v0.3，插件化九插件形态）**原样复制**起步——
-这是 P3 沿用 P2 的组织方式：每个阶段自包含，从上一阶段完成态复制，只加一个机制。
+新增两个插件，其余一切照旧（目录自包含，从基线 `mini_harness/` 复制起步）：
 
-| 位置 | 角色 | 本阶段将做什么 |
+| 文件 | 角色 | 内容 |
 |---|---|---|
-| `plugins/self_tools.py`（待建） | ★ 本阶段新增的机制 | 三件自扩展工具 + 白名单 + 审批接线 |
-| `plugins/` / `components/` / `kernel/` | 基线（复制自 `mini_harness/`） | 未改动 |
-| `chat.py` / `webui/` / `tests/` | 入口与测试 | 工具面里出现新工具；测试见下 |
+| `plugins/self_tools.py` | ★ **本阶段的机制** | `SelfToolsService`（list / load / unload，结构化错误）+ `SelfToolsPlugin`（提供 `self-tools` 服务并注册三件工具） |
+| `plugins/clock.py` | ★ 示例可装卸插件 | `ClockPlugin`：装载它多一个 `now` 工具与 `clock` 服务，卸载即回卷——用来演示"装载即扩展" |
+| `chat.py` | 入口 | 新增 `--self-tools` 开关（离线/真实两种组合都支持） |
+| `plugins/boot.py` | 装配 | `boot_offline/boot_realtime` 新增 `self_tools=False` 参数 |
+| `plugins/services.py` / `events.py` | 词汇 | 新增 `SELF_TOOLS_SERVICE` / `CLOCK_SERVICE`；新增 `plugin/loaded`、`plugin/unloaded` 广播事件 |
 
-## 0) 现状基线（起步态）
+### 三条安全设计（本阶段的核心）
+
+1. **可装载 = 白名单里有名字**：catalog 是 `插件名 → 工厂函数` 的显式映射
+   （默认 `clock` / `webui` / `rpc`）。模型给的是**名字**；本实现没有"从磁盘发现
+   插件"这回事，所以它无法凭空引入新代码——装什么，装配方说了算。
+2. **可卸载 = 另一份白名单**（默认只有 `clock`）：卸载还在被使用的能力会破坏
+   当前会话——最典型的是卸载 `webui`（它正是网页对话的传输通道，一卸连接就断）。
+   要放开哪些名字，由装配方显式决定。
+3. **装卸需审批**（`needs_approval=True`，与写文件、跑命令同级）：策略没配或人
+   拒绝时 **fail-closed**，什么都不发生；`list_plugins` 只读、不打扰用户。
+
+### 可观测
+
+- 每次装卸发 `plugin/loaded` / `plugin/unloaded` 内核事件（供订阅者/RPC 跟随）；
+- 工具调用本身进会话日志（`tool/result` 事件）——**模型动过什么有据可查**；
+- 返回值如实说明"新增/移除了哪些服务与工具"，并提示新工具**从下一轮开始**可用。
+
+## 验收（对照 PLAN.md）
+
+- [x] 模型列出的台账与 `ctx.plugins` 一致（同源，永不发岔）
+- [x] 白名单内装卸生效：装 `clock` → 工具面多 `now`、服务多 `clock`；卸载 → 全部回卷
+- [x] 卸载后依赖者退位（换 `fs` 时 `tools` 重建，`self-tools` 随之退位/重装）
+- [x] 白名单外直接拒绝（结构化错误、不抛异常、无副作用）
+- [x] 需审批：拒绝路径下不改动任何东西；`list_plugins` 不触发审批
+- [x] 基线 68 用例仍全绿；本阶段 20 个新用例；门禁绿（ruff + pytest）
+
+## 运行方法
 
 ```bash
 cd P3_Coding/_01_Self_Plugin_Tools
-python -m pytest -q        # 68 个基线用例全绿（与 mini_harness 一致）
+python -m pytest -q                                  # 88 个用例（基线 68 + 本阶段 20）
+
+# 离线：让模型自己装卸插件
+python chat.py --self-tools --fake --ask "列出现在装了哪些插件？"
+python chat.py --self-tools                          # 交互：可以说"把 clock 装上，然后用它报个时"
+
+# 真实 API（读项目根 .env 的 key）
+python chat.py --self-tools --realtime
+python chat.py --self-tools --realtime --web          # 界面里也能看它装卸
+
+# 不装 --self-tools 时，行为与基线完全一致
 ```
 
-## 1) 本阶段目标
+## 真实运行的例子（离线剧本驱动，实测输出）
 
-**做**（开工前细化成验收清单）：
-
-- 三件工具：`list_plugins`（列台账：名字/状态/inject/提供什么）、
-  `load_plugin`（按名装载白名单里的插件）、`unload_plugin`（按名卸载）；
-- **白名单**：只有预先批准的名字可装卸（模型不能凭空装任意代码）；
-- **审批**：装卸与写文件、跑命令同级（`needs_approval=True`），默认 fail-closed；
-- **可观测**：每次装卸在事件流与会话日志里留痕（`plugin/loaded` 等事件 + 工具结果）。
-
-**验收（要点，开工时细化）**：
-
-- [ ] 模型列出的插件台账与 `ctx.plugins` 一致
-- [ ] 白名单内装卸生效：工具面/服务即时变化，卸载后依赖者退位
-- [ ] 白名单外直接拒绝（结构化错误，不抛异常）
-- [ ] 需审批：拒绝路径下不改动任何东西
-- [ ] 基线 68 用例仍全绿；门禁绿
-
-## 2) 运行方法
-
-```bash
-cd P3_Coding/_01_Self_Plugin_Tools
-python -m pytest -q
-python chat.py --ask "列出现在装了哪些插件"    # 离线一个 turn
-python chat.py                              # 离线交互
-python chat.py --web                        # 界面（同基线）
-python chat.py --rpc --listen 8771          # RPC（同基线）
-./run.bat                                   # 启动器（同基线）
+```
+step1 list_plugins   ✓ 台账 8 项 + loadable/unloadable + 工具面
+step2 load_plugin    ✓ {"loaded": "clock", "services_added": ["clock"], "tools_added": ["now"]}
+step3 now            ✓ {"now": "2026-10-14T10:59:08", ...}      ← 上一轮刚装的工具，这一轮就能用
+step4 unload_plugin  ✓ {"unloaded": "clock", "tools_removed": ["now"]}
+最终工具面回到 11 件；clock 服务已撤销
 ```
 
-## 3) 继承自基线的能力（不重复实现）
-
-本目录的 `kernel/` `components/` `plugins/` `webui/` 与 `mini_harness/` 基线**逐字节一致**
-（唯一差异是测试文件名：`test_s01_*`，避免与基线在全量跑时同名冲突）。
-基线能力清单与阅读路线见 [../mini_harness/README.md](../mini_harness/README.md)：
-九插件（llm / fs / proc / tools / sessions / prompt / agent / webui / rpc）、
-8 件工具面、事件溯源日志、界面与 RPC 两个服务插件。
-
-## 4) 完成后的去向
+## 完成后的去向
 
 `_02_Streaming`（PLAN.md）：流式输出——供给端出 chunk、以 `llm/stream` 事件流出、
 循环聚合为完整响应并支持取消。
