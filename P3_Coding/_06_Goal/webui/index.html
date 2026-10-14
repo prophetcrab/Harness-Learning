@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mini harness · P3</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header>
+  <div class="brand"><span class="logo"></span>mini harness</div>
+  <span class="chip">P3 · 完全插件化</span>
+  <span class="chip" id="host-badge">…</span>
+  <span class="chip" id="tools-badge" title="">工具 …</span>
+  <div class="spacer"></div>
+  <button class="tbtn on" id="toggle-left" title="折叠 / 展开左栏">会话</button>
+  <button class="tbtn on" id="toggle-right" title="折叠 / 展开轨迹栏">轨迹</button>
+  <button class="tbtn" id="ctx-btn" title="上下文容量仪表（context-meter 插件）">📐 上下文</button>
+  <button class="tbtn" id="token-btn" title="Token 用量统计（token-usage 插件）">📊 Token 用量</button>
+  <span class="dot-status" title="服务在线"></span>
+</header>
+
+<main>
+  <section id="left">
+    <div class="side-head"><h2>会话</h2>
+      <button class="mini" id="new-session">＋ 新会话</button></div>
+    <div id="sessions"></div>
+    <div class="side-head" style="margin-top:20px">
+      <h2>插件台账</h2><span class="count" id="plugin-count"></span></div>
+    <div id="plugins"></div>
+  </section>
+
+  <section id="center">
+    <div class="banner" id="banner" hidden></div>
+    <div id="chat"><div class="wrap"></div></div>
+    <div class="runline" id="runline"><span>就绪</span></div>
+    <form id="composer" autocomplete="off">
+      <div id="cmdmenu" hidden></div>
+      <textarea id="text" rows="1"
+        placeholder="输入消息…（Enter 发送 · Shift+Enter 换行 · 输入 / 看快捷命令）"></textarea>
+      <button type="submit" id="send">发送</button>
+    </form>
+  </section>
+
+  <section id="right">
+    <div class="side-head"><h2>事件轨迹</h2>
+      <span class="count mono" id="seq-tag"></span></div>
+    <table id="events"><tbody></tbody></table>
+  </section>
+</main>
+
+<div id="ctx-panel" hidden>
+  <div class="tbox">
+    <div class="tbar">
+      <h3>📐 上下文容量</h3>
+      <span class="turl" id="ctx-url"></span>
+      <a class="tbtn" id="ctx-open" target="_blank" rel="noopener">新标签打开</a>
+      <button class="tbtn" id="ctx-close">关闭</button>
+    </div>
+    <iframe id="ctx-frame" title="上下文容量仪表"></iframe>
+  </div>
+</div>
+
+<div id="token-panel" hidden>
+  <div class="tbox">
+    <div class="tbar">
+      <h3>📊 Token 用量</h3>
+      <span class="turl" id="token-url"></span>
+      <div class="spacer"></div>
+      <a class="tbtn" id="token-open" target="_blank" rel="noopener">新标签打开</a>
+      <button class="tbtn" id="token-close">关闭</button>
+    </div>
+    <iframe id="token-frame" title="Token 用量统计"></iframe>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -34,6 +34,10 @@ TOKEN_USAGE_SERVICE = "token-usage"
 CONTEXT_METER_SERVICE = "context-meter"
 #: 上下文压缩器（`_05`；agent 插件注入它，卸载 = 不再压缩）。
 COMPACTER_SERVICE = "compacter"
+#: 持久目标服务（`_06`；一个会话一个目标，状态由日志投影派生）。
+GOALS_SERVICE = "goals"
+#: 续跑闸门（`_06`）：入口问它"这一轮跑完要不要接着自动跑"。
+CONTINUATION_SERVICE = "goal.continuation"
 
 __all__ = [
     "AGENT_SERVICE",
@@ -42,7 +46,9 @@ __all__ = [
     "CONTEXT_METER_SERVICE",
     "TOKEN_USAGE_SERVICE",
     "CLOCK_SERVICE",
+    "CONTINUATION_SERVICE",
     "FS_SERVICE",
+    "GOALS_SERVICE",
     "LLM_SERVICE",
     "PROMPT_SERVICE",
     "RPC_SERVICE",

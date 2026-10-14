@@ -14,6 +14,7 @@
 
 会话内命令：/plugins 插件台账；/services 服务清单；/tools 工具面；
             /history 历史；/compact 手动压缩上下文（折到最后一轮之前）；
+            /goal 看/管目标（new/edit/pause/resume/done/block/clear，不花模型的钱）；
             /web 起/停界面插件；/exit 退出（整体卸载，可见回卷）。
 
 与 P2 的差别：装配不再是"读 YAML 配置树"，而是**直接列插件**——P3 基础包
@@ -28,8 +29,16 @@ import sys
 from pathlib import Path
 
 from components.context.tokens import DEFAULT_CONTEXT_WINDOW
+from components.goal import run_goal_command
 from components.tools import ApprovalPolicy, PromptApprover
-from plugins import TOOLS_SERVICE, WEBUI_SERVICE, Booted, boot_offline, boot_realtime
+from plugins import (
+    GOALS_SERVICE,
+    TOOLS_SERVICE,
+    WEBUI_SERVICE,
+    Booted,
+    boot_offline,
+    boot_realtime,
+)
 
 HERE = Path(__file__).resolve().parent
 PROJECT_ROOT = HERE.parents[1]  # 项目根（.env 所在处）
@@ -155,7 +164,8 @@ def repl(booted: Booted, session_id: str, *, web_port: int = 8766) -> int:
     opened = booted.agent.open(session_id, on_event=print_event)
     if opened.repaired:
         print("[提示] 上次会话被强杀，日志尾部已自动修复。")
-    print(f"会话 {session_id}（{'恢复' if opened.resumed else '新建'}）；/exit 退出，/plugins 看台账，/compact 手动压缩。")
+    print(f"会话 {session_id}（{'恢复' if opened.resumed else '新建'}）；"
+          "/exit 退出，/plugins 看台账，/compact 压缩，/goal 管目标。")
     while True:
         try:
             text = input("\n你：").strip()
@@ -179,6 +189,17 @@ def repl(booted: Booted, session_id: str, *, web_port: int = 8766) -> int:
             for message in opened.messages:
                 head = (message.content or "").replace("\n", " ")[:70]
                 print(f"  [{message.role}] {head}")
+            continue
+        if text == "/goal" or text.startswith("/goal "):
+            # `/goal` 是**人命令**：直接操作目标服务，不走 turn、不花模型的钱。
+            # 解析与排版在构件层（两个入口共用一份，避免各写一遍导致漂移）。
+            goals = booted.ctx.get(GOALS_SERVICE)
+            if goals is None:
+                print("  [goal] goal 插件未装载（目标服务不可用）")
+                continue
+            result = run_goal_command(goals.store(session_id), text[len("/goal"):])
+            for line in result.text.splitlines():
+                print(f"  [goal] {line}")
             continue
         if text == "/compact":
             # 手动压缩（`_05` 的 `/compact`）：跳过阈值、保住最后一轮。

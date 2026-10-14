@@ -40,6 +40,8 @@ API（静态页面在 `webui/`：index.html + app.css + app.js，纯原生 JS、
     POST /api/sessions/<id>/send    {text} → NDJSON 流：主循环事件逐条推，末行 __done
     POST /api/sessions/<id>/compact 手动压缩（`/compact`）→ NDJSON 流：
                                     成功末行 __compact_done / 无可压 __compact_noop
+    GET  /api/sessions/<id>/goal    当前目标（`_06`；无目标时 goal=null）
+    POST /api/sessions/<id>/goal    {line} 执行一条 `/goal ...` 子命令（不花模型的钱）
 
 已知边界（刻意的）：只绑本机、无鉴权、事件流只推给发起请求的那个客户端
 （多客户端广播属于 RPC / 事件流跟随的题目）。
@@ -55,11 +57,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from components.goal import run_goal_command
 from components.session import derive_messages
 from kernel import Context
 from plugins.services import (
     AGENT_SERVICE,
     APPROVAL_SERVICE,
+    GOALS_SERVICE,
     SESSIONS_SERVICE,
     TOOLS_SERVICE,
     WEBUI_SERVICE,
@@ -285,6 +289,9 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
                 self._sessions_or_503(
                     lambda service: _session_detail(service, session_id)
                 )
+            elif route.startswith("/api/sessions/") and route.endswith("/goal"):
+                session_id = unquote(route[len("/api/sessions/") : -len("/goal")])
+                self._goal_view(session_id)
             elif route == "/api/approvals":
                 policy = ctx.get(APPROVAL_SERVICE)
                 pending = policy.pending_list() if policy is not None else []
@@ -300,6 +307,9 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
             elif route.startswith("/api/sessions/") and route.endswith("/compact"):
                 session_id = unquote(route[len("/api/sessions/") : -len("/compact")])
                 self._compact(session_id)
+            elif route.startswith("/api/sessions/") and route.endswith("/goal"):
+                session_id = unquote(route[len("/api/sessions/") : -len("/goal")])
+                self._goal_command(session_id)
             elif route.startswith("/api/approvals/"):
                 request_id = unquote(route[len("/api/approvals/") :])
                 body = self._read_json()
@@ -313,6 +323,35 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
                     self._send_json(404, {"error": f"没有等待中的审批：{request_id}"})
             else:
                 self._send_json(404, {"error": f"未知路由：{route}"})
+
+        # ---- 目标（/goal）----
+        #
+        # 两条路由都不跑 turn：`/goal` 是**人直接操作服务**，一分模型的钱都不花
+        # （这是 dsh 的 `command-goal` 的做法）。命令的解析与排版在构件层
+        # （components/goal/command.py），网页与 REPL 共用同一套——两个入口
+        # 各写一遍解析必然漂移（一个支持 clear 另一个忘了）。
+
+        def _goal_view(self, session_id: str) -> None:
+            goals = _require_or_none(GOALS_SERVICE)
+            if goals is None:
+                self._send_json(503, {"error": "goal 插件未装载（目标服务不可用）"})
+                return
+            self._send_json(200, goals.view(session_id))
+
+        def _goal_command(self, session_id: str) -> None:
+            goals = _require_or_none(GOALS_SERVICE)
+            if goals is None:
+                self._send_json(503, {"error": "goal 插件未装载（目标服务不可用）"})
+                return
+            body = self._read_json()
+            line = str(body.get("line") or "")
+            result = run_goal_command(goals.store(session_id), line)
+            self._send_json(200, {
+                "ok": True,
+                "changed": result.changed,
+                "text": result.text,
+                "goal": goals.view(session_id)["goal"],
+            })
 
         # ---- 手动压缩（/compact） ----
 

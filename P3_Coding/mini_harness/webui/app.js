@@ -547,6 +547,26 @@ async function runCompact() {
   }
 }
 
+/** 执行一条 `/goal ...`（人命令，不花模型的钱）：服务端解析 + 排版，这里只显示。 */
+async function runGoal(line) {
+  if (!state.current) state.current = "default";
+  // 服务端收的是 `/goal` **之后**的子命令文本（与 REPL 那条路径一致）；
+  // 把前缀剥掉再送——不剥的话 "new ..." 会被当成一个叫 "/goal new" 的子命令。
+  const args = String(line || "").replace(/^\/goal\s*/, "");
+  try {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(state.current)}/goal`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ line: args }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.status);
+    showBanner(String(data.text || "").split("\n").join("  ·  "));
+    setIdle(data.changed ? "目标已更新" : "目标状态");
+  } catch (err) {
+    setRunline(`/goal 出错：${esc(err.message)}`, "err");
+  }
+}
+
 /* ---------------- 快捷命令（斜杠命令面板） ----------------
    一条命令 = 一行声明：名字 + 说明 + 用法（可选）+ 执行函数。
    输入框里敲 "/" 就弹出全表；继续打字即前缀过滤；↑↓ 选、Enter 或 Tab 补全、
@@ -556,8 +576,15 @@ const COMMANDS = [
   {
     name: "/compact",
     desc: "压缩上下文：把最后一轮之前的历史折成一条摘要（跳过 90% 阈值）",
-    usage: "/compact",
     run: runCompact,
+  },
+  {
+    name: "/goal",
+    desc: "看/管目标：new <内容> · edit · pause · resume · done · block <原因> · clear",
+    // 带子参数的人命令：菜单里选中它只补全到 "/goal "，然后由人接着打子命令
+    // （不猜他想干嘛）。执行走服务端的 `/goal ...` 路由，不花模型的钱。
+    takesArgs: true,
+    run: (line) => runGoal(line),
   },
 ];
 
@@ -568,8 +595,16 @@ let cmdActive = 0;      // 键盘高亮的下标
 /** 取当前应该展示的候选（null = 不展示菜单）。 */
 function cmdCandidates(value) {
   if (state.sending) return null;
-  // 只在"整行是一个还没打完的命令"时提示：以 / 开头且不含空格
-  if (!value.startsWith("/") || /\s/.test(value)) return null;
+  if (!value.startsWith("/")) return null;
+  // 已经打了空格：只可能是"带子参数的命令正在填参数"——把该命令的用法
+  // 继续当提示挂着（人照着打，不用记）。否则空格一出现菜单就消失，
+  // `/goal ` 之后人就得凭记忆敲子命令了。
+  const spaced = /\s/.test(value);
+  if (spaced) {
+    const head = value.split(/\s/)[0];
+    const command = COMMANDS.find((c) => c.name === head && c.takesArgs);
+    return command ? [command] : null;
+  }
   return COMMANDS.filter((c) => c.name.startsWith(value));
 }
 
@@ -599,21 +634,25 @@ function hideCmdMenu() { cmdMenu.hidden = true; cmdItems = []; }
 async function runCommand(index) {
   const command = cmdItems[index];
   if (!command) return;
+  const line = ta.value.trim();                  // 原始整行（含子命令与参数）
   hideCmdMenu();
   ta.value = ""; autosize();
-  await command.run();
+  await command.run(line);
 }
 
 $("composer").addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = ta.value.trim();
   if (!text || state.sending) return;
-  // 菜单开着且正好是某条完整命令 → 走命令，别当普通消息发出去
-  const exact = COMMANDS.find((c) => c.name === text);
+  // 命中的命令 → 走命令，别当普通消息发给模型。
+  // 两种命中：完全等于命令名，或"命令名 + 空格 + 参数"（带子参数的命令）。
+  const exact = COMMANDS.find(
+    (c) => c.name === text || (c.takesArgs && text.startsWith(c.name + " ")),
+  );
   if (exact && !cmdMenu.hidden) {
     hideCmdMenu();
     ta.value = ""; autosize();
-    await exact.run();
+    await exact.run(text);
     return;
   }
   if (!state.current) state.current = "default";
@@ -660,12 +699,17 @@ ta.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown") { e.preventDefault(); highlightCmd(cmdActive + 1); return; }
     if (e.key === "ArrowUp") { e.preventDefault(); highlightCmd(cmdActive - 1); return; }
     if (e.key === "Tab" || e.key === "Enter") {
-      e.preventDefault();
-      if (e.key === "Tab") {                      // Tab = 补全到输入框（还能改）
-        ta.value = cmdItems[cmdActive].name;
+      const command = cmdItems[cmdActive];
+      const typingArgs = /\s/.test(ta.value);      // 已在填参数了
+      if (e.key === "Tab" || command.takesArgs && !typingArgs) {
+        e.preventDefault();
+        // 带子参数的命令：补全成 "/goal "（加个空格）把光标交给参数，
+        // 不猜他想 new 还是 pause
+        ta.value = command.name + (command.takesArgs ? " " : "");
         autosize(); renderCmdMenu();
         return;
       }
+      e.preventDefault();
       runCommand(cmdActive);                      // Enter = 直接执行
       return;
     }

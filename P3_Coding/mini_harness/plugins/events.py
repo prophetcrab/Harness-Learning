@@ -49,6 +49,7 @@ APPROVAL_REQUESTED = "approval/requested"  # 浏览器审批：提交（`_01`）
 APPROVAL_RESOLVED = "approval/resolved"    # 浏览器审批：有结果（`_01`）
 LOOP_EVENT = "loop/event"  # 主循环的原始事件（kind + payload），观测用
 COMPACT_EVENT = "context/compacted"  # 首次压缩发生（`_05`）：applied / failed
+GOAL_CHANGED = "goal/changed"  # 目标变更（`_06`）：operation + 变更后的快照
 
 # 瀑布
 PROMPT_VARIABLES = "prompt/variables"
@@ -57,6 +58,7 @@ LLM_REQUEST = "llm/request"
 __all__ = [
     "APPROVAL_REQUESTED",
     "COMPACT_EVENT",
+    "GOAL_CHANGED",
     "LLM_STREAM",
     "APPROVAL_RESOLVED",
     "LLM_REQUEST",
