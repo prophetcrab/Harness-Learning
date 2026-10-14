@@ -523,7 +523,7 @@ async function runCompact() {
   if (state.sending) return;
   if (!state.current) state.current = "default";
   state.sending = true;
-  $("send").disabled = true; $("compact-btn").disabled = true;
+  setBusy(true);
   removeWorking(); setRunning("正在压缩上下文…");
   ensureWorking("压缩中（会调用一次模型做摘要）…");
   let last = null;
@@ -541,25 +541,84 @@ async function runCompact() {
     removeWorking();
     setRunline(`出错：${esc(err.message)}`, "err");
   } finally {
-    state.sending = false; $("send").disabled = false; $("compact-btn").disabled = false;
+    state.sending = false;
+    setBusy(false);
     await openSession(state.current, { silent: true });
   }
 }
 
-$("compact-btn").addEventListener("click", runCompact);
+/* ---------------- 快捷命令（斜杠命令面板） ----------------
+   一条命令 = 一行声明：名字 + 说明 + 用法（可选）+ 执行函数。
+   输入框里敲 "/" 就弹出全表；继续打字即前缀过滤；↑↓ 选、Enter 或 Tab 补全、
+   Esc 关掉。**加新命令只需要往 COMMANDS 里加一行**——提示、过滤、补全、
+   执行全自动（这是"输入 / 主动提示"相对"摆一个专属按钮"的价值）。 */
+const COMMANDS = [
+  {
+    name: "/compact",
+    desc: "压缩上下文：把最后一轮之前的历史折成一条摘要（跳过 90% 阈值）",
+    usage: "/compact",
+    run: runCompact,
+  },
+];
+
+const cmdMenu = $("cmdmenu");
+let cmdItems = [];      // 当前可见的候选
+let cmdActive = 0;      // 键盘高亮的下标
+
+/** 取当前应该展示的候选（null = 不展示菜单）。 */
+function cmdCandidates(value) {
+  if (state.sending) return null;
+  // 只在"整行是一个还没打完的命令"时提示：以 / 开头且不含空格
+  if (!value.startsWith("/") || /\s/.test(value)) return null;
+  return COMMANDS.filter((c) => c.name.startsWith(value));
+}
+
+function renderCmdMenu() {
+  const items = cmdCandidates(ta.value);
+  if (!items || !items.length) { hideCmdMenu(); return; }
+  cmdItems = items;
+  cmdActive = 0;
+  cmdMenu.innerHTML = items.map((c, i) => `
+    <div class="cmd ${i === 0 ? "on" : ""}" data-i="${i}">
+      <span class="cmd-name">${esc(c.name)}</span>
+      <span class="cmd-desc">${esc(c.desc)}</span>
+      ${c.usage ? `<span class="cmd-hint">Enter 执行</span>` : ""}
+    </div>`).join("");
+  cmdMenu.hidden = false;
+}
+
+function highlightCmd(index) {
+  cmdActive = (index + cmdItems.length) % cmdItems.length;
+  cmdMenu.querySelectorAll(".cmd").forEach((node, i) =>
+    node.classList.toggle("on", i === cmdActive));
+}
+
+function hideCmdMenu() { cmdMenu.hidden = true; cmdItems = []; }
+
+/** 执行第 index 条命令（清空输入框、收起菜单、跑 run()）。 */
+async function runCommand(index) {
+  const command = cmdItems[index];
+  if (!command) return;
+  hideCmdMenu();
+  ta.value = ""; autosize();
+  await command.run();
+}
 
 $("composer").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const ta = $("text");
   const text = ta.value.trim();
   if (!text || state.sending) return;
-  if (text === "/compact" || text === "/compact ") {       // 斜杠命令：走手动压缩
+  // 菜单开着且正好是某条完整命令 → 走命令，别当普通消息发出去
+  const exact = COMMANDS.find((c) => c.name === text);
+  if (exact && !cmdMenu.hidden) {
+    hideCmdMenu();
     ta.value = ""; autosize();
-    await runCompact();
+    await exact.run();
     return;
   }
   if (!state.current) state.current = "default";
-  state.sending = true; $("send").disabled = true; $("compact-btn").disabled = true;
+  state.sending = true;
+  setBusy(true);
   ta.value = ""; autosize();
   if (wrapEl.querySelector(".empty")) wrapEl.innerHTML = "";
   wrapEl.appendChild(userNode(text)); scrollBottom();      // 即时反馈（完成后会用日志重渲染）
@@ -576,7 +635,8 @@ $("composer").addEventListener("submit", async (e) => {
     removeWorking();
     setRunline(`出错：${esc(err.message)}`, "err");
   } finally {
-    state.sending = false; $("send").disabled = false; $("compact-btn").disabled = false;
+    state.sending = false;
+    setBusy(false);
     await openSession(state.current, { silent: true });
     if (done) setIdle(`turn ${done.turn} · ${done.status} · ${done.steps} 步 · 最终回答已渲染`);
     else if (!$("runline").classList.contains("err")) setIdle("就绪");
@@ -586,9 +646,43 @@ $("composer").addEventListener("submit", async (e) => {
 /* ---------------- composer + interactions ---------------- */
 const ta = $("text");
 function autosize() { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 180) + "px"; }
-ta.addEventListener("input", autosize);
+
+/** 忙闲开关：发送键禁用 + 命令菜单收起（跑 turn / 压缩期间不接受新输入）。 */
+function setBusy(busy) {
+  $("send").disabled = busy;
+  if (busy) hideCmdMenu();
+}
+
+ta.addEventListener("input", () => { autosize(); renderCmdMenu(); });
 ta.addEventListener("keydown", (e) => {
+  const menuOpen = !cmdMenu.hidden && cmdItems.length > 0;
+  if (menuOpen) {
+    if (e.key === "ArrowDown") { e.preventDefault(); highlightCmd(cmdActive + 1); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); highlightCmd(cmdActive - 1); return; }
+    if (e.key === "Tab" || e.key === "Enter") {
+      e.preventDefault();
+      if (e.key === "Tab") {                      // Tab = 补全到输入框（还能改）
+        ta.value = cmdItems[cmdActive].name;
+        autosize(); renderCmdMenu();
+        return;
+      }
+      runCommand(cmdActive);                      // Enter = 直接执行
+      return;
+    }
+    if (e.key === "Escape") { e.preventDefault(); hideCmdMenu(); return; }
+  }
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); }
+});
+ta.addEventListener("blur", () => setTimeout(hideCmdMenu, 120));   // 迟一点：别抢点击
+cmdMenu.addEventListener("mousedown", (e) => {                     // mousedown 早于 blur
+  const row = e.target.closest(".cmd");
+  if (!row) return;
+  e.preventDefault();
+  runCommand(Number(row.dataset.i));
+});
+cmdMenu.addEventListener("mousemove", (e) => {
+  const row = e.target.closest(".cmd");
+  if (row) highlightCmd(Number(row.dataset.i));
 });
 chatEl.addEventListener("scroll", () => {
   state.follow = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 90;

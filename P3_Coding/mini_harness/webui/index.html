@@ -34,9 +34,9 @@
     <div id="chat"><div class="wrap"></div></div>
     <div class="runline" id="runline"><span>就绪</span></div>
     <form id="composer" autocomplete="off">
-      <button type="button" id="compact-btn" title="手动压缩上下文（等同输入 /compact）：把最后一轮之前的历史折叠成一条摘要">⟳ 压缩</button>
+      <div id="cmdmenu" hidden></div>
       <textarea id="text" rows="1"
-        placeholder="输入消息…（Enter 发送 · Shift+Enter 换行 · /compact 手动压缩）"></textarea>
+        placeholder="输入消息…（Enter 发送 · Shift+Enter 换行 · 输入 / 看快捷命令）"></textarea>
       <button type="submit" id="send">发送</button>
     </form>
   </section>

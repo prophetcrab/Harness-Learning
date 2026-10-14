@@ -753,10 +753,44 @@ def test_webui_compact_route_streams_result(tmp_path: Path):
     assert "compact_applied" in kinds, f"没看到压缩帧：{kinds}"
     done = [frame for frame in frames if frame["kind"] == "__compact_done"]
     assert done and done[0]["payload"]["folded"] >= 1
-    # 页面上有手动压缩按钮与 /compact 提示
+    # 页面上有命令菜单容器与 /compact 命令声明（无专属按钮：敲 / 提示）
     with urllib.request.urlopen(url + "/", timeout=8) as response:
         html = response.read().decode("utf-8")
-    assert "compact-btn" in html and "/compact" in html
+    assert "cmdmenu" in html and "compact-btn" not in html
+    with urllib.request.urlopen(url + "/app.js", timeout=8) as response:
+        js = response.read().decode("utf-8")
+    assert '"/compact"' in js and "COMMANDS" in js and "renderCmdMenu" in js
+    booted.close()
+
+
+def test_command_menu_is_declarative_not_a_dedicated_button(tmp_path: Path):
+    """快捷命令走"输入 / 提示"而不是专属按钮：命令是一张声明表，加命令只加一行。
+
+    回归背景：`/compact` 最初做成了输入框左侧的一个专属按钮。用户要求改成
+    "敲 / 时主动提示所有命令"——这样 `/goal` 之类的新命令只需要往 COMMANDS
+    里加一行，提示、前缀过滤、↑↓ 选择、Tab 补全、Enter 执行全部自动，
+    既不用摆第二个按钮，也不会在壳里堆一排各管一摊的控件。
+    """
+    booted = boot_offline(root=tmp_path / "s", workspace=tmp_path / "ws",
+                          script=[text_reply("好")])
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    url = booted.ctx.require(WEBUI_SERVICE).url
+    with urllib.request.urlopen(url + "/app.js", timeout=8) as response:
+        js = response.read().decode("utf-8")
+    with urllib.request.urlopen(url, timeout=8) as response:
+        html = response.read().decode("utf-8")
+
+    assert "compact-btn" not in html, "专属按钮应已移除"
+    assert 'id="cmdmenu"' in html, "命令菜单容器应在页面上"
+
+    # 命令表是声明式的（一条 = 名字 + 说明 + 执行函数）
+    assert "const COMMANDS = [" in js
+    assert "function cmdCandidates(" in js      # 前缀过滤
+    assert "function renderCmdMenu(" in js      # 弹菜单
+    assert "function runCommand(" in js         # 执行
+    for key in ("ArrowDown", "ArrowUp", "Tab", "Escape"):   # 键盘契约
+        assert key in js, f"键盘支持缺少 {key}"
+    assert "COMMANDS.find((c) => c.name === text)" in js     # 完整命令名直接执行
     booted.close()
 
 
