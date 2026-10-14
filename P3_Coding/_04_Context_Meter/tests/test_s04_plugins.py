@@ -109,14 +109,20 @@ def test_prompt_variables_waterfall_from_external_plugin(tmp_path: Path, ):
         def setup(self, inner: Context) -> None:
             inner.on(
                 PROMPT_VARIABLES,
-                lambda value, **kw: {**value, "time": "2026-10-13T00:00:00+08:00"},
+                # `_04` 起默认提示词引用 {{date}}（一天内不变，缓存友好）；
+                # 这个瀑布插件同时注入 date 与 time，验证两者都可用。
+                lambda value, **kw: {
+                    **value,
+                    "date": "2026-10-13",
+                    "time": "2026-10-13T00:00:00+08:00",
+                },
             )
 
     ctx.load_plugins(
         [ClockPlugin(), SessionsPlugin(tmp_path / "s"), PromptPlugin(workspace=tmp_path)]
     )
     rendered = ctx.require(PROMPT_SERVICE).render()
-    assert "2026-10-13T00:00:00+08:00" in rendered
+    assert "2026-10-13" in rendered        # {{date}} 被注入的取值渲染出来
 
 
 def test_llm_events_are_broadcast_around_each_call(tmp_path: Path):

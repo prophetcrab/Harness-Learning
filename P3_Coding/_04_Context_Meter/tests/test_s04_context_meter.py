@@ -299,3 +299,64 @@ def test_estimate_reflects_message_growth(tmp_path: Path):
     # 估算总量（used_source=actual 时看不到估算，但 parts 会随消息增长）
     assert second["parts"][0]["tokens"] >= first["parts"][0]["tokens"]
     booted.close()
+
+
+# ---------------------------------------------------------------------------
+# 缓存友好性：默认提示词必须跨 step 稳定（回归：曾引用秒级 {{time}}）
+# ---------------------------------------------------------------------------
+
+
+def test_default_prompt_is_stable_across_seconds():
+    """默认提示词不含"每步都变"的变量——否则前缀缓存永远命中不了。
+
+    回归背景：默认 env 小节曾引用 `{{time}}`（精确到秒），而系统提示词是请求的
+    第一条消息——它一变，前缀缓存就彻底失效。实测（真实 API，同一请求发三次）：
+
+        稳定前缀：  prompt=564  hit=0/384/384
+        秒级时间：  prompt=564  hit=0/0/0
+
+    所以默认提示词改用 `{{date}}`（一天内不变）；`{{time}}` 仍可用，
+    但属于"要精度就放弃缓存"的自选动作。
+    """
+    from datetime import datetime, timedelta
+
+    from components.prompt import capture_trace, collect_runtime_context, default_assembler
+
+    t1 = datetime(2026, 10, 14, 10, 0, 1).astimezone()
+    t2 = t1 + timedelta(seconds=17)          # 同一分钟内的不同秒
+
+    a = capture_trace(default_assembler(), collect_runtime_context(".", now=lambda: t1).variables())
+    b = capture_trace(default_assembler(), collect_runtime_context(".", now=lambda: t2).variables())
+    assert a.text == b.text, "默认提示词在同一分钟内应逐字节相同（缓存友好）"
+
+    referenced = {name for section in a.sections for name in section.referenced}
+    assert "time" not in referenced
+    assert {"cwd", "platform", "date"} <= referenced
+
+
+def test_explicit_time_variable_still_available():
+    """`{{time}}` 没被删掉：显式引用它的 section 仍然每步重渲染（自选代价）。"""
+    from datetime import datetime
+
+    from components.prompt import PromptAssembler, Section, SectionRegistry
+    from components.prompt.defaults import default_sections
+    from components.prompt.runtime import collect_runtime_context
+
+    registry = SectionRegistry()
+    for section in default_sections():
+        registry.register(section)
+    registry.register(Section(name="clock", content="当前时间 {{time}}。"))
+    assembler = PromptAssembler(registry)
+
+    moment = datetime(2026, 10, 14, 10, 0, 1).astimezone()
+    text = assembler.assemble(collect_runtime_context(".", now=lambda: moment).variables())
+    assert "当前时间 2026-10-14T10:00:01" in text
+
+
+def test_runtime_context_derives_date_from_time():
+    """只给 time 的旧调用点也要能工作（date 自动推导，不让 {{date}} 渲染成空）。"""
+    from components.prompt.runtime import RuntimeContext
+
+    ctx = RuntimeContext(cwd=".", platform="t", time="2026-01-02T03:04:05")
+    assert ctx.date == "2026-01-02"
+    assert ctx.variables()["date"] == "2026-01-02"

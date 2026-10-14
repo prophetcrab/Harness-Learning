@@ -1,7 +1,7 @@
 """默认 section 集合 —— 把原先那串写死的系统提示词拆成有序的几节。
 
 _01 拆出三节（role / tools / style）；本阶段（`_02`）追加一节 **env**：
-它引用运行时上下文 `{{cwd}}` / `{{platform}}` / `{{time}}`，是"每 step 渲染"
+它引用运行时上下文 `{{cwd}}` / `{{platform}}` / `{{date}}`，是"每 step 渲染"
 最直观的载体——同一份 section 模板，不同时刻渲染出的文本不同。
 
     role    角色设定
@@ -44,7 +44,11 @@ def default_sections() -> list[Section]:
         Section(
             name="env",
             title="运行时环境",
-            content="运行时环境：工作区根目录 {{cwd}}；操作系统 {{platform}}；当前时间 {{time}}。",
+            # 刻意用 {{date}}（一天内不变）而不是 {{time}}（每秒都变）：
+            # 系统提示词是请求第一条消息，它一变前缀缓存就永远不命中
+            # （`_04` 实测：稳定前缀命中 384/564；写秒级时间命中 0/564）。
+            # {{time}} 仍然可用——需要精确时间的场景自行承担缓存成本。
+            content="运行时环境：工作区根目录 {{cwd}}；操作系统 {{platform}}；今天是 {{date}}。",
         ),
         Section(
             name="style",
