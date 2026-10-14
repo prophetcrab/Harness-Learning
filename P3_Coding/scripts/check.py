@@ -24,7 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]  # P3_Coding
 PY = sys.executable
 #: 阶段目录（自包含；每阶段从上一阶段完成态复制起步）。
-STAGES = ["_01_Self_Plugin_Tools", "_02_Streaming", "_03_Usage_Budget"]
+STAGES = ["_01_Self_Plugin_Tools", "_02_Streaming", "_03_Usage_Budget", "_04_Context_Meter"]
 #: 整合包/基线：与阶段同样验收（存在才检查——便于单独阶段分支不带上它）。
 PACKAGES = ["mini_harness"]
 
