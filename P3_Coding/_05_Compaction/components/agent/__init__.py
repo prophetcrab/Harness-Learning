@@ -14,6 +14,9 @@ from components.agent.compact import (
     Compactor,
     build_summary_request,
     choose_cut,
+    choose_manual_cut,
+    is_compaction_summary,
+    last_turn_start,
     plan_compaction,
 )
 from components.agent.loop import AgentLoop, ContextCompactor, EventHook, ExecuteTool
@@ -34,5 +37,8 @@ __all__ = [
     "TurnStatus",
     "build_summary_request",
     "choose_cut",
+    "choose_manual_cut",
+    "is_compaction_summary",
+    "last_turn_start",
     "plan_compaction",
 ]

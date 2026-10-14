@@ -85,6 +85,14 @@ class HarnessSession:
         """跑一个 turn：一条用户输入排空到最终回答。"""
         return self.loop.run(text, tools=self.registry.specs())
 
+    def compact(self) -> Any | None:
+        """手动压缩一次（`/compact`）：跳过阈值、保住最后一轮，返回结果或 None。
+
+        抛异常是**有意**的（没有压缩器 / 摘要调用失败）——这是用户按下的动作，
+        调用方（入口）应当把原因回给用户，而不是像自动路径那样悄悄跳过。
+        """
+        return self.loop.compact_now(self.registry.specs(), manual=True)
+
 
 class AgentService:
     """会话管理器：按 session_id 打开/缓存/复用会话（对外唯一入口）。
@@ -232,6 +240,16 @@ class AgentService:
                 final_text=result.final_text,
             )
             return result
+
+    def compact(self, session_id: str = "default") -> Any | None:
+        """手动压缩一次（`/compact`）：打开（或恢复）会话 → 立即折叠历史。
+
+        与 `ask` 用同一把锁：压缩会改写内存历史并往日志追加 checkpoint，
+        不能让另一个 turn 在中间穿过去。
+        """
+        with self._lock:
+            opened = self._open_locked(session_id)
+            return opened.compact()
 
     @property
     def open_sessions(self) -> list[str]:

@@ -5,6 +5,9 @@ P3 第 5 阶段（对应 [PLAN.md](../PLAN.md)）。**本阶段只加一个机�
 > 超阈值时把**旧区段**摘要成**一条消息**；日志用"折叠声明"实现，绝不改写历史。
 > 验收：压缩后投影变化、日志原样、**重放仍然同构**。
 
+**两种触发方式，一套机制**：自动（到 90% 阈值）+ 手动（`/compact`：REPL 命令、
+网页输入框斜杠命令、输入框左侧「⟳ 压缩」按钮）。
+
 **状态：✅ 已完成（2026-10-14）**
 
 ## 为什么这样设计
@@ -46,14 +49,17 @@ P3 第 5 阶段（对应 [PLAN.md](../PLAN.md)）。**本阶段只加一个机�
 | `plugins/compact.py` | 插件 | 提供 `compacter` 服务（inject llm）；订阅循环事件 → 内核事件 `context/compacted` |
 | `plugins/agent.py` | 接线 | 从 ctx 现取 `compacter` 交给每条会话的 loop；卸载 = 不再压缩 |
 | `plugins/boot.py` / `chat.py` | 接线 | 默认装 compact；`--context-window` 默认 **1M**（`DEFAULT_CONTEXT_WINDOW`，用户指定） |
-| `webui/index.html` | 界面 | 聊天流里的「⟳ 上下文已压缩」折叠徽标（可展开摘要全文）+ 事件流摘要行 + 失败横幅 |
+| `webui/index.html` | 界面 | 聊天流里的「⟳ 上下文已压缩」折叠徽标（可展开摘要全文）+ 事件流摘要行 + 失败横幅；输入框旁「⟳ 压缩」按钮 + 输入 `/compact` |
+| `plugins/webui.py` | 界面 | `POST /api/sessions/<id>/compact` → NDJSON 帧（`compact_applied` / `__compact_done` / `__compact_noop` / `__error`） |
+| `plugins/agent.py` | 接线 | `HarnessSession.compact()` / `AgentService.compact()`（与 `ask` 同一把锁） |
+| `chat.py` | 入口 | REPL `/compact` 命令 |
 | `plugins/context_meter.py` | 复用 | 估算/拆分改为引用构件（对外 API 不变，测试逐字兼容） |
 
 ## 怎么用
 
 ```bash
 cd P3_Coding/_05_Compaction
-python -m pytest -q                                # 231 个用例
+python -m pytest -q                                # 246 个用例
 
 python chat.py --web --realtime --self-tools        # 默认 1M 窗口
 python chat.py --realtime --context-window 8000     # 小窗口：多聊几轮就能看见压缩
@@ -62,6 +68,20 @@ python chat.py --realtime --context-window 8000     # 小窗口：多聊几轮�
 
 界面上：聊天流里出现 `⟳ 上下文已压缩：折叠 N 条消息（约 X → Y tokens）`，
 点开看模型眼前的摘要全文；事件流里同名事件带 `folded` / `before` / `after`。
+
+**手动触发（`/compact`）** 三种按法，同一个动作：
+
+```
+网页：点输入框左侧「⟳ 压缩」        ← 按钮
+网页：输入框敲 /compact 回车         ← 斜杠命令（占位提示里写着）
+终端：REPL 里敲 /compact            ← chat.py 命令
+```
+
+手动与自动的**唯一差别**是"何时压、折到哪"：手动跳过阈值（用户叫了就压），
+切点折到**最后一轮之前**（自动按"保留 10% 容量"往回攒——1M 窗口下 10% 是
+10 万 token，按预算切等于什么都不折）。**其余守卫一个不少**：最后一轮原样保留、
+末尾至少 2 条、不劈开 tool 配对；日志语义与投影折叠也完全一致。
+失败时人工路径**不静默**（回一句原因），自动路径才是 fail-soft 悄悄跳过。
 
 ## 机制怎么运作
 
@@ -110,6 +130,13 @@ user/message 条数（应=8，日志未删）: 8
 
 真实 API（小窗口）见"真实 API 验证"一节。
 
+## 手动触发（`/compact`）的两条防呆
+
+1. **空折守卫**：折叠区若只剩上一次的摘要（连按两次 `/compact` 会走到这里），
+   直接返回 None——新摘要 ≈ 旧摘要，白花一次调用还可能越摘越薄（实测踩到）。
+2. **"没有可压缩的历史"**：只有当前一轮时同样返回 None，界面回一句
+   「没有可压缩的历史（只有当前一轮）」，而不是假装压缩成功。
+
 ## 验收（对照 PLAN.md）
 
 - [x] **压缩后投影变化**：折叠区变成一条摘要消息（`【早前对话摘要】`）
@@ -123,7 +150,10 @@ user/message 条数（应=8，日志未删）: 8
 - [x] fail-soft：摘要失败 → 对话照常 `done`、日志里没有 checkpoint、下次还能压
 - [x] 压缩触发时发内核事件 `context/compacted`（界面可见）
 - [x] 卸载 compact 插件 = 新会话完全不压缩（`loop._compactor is None`）
-- [x] 门禁绿（ruff + pytest，231 用例）
+- [x] **手动触发**（`/compact`）：1M 窗口下自动永不触发、手动按下就折；折到
+      最后一轮之前（`folded == floor - 1`）；最后一轮与日志原样；重放同构；
+      连按两次被空折守卫拦住；失败回 `__error` 帧而不是静默
+- [x] 门禁绿（ruff + pytest，246 用例）
 
 ## 已知边界（诚实记录）
 

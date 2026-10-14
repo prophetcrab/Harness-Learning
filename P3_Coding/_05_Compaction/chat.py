@@ -13,7 +13,8 @@
     python chat.py --rpc --listen 8771  # RPC 服务同时监听 TCP（多客户端）
 
 会话内命令：/plugins 插件台账；/services 服务清单；/tools 工具面；
-            /history 历史；/web 起/停界面插件；/exit 退出（整体卸载，可见回卷）。
+            /history 历史；/compact 手动压缩上下文（折到最后一轮之前）；
+            /web 起/停界面插件；/exit 退出（整体卸载，可见回卷）。
 
 与 P2 的差别：装配不再是"读 YAML 配置树"，而是**直接列插件**——P3 基础包
 把"完全插件化"作为地基，配置分层（P2 `_08`/`_09`）留待后续在这个底座上重做。
@@ -154,7 +155,7 @@ def repl(booted: Booted, session_id: str, *, web_port: int = 8766) -> int:
     opened = booted.agent.open(session_id, on_event=print_event)
     if opened.repaired:
         print("[提示] 上次会话被强杀，日志尾部已自动修复。")
-    print(f"会话 {session_id}（{'恢复' if opened.resumed else '新建'}）；/exit 退出，/plugins 看台账。")
+    print(f"会话 {session_id}（{'恢复' if opened.resumed else '新建'}）；/exit 退出，/plugins 看台账，/compact 手动压缩。")
     while True:
         try:
             text = input("\n你：").strip()
@@ -178,6 +179,22 @@ def repl(booted: Booted, session_id: str, *, web_port: int = 8766) -> int:
             for message in opened.messages:
                 head = (message.content or "").replace("\n", " ")[:70]
                 print(f"  [{message.role}] {head}")
+            continue
+        if text == "/compact":
+            # 手动压缩（`_05` 的 `/compact`）：跳过阈值、保住最后一轮。
+            # 失败要把原因打出来（手动动作不静默；自动路径才 fail-soft）。
+            try:
+                outcome = booted.agent.compact(session_id)
+            except Exception as exc:
+                print(f"  [compact] 压缩失败：{exc}")
+                continue
+            if outcome is None:
+                print("  [compact] 没有可压缩的历史（只有当前一轮）。")
+            else:
+                print(
+                    f"  [compact] 已折叠 {outcome.folded} 条消息（{outcome.before_tokens} → "
+                    f"{outcome.after_tokens} tokens，摘要约 {outcome.summary_tokens}）"
+                )
             continue
         if text == "/web":
             if "webui" in booted.ctx.active_plugins:

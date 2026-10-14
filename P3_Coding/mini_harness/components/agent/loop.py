@@ -33,6 +33,7 @@ from collections.abc import Callable, Sequence
 from copy import deepcopy
 from typing import Any, Protocol
 
+from components.agent.compact import last_turn_start
 from components.agent.trace import Step, ToolResult, TurnResult, TurnStatus
 from components.llm.provider import LLMProvider, LLMRequest, LLMResponse
 from components.llm.streaming import StreamChunk, aggregate_chunks
@@ -59,9 +60,11 @@ class ContextCompactor(Protocol):
         *,
         measured: int | None = None,
         protect_from: int | None = None,
+        manual: bool = False,
     ) -> Any | None:
         """超阈值就返回一个"压缩结果"（含 start/cut/folded/message_content/…），
-        否则 None。结果对象由实现方定义，循环只按属性读取。"""
+        否则 None。`manual=True` 跳过阈值检查（`/compact` 手动触发）。
+        结果对象由实现方定义，循环只按属性读取。"""
         ...
 
 
@@ -290,6 +293,56 @@ class AgentLoop:
     # ------------------------------------------------------------------
     # 内部
     # ------------------------------------------------------------------
+
+    def compact_now(
+        self,
+        tools: Sequence[ToolSpec],
+        *,
+        manual: bool = True,
+    ) -> Any | None:
+        """手动压缩一次（`/compact`）：跳过阈值检查，立即折叠历史。
+
+        与自动路径的关系（`_05`）：
+
+        - **共用一套机制**：摘要请求、日志语义（`compact/checkpoint`）、投影
+          折叠完全一致；差别只在"何时压、折到哪"——手动不看阈值（用户叫了就压），
+          切点折到**最后一轮之前**（自动模式按"保留 10% 容量"往回攒，1M 窗口下
+          10% 是 10 万 token，按预算切等于什么都不折）。
+        - **最后一轮原样保留**：`floor = last_turn_start(...)`，用户刚聊的那一轮
+          一条不折（与"当前 turn 不动"是同一条底线）。
+        - **异常不吞**：这是用户按下的动作，失败要让调用方看见并回一句
+          为什么（自动路径才是 fail-soft 悄悄跳过）。
+
+        返回 `CompactionOutcome`；没什么可折时返回 None。
+        """
+        if self._compactor is None:
+            raise RuntimeError("当前会话没有装压缩器（compact 插件未装载）")
+        history = list(self._history)
+        floor = last_turn_start(history)
+        outcome = self._compactor.maybe_compact(
+            history,
+            list(tools),
+            measured=self._last_prompt_tokens,
+            protect_from=floor,
+            manual=manual,
+        )
+        if outcome is None:
+            return None
+        summary_message = user(outcome.message_content)
+        self._history[outcome.start : outcome.start + outcome.folded] = [summary_message]
+        self._emit(
+            "compact_applied",
+            turn=self._turn,
+            step=0,                      # 0 = 不在 turn/step 之中（手动触发）
+            folded=outcome.folded,
+            summary=outcome.message_content,
+            before_tokens=outcome.before_tokens,
+            after_tokens=outcome.after_tokens,
+            summary_tokens=outcome.summary_tokens,
+            over_limit=outcome.over_limit,
+            trigger=outcome.trigger,
+        )
+        return outcome
 
     def _maybe_compact(
         self,

@@ -71,6 +71,7 @@ class CompactPlugin:
                     summary_tokens=data.get("summary_tokens", 0),
                     turn=data.get("turn", 0),
                     step=data.get("step", 0),
+                    trigger=data.get("trigger", "auto"),
                 )
             elif kind == "compact_failed":
                 ctx.emit(

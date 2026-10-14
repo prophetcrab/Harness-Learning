@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -28,9 +29,11 @@ from components.llm.vocabulary import ToolCall, assistant, system, tool_result, 
 from components.session.projection import conversation_pairs, derive_messages
 from plugins import (
     COMPACTER_SERVICE,
+    WEBUI_SERVICE,
     CompactPlugin,
     boot_offline,
     compact_plugin,
+    webui_plugin,
 )
 
 #: 小容量：触发线 2700、保留 300、摘要上限 150 —— 测试里几轮就能压。
@@ -553,6 +556,279 @@ def test_checkpoint_survives_jsonl_round_trip(tmp_path: Path):
     assert sum(1 for m in messages if m.role == "user") < 6   # 已折叠
     pairs = conversation_pairs(events)
     assert pairs[0][1].role == "user"                          # 摘要在最前（system 之后）
+
+
+# ---------------------------------------------------------------------------
+# 手动触发（`/compact`）：跳过阈值、折到最后一轮之前
+# ---------------------------------------------------------------------------
+
+
+def test_manual_skips_threshold_and_folds_up_to_last_turn(tmp_path: Path):
+    """1M 窗口下自动**永不**触发；手动按下就折——折到最后一轮之前。
+
+    这正是两种触发方式的分工：自动管"快撑爆了"，手动管"我就是要现在压"。
+    """
+    from components.agent.compact import last_turn_start
+
+    booted = _boot(tmp_path, turns=3, capacity=DEFAULT_CONTEXT_WINDOW)  # 1M
+    opened = booted.agent.open("m1")
+    for index in range(3):
+        booted.agent.ask(f"第{index}问：" + "内容。" * 60, session_id="m1")
+
+    events = opened.session.events
+    assert not [e for e in events if e.type == "compact/checkpoint"], "1M 窗口下不该自动触发"
+
+    floor = last_turn_start(opened.messages)
+    assert floor > 1, "构造出来的历史应该不止一轮"
+
+    outcome = booted.agent.compact("m1")
+    assert outcome is not None
+    assert outcome.trigger == "manual"
+    assert outcome.folded == floor - 1        # 折掉"最后一轮之前"的全部对话消息
+
+    # 最后一轮原样保留；摘要顶在最前
+    roles = [(m.role, m.content) for m in opened.messages]
+    assert roles[0][0] == "system"
+    assert roles[1][1].startswith("【早前对话摘要】")
+    assert any("第2问" in (c or "") for _, c in roles), "最后一轮的提问必须还在"
+    booted.close()
+
+
+def test_manual_keeps_last_turn_and_log_untouched(tmp_path: Path):
+    booted = _boot(tmp_path, turns=4, capacity=DEFAULT_CONTEXT_WINDOW)
+    opened = booted.agent.open("m2")
+    for index in range(4):
+        booted.agent.ask(f"第{index}问：" + "内容。" * 60, session_id="m2")
+
+    outcome = booted.agent.compact("m2")
+    assert outcome is not None
+    events = opened.session.events
+    # 日志原样：4 条 user 一条不少
+    assert sum(1 for e in events if e.type == "user/message") == 4
+    # 折叠声明进日志，字段齐备
+    checkpoint = [e for e in events if e.type == "compact/checkpoint"][-1]
+    assert checkpoint.data["folded"] == outcome.folded
+    # 投影与内存历史逐条一致
+    assert [(m.role, m.content) for m in opened.messages] == \
+           [(m.role, m.content) for m in opened.loop.history]
+    booted.close()
+
+
+def test_manual_replay_is_isomorphic(tmp_path: Path):
+    """手动压缩同样要过"重放同构"这一关（与自动路径同一套日志语义）。"""
+    booted = _boot(tmp_path, turns=3, capacity=DEFAULT_CONTEXT_WINDOW)
+    opened = booted.agent.open("m3")
+    for index in range(3):
+        booted.agent.ask(f"第{index}问：" + "内容。" * 60, session_id="m3")
+    assert booted.agent.compact("m3") is not None
+    online = [(m.role, m.content) for m in opened.loop.history]
+    booted.close()
+
+    reopened = _boot(tmp_path, turns=3, capacity=DEFAULT_CONTEXT_WINDOW)
+    resumed = reopened.agent.open("m3")
+    assert resumed.resumed is True
+    assert [(m.role, m.content) for m in resumed.loop.history] == online
+    reopened.close()
+
+
+def test_manual_noop_when_only_one_turn(tmp_path: Path):
+    """只有当前一轮：没什么可折的 → None（入口据此回一句"没有可压缩的历史"）。"""
+    booted = _boot(tmp_path, turns=1, capacity=DEFAULT_CONTEXT_WINDOW)
+    booted.agent.ask("唯一的一问：" + "内容。" * 80, session_id="m4")
+    assert booted.agent.compact("m4") is None
+    booted.close()
+
+
+def test_manual_twice_without_new_turns_is_a_noop(tmp_path: Path):
+    """连按两次：第二次只剩上一次的摘要可折 → 空折守卫拦住（不白花一次调用）。
+
+    回归背景：初版实现会把"上一版摘要"再摘一遍——收益约等于零，却多花一次
+    模型调用，还可能越摘越薄（实测踩到）。
+    """
+    booted = _boot(tmp_path, turns=3, capacity=DEFAULT_CONTEXT_WINDOW)
+    for index in range(3):
+        booted.agent.ask(f"第{index}问：" + "内容。" * 60, session_id="m5")
+    assert booted.agent.compact("m5") is not None
+    assert booted.agent.compact("m5") is None, "空折没有被拦住"
+    booted.close()
+
+
+def test_manual_after_new_turn_swallows_previous_summary(tmp_path: Path):
+    """再聊一轮后手动压：旧摘要 + 它之后的内容一起折进新摘要（仍只有一条摘要）。"""
+    booted = _boot(tmp_path, turns=3, capacity=DEFAULT_CONTEXT_WINDOW)
+    for index in range(3):
+        booted.agent.ask(f"第{index}问：" + "内容。" * 60, session_id="m6")
+    booted.agent.compact("m6")
+    booted.agent.ask("第四问：" + "内容。" * 60, session_id="m6")
+
+    assert booted.agent.compact("m6") is not None
+    opened = booted.agent.open("m6")
+    summaries = [m for m in opened.messages if (m.content or "").startswith("【早前对话摘要】")]
+    assert len(summaries) == 1, f"投影里应只剩一条摘要，实到 {len(summaries)} 条"
+    booted.close()
+
+
+def test_choose_manual_cut_ignores_keep_budget():
+    """手动切点不看保留预算（1M 下 10% = 10 万 token，按预算切等于不折）。
+
+    `cut` 是**保留区起点**（折叠区间是 [start, cut)）：cut 越小折得越少。
+    测试消息都很小，1M 的保留预算永远攒不满 → 自动切点一路退到 start
+    （等于什么都不折）；手动切点则停在"最后一轮之前"，把前面的都折掉。
+    """
+    from components.agent.compact import choose_manual_cut, last_turn_start
+
+    messages = [system("S"), *[m for i in range(5) for m in (user(f"u{i}"), assistant(f"a{i}"))]]
+    policy = CompactionPolicy(capacity=DEFAULT_CONTEXT_WINDOW)   # 1M
+    floor = last_turn_start(messages)
+    auto_cut = choose_cut(messages, 1, policy, floor=floor)
+    manual_cut = choose_manual_cut(messages, 1, policy, floor=floor)
+    assert auto_cut == 1, "自动模式在 1M 下应该什么都不折（保留预算永远攒不满）"
+    assert manual_cut > auto_cut, "手动模式应该折掉更多（不受保留预算限制）"
+    assert manual_cut <= floor, "手动切点也不能越进最后一轮"
+
+
+def test_manual_cut_never_splits_tool_pairs():
+    from components.agent.compact import choose_manual_cut
+
+    messages = [
+        system("S"),
+        user("查一下"),
+        assistant("", [ToolCall(id="c1", name="read", arguments={})]),
+        tool_result("c1", {"content": "结果"}),
+        user("最后一问"),
+        assistant("答"),
+    ]
+    cut = choose_manual_cut(messages, 1, CompactionPolicy(capacity=DEFAULT_CONTEXT_WINDOW), floor=4)
+    assert messages[cut].role != "tool", "切点落在了 tool 消息上——成对保护失效"
+
+
+def test_manual_raises_when_no_compactor():
+    """没有压缩器时手动压缩要报错（用户动作不静默），而不是假装成功。"""
+    from components.agent.loop import AgentLoop
+
+    loop = AgentLoop(None, lambda name, args: {}, system_prompt="S")
+    with pytest.raises(RuntimeError):
+        loop.compact_now([])
+
+
+def test_manual_failure_surfaces_to_caller(tmp_path: Path):
+    """手动路径的摘要失败要往上抛（与自动路径的 fail-soft 相对）。"""
+    from components.agent.compact import Compactor
+
+    class _Broken:
+        def complete(self, request):
+            raise RuntimeError("摘要服务挂了")
+
+    booted = _boot(tmp_path, turns=3, capacity=DEFAULT_CONTEXT_WINDOW)
+    for index in range(3):
+        booted.agent.ask(f"第{index}问：" + "内容。" * 60, session_id="m7")
+    opened = booted.agent.open("m7")
+    opened.loop._compactor = Compactor(_Broken(), CompactionPolicy(capacity=1_048_576))
+    with pytest.raises(RuntimeError):
+        opened.compact()
+    booted.close()
+
+
+# ---------------------------------------------------------------------------
+# 手动压缩的两个入口：webui 路由 + 页面上的按钮/斜杠命令
+# ---------------------------------------------------------------------------
+
+
+def test_webui_compact_route_streams_result(tmp_path: Path):
+    """POST /api/sessions/<id>/compact → NDJSON 帧；成功以 __compact_done 收尾。"""
+    booted = boot_offline(root=tmp_path / "s", workspace=tmp_path / "ws")
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    url = booted.ctx.require(WEBUI_SERVICE).url.rstrip("/")
+    for index in range(3):
+        booted.agent.ask(f"第{index}问：" + "内容。" * 60, session_id="w1")
+
+    request = urllib.request.Request(
+        url + "/api/sessions/w1/compact", data=b"{}", method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        body = response.read().decode("utf-8")
+    frames = [json.loads(line) for line in body.splitlines() if line.strip()]
+    kinds = [frame["kind"] for frame in frames]
+    assert "compact_applied" in kinds, f"没看到压缩帧：{kinds}"
+    done = [frame for frame in frames if frame["kind"] == "__compact_done"]
+    assert done and done[0]["payload"]["folded"] >= 1
+    # 页面上有手动压缩按钮与 /compact 提示
+    with urllib.request.urlopen(url + "/", timeout=8) as response:
+        html = response.read().decode("utf-8")
+    assert "compact-btn" in html and "/compact" in html
+    booted.close()
+
+
+def test_webui_compact_noop_reports_plainly(tmp_path: Path):
+    """没有可压的历史：以 __compact_noop 明确收尾（不是假装压缩成功）。"""
+    booted = boot_offline(root=tmp_path / "s", workspace=tmp_path / "ws")
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    url = booted.ctx.require(WEBUI_SERVICE).url.rstrip("/")
+    booted.agent.ask("唯一的一问", session_id="w2")
+    request = urllib.request.Request(
+        url + "/api/sessions/w2/compact", data=b"{}", method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        body = response.read().decode("utf-8")
+    kinds = [json.loads(line)["kind"] for line in body.splitlines() if line.strip()]
+    assert "__compact_noop" in kinds, f"帧序列：{kinds}"
+    booted.close()
+
+
+def test_webui_compact_failure_reports_error_frame(tmp_path: Path):
+    """摘要失败：手动路径要回 __error 帧（人看得见），而不是静默 200。"""
+    from components.agent.compact import Compactor
+
+    class _Broken:
+        def complete(self, request):
+            raise RuntimeError("摘要服务挂了")
+
+    booted = boot_offline(root=tmp_path / "s", workspace=tmp_path / "ws")
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    url = booted.ctx.require(WEBUI_SERVICE).url.rstrip("/")
+    for index in range(3):
+        booted.agent.ask(f"第{index}问：" + "内容。" * 60, session_id="w3")
+
+    # 换掉压缩器（新会话用新组合；已打开的会话手动换掉它的引用）
+    booted.ctx.retract(COMPACTER_SERVICE)
+    broken = Compactor(_Broken(), CompactionPolicy(capacity=1_048_576))
+    booted.ctx.provide(COMPACTER_SERVICE, broken)
+    booted.agent.open("w3").loop._compactor = broken
+
+    request = urllib.request.Request(
+        url + "/api/sessions/w3/compact", data=b"{}", method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        body = response.read().decode("utf-8")
+    frames = [json.loads(line) for line in body.splitlines() if line.strip()]
+    errors = [frame for frame in frames if frame["kind"] == "__error"]
+    assert errors, f"帧序列：{[f['kind'] for f in frames]}"
+    assert "压缩失败" in errors[0]["payload"]["message"]
+    booted.close()
+
+
+def test_compact_kernel_event_carries_trigger(tmp_path: Path):
+    """`context/compacted` 事件要带上 trigger，界面才分得清手动/自动。"""
+    seen = []
+    booted = _boot(tmp_path, turns=3, capacity=DEFAULT_CONTEXT_WINDOW)
+    booted.ctx.on("context/compacted", lambda **payload: seen.append(payload))
+    for index in range(3):
+        booted.agent.ask(f"第{index}问：" + "内容。" * 60, session_id="k1")
+    booted.agent.compact("k1")
+    assert [item["trigger"] for item in seen if item["status"] == "applied"] == ["manual"]
+    booted.close()
+
+
+def test_manual_summary_is_plain_text_not_tool_messages(tmp_path: Path):
+    """手动压缩的摘要请求同样摊平成文本（与自动路径共用一套构件）。"""
+    from components.agent.compact import build_summary_request
+
+    request = build_summary_request([user("第一句"), assistant("答复")], SMALL)
+    assert request.tools == []
+    assert [m.role for m in request.messages] == ["system", "user"]
 
 
 __all__ = ["SMALL"]

@@ -13,7 +13,8 @@
     python chat.py --rpc --listen 8771  # RPC 服务同时监听 TCP（多客户端）
 
 会话内命令：/plugins 插件台账；/services 服务清单；/tools 工具面；
-            /history 历史；/web 起/停界面插件；/exit 退出（整体卸载，可见回卷）。
+            /history 历史；/compact 手动压缩上下文（折到最后一轮之前）；
+            /web 起/停界面插件；/exit 退出（整体卸载，可见回卷）。
 
 与 P2 的差别：装配不再是"读 YAML 配置树"，而是**直接列插件**——P3 基础包
 把"完全插件化"作为地基，配置分层（P2 `_08`/`_09`）留待后续在这个底座上重做。
@@ -26,6 +27,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from components.context.tokens import DEFAULT_CONTEXT_WINDOW
 from components.tools import ApprovalPolicy, PromptApprover
 from plugins import TOOLS_SERVICE, WEBUI_SERVICE, Booted, boot_offline, boot_realtime
 
@@ -36,7 +38,11 @@ DEFAULT_WORKSPACE = HERE / "demo_workspace" / "ws"
 
 
 def build_approval(args: argparse.Namespace) -> ApprovalPolicy | None:
-    """审批策略：默认终端 y/n；--no-approve 自动放行；--deny 全部拒绝。"""
+    """审批策略：Web + 自扩展模式交给浏览器卡片；否则终端 y/n；两个开关强制放行/拒绝。
+
+    返回 None = "不要在装配时定死策略"——agent 会退回用 ctx 里的 `approval`
+    服务（装了 web-approval 就是浏览器审批；没装则 fail-closed 拒绝）。
+    """
     if args.no_approve:
         from components.tools import AutoApprove
 
@@ -45,6 +51,9 @@ def build_approval(args: argparse.Namespace) -> ApprovalPolicy | None:
         from components.tools import AutoDeny
 
         return AutoDeny("命令行指定了 --deny")
+    if args.web and args.self_tools:
+        # 界面 + 自扩展：审批点在浏览器里（web-approval 插件已随之装载）。
+        return None
     if not sys.stdin.isatty():
         # 非交互终端问不到人：fail-closed（拒绝一切需审批操作）。
         from components.tools import AutoDeny
@@ -146,7 +155,7 @@ def repl(booted: Booted, session_id: str, *, web_port: int = 8766) -> int:
     opened = booted.agent.open(session_id, on_event=print_event)
     if opened.repaired:
         print("[提示] 上次会话被强杀，日志尾部已自动修复。")
-    print(f"会话 {session_id}（{'恢复' if opened.resumed else '新建'}）；/exit 退出，/plugins 看台账。")
+    print(f"会话 {session_id}（{'恢复' if opened.resumed else '新建'}）；/exit 退出，/plugins 看台账，/compact 手动压缩。")
     while True:
         try:
             text = input("\n你：").strip()
@@ -170,6 +179,22 @@ def repl(booted: Booted, session_id: str, *, web_port: int = 8766) -> int:
             for message in opened.messages:
                 head = (message.content or "").replace("\n", " ")[:70]
                 print(f"  [{message.role}] {head}")
+            continue
+        if text == "/compact":
+            # 手动压缩（`_05` 的 `/compact`）：跳过阈值、保住最后一轮。
+            # 失败要把原因打出来（手动动作不静默；自动路径才 fail-soft）。
+            try:
+                outcome = booted.agent.compact(session_id)
+            except Exception as exc:
+                print(f"  [compact] 压缩失败：{exc}")
+                continue
+            if outcome is None:
+                print("  [compact] 没有可压缩的历史（只有当前一轮）。")
+            else:
+                print(
+                    f"  [compact] 已折叠 {outcome.folded} 条消息（{outcome.before_tokens} → "
+                    f"{outcome.after_tokens} tokens，摘要约 {outcome.summary_tokens}）"
+                )
             continue
         if text == "/web":
             if "webui" in booted.ctx.active_plugins:
@@ -202,6 +227,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
     parser.add_argument("--rpc", action="store_true", help="装载 RPC 插件：stdio JSON-RPC 服务")
     parser.add_argument("--listen", type=int, default=None, help="--rpc 同时监听 TCP 端口（0 = 系统分配）")
+    parser.add_argument(
+        "--self-tools", action="store_true",
+        help="★ 装上自扩展工具（_01 机制）：模型可装卸白名单插件（需审批）",
+    )
+    parser.add_argument(
+        "--max-steps", type=int, default=None,
+        help="单个 turn 的步数上限（默认不限——长程任务不会被截断；"
+             "给了数字则超限时以 max_steps 状态收尾）",
+    )
+    parser.add_argument(
+        "--token-budget", type=int, default=None,
+        help="单个 turn 的 token 上限（`_03`：超限以 budget_exceeded 收尾；默认不限）",
+    )
+    parser.add_argument(
+        "--context-window", type=int, default=DEFAULT_CONTEXT_WINDOW,
+        help="模型上下文窗口（`_04` 仪表分母 + `_05` 压缩阈值基数；默认 1M）",
+    )
     args = parser.parse_args(argv)
 
     approval = build_approval(args)
@@ -213,11 +255,22 @@ def main(argv: list[str] | None = None) -> int:
             approval=approval,
             fs=args.fs,
             shell=args.shell,
+            self_tools=args.self_tools,
+            max_steps=args.max_steps,
+            token_budget=args.token_budget,
+            context_window=args.context_window,
         )
         mode = f"真实组合（DeepSeek + {args.fs} + shell={args.shell}）"
     else:
-        booted = boot_offline(root=args.root, workspace=args.workspace, approval=approval)
+        booted = boot_offline(
+            root=args.root, workspace=args.workspace, approval=approval,
+            self_tools=args.self_tools, max_steps=args.max_steps,
+            token_budget=args.token_budget, context_window=args.context_window,
+        )
         mode = "离线组合（离线模型 + MemoryFS + 剧本命令）"
+    if args.self_tools:
+        mode += " + 自扩展工具"
+    mode += (f"｜步数上限 {args.max_steps}" if args.max_steps else "｜步数不限")
     # RPC 模式：所有人类可读输出走 stderr（stdout 只出协议帧）。
     banner_stream = sys.stderr if args.rpc else sys.stdout
     print(f"装配完成：{mode}", file=banner_stream)

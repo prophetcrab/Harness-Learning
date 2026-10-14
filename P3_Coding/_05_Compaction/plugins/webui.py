@@ -24,6 +24,8 @@ API（静态页面在 `webui/index.html`，纯原生 JS、零依赖）：
     GET  /api/sessions              会话列表（turns / last_seq / 最近状态）
     GET  /api/sessions/<id>/events  某会话的事件流 + 投影出的消息（历史由日志投影）
     POST /api/sessions/<id>/send    {text} → NDJSON 流：主循环事件逐条推，末行 __done
+    POST /api/sessions/<id>/compact 手动压缩（`/compact`）→ NDJSON 流：
+                                    成功末行 __compact_done / 无可压 __compact_noop
 
 已知边界（刻意的）：只绑本机、无鉴权、事件流只推给发起请求的那个客户端
 （多客户端广播属于 RPC / 事件流跟随的题目）。
@@ -223,6 +225,9 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
             if route.startswith("/api/sessions/") and route.endswith("/send"):
                 session_id = unquote(route[len("/api/sessions/") : -len("/send")])
                 self._stream_turn(session_id)
+            elif route.startswith("/api/sessions/") and route.endswith("/compact"):
+                session_id = unquote(route[len("/api/sessions/") : -len("/compact")])
+                self._compact(session_id)
             elif route.startswith("/api/approvals/"):
                 request_id = unquote(route[len("/api/approvals/") :])
                 body = self._read_json()
@@ -236,6 +241,49 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
                     self._send_json(404, {"error": f"没有等待中的审批：{request_id}"})
             else:
                 self._send_json(404, {"error": f"未知路由：{route}"})
+
+        # ---- 手动压缩（/compact） ----
+
+        def _compact(self, session_id: str) -> None:
+            """一次手动压缩：NDJSON 流（复用 send 的帧格式，前端同一套解析）。
+
+            不跑 turn——只折叠历史；但压缩本身要调一次模型（摘要），所以也走
+            流式响应：摘要期间的失败/成功都以帧到达，前端不必干等。
+            """
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+            self._alive = True
+            self._chunked = True
+
+            def emit(kind: str, payload: dict[str, Any]) -> None:
+                self._write_event(kind, payload)
+
+            try:
+                with lock:                      # 与 turn 互斥：不能和运行中的对话并写历史
+                    agent.open(session_id, on_event=emit)   # 打开（或恢复）会话，接上事件流
+                    try:
+                        outcome = agent.compact(session_id)
+                    except Exception as exc:    # 失败要说给人听（手动动作不静默）
+                        emit("__error", {"message": f"压缩失败：{exc}"})
+                        return
+                if outcome is None:
+                    emit("__compact_noop", {"message": "没有可压缩的历史（只有当前一轮）"})
+                else:
+                    emit(
+                        "__compact_done",
+                        {
+                            "folded": outcome.folded,
+                            "before_tokens": outcome.before_tokens,
+                            "after_tokens": outcome.after_tokens,
+                            "summary_tokens": outcome.summary_tokens,
+                        },
+                    )
+            finally:
+                self._close_stream()
 
         # ---- 流式 turn ----
 

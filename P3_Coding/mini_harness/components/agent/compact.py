@@ -15,6 +15,14 @@
 5. **当前 turn 不动**。折叠区止步于本 turn 的第一条消息（调用方传 `protect_from`）：
    刚问的问题、刚拿到的工具结果不能在"干活干到一半"时被摘要掉。
    代价写在"已知边界"里。
+6. **两种触发方式共用一套机制**：
+   - **自动**（90% 阈值）：切点按"保留 10% 容量"从尾部往回攒（`choose_cut`）；
+   - **手动**（`/compact`，用户按下）：跳过阈值，切点改用"折到最后一轮之前"
+     （`choose_manual_cut`）——1M 窗口下 10% 是 10 万 token，按预算切等于
+     什么都不折，手动就失去意义。其余守卫（最后一轮、min_tail、成对安全）
+     一个不少。
+   两条路径的摘要请求、日志语义（`compact/checkpoint`）、投影折叠完全一致，
+   只有"何时压、折到哪"不同。
 
 三个比例、摘要请求的字符预算都在 `CompactionPolicy` 里。
 
@@ -66,6 +74,15 @@ SUMMARY_TAIL = "【要求】输出要点备忘。"
 def compose_summary(text: str) -> str:
     """摘要正文 → 进入请求的最终文本（带前缀标记）。"""
     return f"{SUMMARY_HEADER}\n{text.strip()}"
+
+
+def is_compaction_summary(message: Message) -> bool:
+    """这条消息是不是上一次压缩留下的摘要（靠前缀标记识别）。
+
+    用途见 plan_compaction 的"空折"守卫：折叠区若只剩摘要，再折一次毫无收益
+    （新的摘要 ≈ 旧的摘要），却要花一次模型调用、还可能把内容越摘越薄。
+    """
+    return message.role == "user" and (message.content or "").startswith(SUMMARY_HEADER)
 
 
 @dataclass(frozen=True)
@@ -146,6 +163,7 @@ class CompactionOutcome:
     after_tokens: int         # 压缩后的估算用量
     summary_tokens: int       # 摘要本身的估算 token
     over_limit: bool          # 摘要是否超过 policy 的长度上限（只记录，不裁剪）
+    trigger: str = "auto"     # "auto"（阈值触发）| "manual"（/compact）
 
     @property
     def message_content(self) -> str:
@@ -173,6 +191,8 @@ def choose_cut(
     floor: int | None = None,
 ) -> int:
     """从尾部往回累积到保留预算，返回保留区起点（折叠 [start, cut)）。
+
+    这是**自动**模式的切点（90% 触发时用）：从尾部往回攒到保留预算为止。
 
     三个硬约束：
 
@@ -202,6 +222,45 @@ def choose_cut(
     return cut
 
 
+def last_turn_start(messages: Sequence[Message]) -> int:
+    """最后一轮对话的起点（最后一条 user 消息的下标；没有就返回 start）。
+
+    手动压缩用它当折叠边界（见 choose_manual_cut）：**最后一轮原样保留**，
+    之前的全部折叠。注意摘要消息也是 user 角色——它是上一次压缩的产物，
+    位于列表最前；只要之后还有真的用户消息，它就不会被误判成"最后一轮"。
+    """
+    start = first_conversation_index(messages)
+    for index in range(len(messages) - 1, start - 1, -1):
+        if messages[index].role == "user":
+            return index
+    return start
+
+
+def choose_manual_cut(
+    messages: Sequence[Message],
+    start: int,
+    policy: CompactionPolicy,
+    *,
+    floor: int | None = None,
+) -> int:
+    """**手动**模式（`/compact`）的切点：折到 floor 之前，不看保留预算。
+
+    与自动模式的差别只有一条、但很关键：自动按"保留 10% 容量"往回攒，
+    手动**不留那一段**——用户既然明确要求压缩，就把"最后一轮之前"全折掉
+    （1M 窗口下 10% 是 10 万 token，按预算切等于什么都不折，手动就没意义了）。
+
+    仍然守住的底线：最后一轮（floor）之后一条不折、末尾至少 `min_tail` 条、
+    成对安全（不劈开 tool 申请与结果）。
+    """
+    limit = len(messages) if floor is None else min(max(floor, start), len(messages))
+    cut = min(limit, len(messages) - policy.min_tail)
+    if cut <= start:
+        return start
+    while start < cut < len(messages) and messages[cut].role == "tool":
+        cut -= 1
+    return cut
+
+
 def plan_compaction(
     messages: Sequence[Message],
     tools: Iterable[ToolSpec],
@@ -209,6 +268,7 @@ def plan_compaction(
     *,
     measured: int | None = None,
     protect_from: int | None = None,
+    manual: bool = False,
 ) -> CompactionPlan | None:
     """判断"该不该压、压到哪"——返回 None 表示不用压（纯函数，可单测）。
 
@@ -218,18 +278,30 @@ def plan_compaction(
 
     `protect_from`：本 turn 第一条对话消息的下标（循环传入）。它之后的消息
     永不折叠——压缩只折"历史 turn"（见 loop.py 的三条底线）。
+
+    `manual=True`（`/compact` 手动触发）：**只跳过阈值检查**，切点改用
+    choose_manual_cut（折到 floor 之前，不看保留预算）。其余守卫——最后一轮
+    不动、min_tail、成对安全——一个不少：手动不等于"随便压"。
     """
     parts = measure_parts(messages, tools)
     estimate_total = sum(parts.values())
     used = max(estimate_total, float(measured or 0))
-    if used < policy.trigger_tokens:
+    if not manual and used < policy.trigger_tokens:
         return None
 
     start = first_conversation_index(messages)
-    cut = choose_cut(messages, start, policy, floor=protect_from)
+    cut = (
+        choose_manual_cut(messages, start, policy, floor=protect_from)
+        if manual
+        else choose_cut(messages, start, policy, floor=protect_from)
+    )
     folded = cut - start
     if folded < 1:
         return None  # 全是 system / 只有当前 turn：没什么可折的
+    if all(is_compaction_summary(message) for message in messages[start:cut]):
+        # 折叠区里只剩上一次的摘要（"空折"）：再摘一次不会有新收益，只是
+        # 白花一次调用，还可能越摘越薄。手动连按两次 /compact 会走到这里。
+        return None
     folded_tokens = sum(message_tokens(message) for message in messages[start:cut])
     kept_tokens = sum(message_tokens(message) for message in messages[cut:])
     return CompactionPlan(
@@ -338,14 +410,17 @@ class Compactor:
         *,
         measured: int | None = None,
         protect_from: int | None = None,
+        manual: bool = False,
     ) -> CompactionOutcome | None:
-        """超阈值就压缩并返回结果；否则返回 None。
+        """超阈值（或 `manual=True`）就压缩并返回结果；否则返回 None。
 
         异常**不吞**：摘要调用失败、摘要为空都往上抛，由调用方决定怎么处理
-        （循环的选择是"跳过本次压缩、照常继续"，即 fail-soft）。
+        （自动路径的选择是"跳过本次压缩、照常继续"，即 fail-soft；
+        手动路径是用户按下的动作，失败要让人看见）。
         """
         plan = plan_compaction(
-            messages, tools, self._policy, measured=measured, protect_from=protect_from
+            messages, tools, self._policy,
+            measured=measured, protect_from=protect_from, manual=manual,
         )
         if plan is None:
             return None
@@ -368,6 +443,7 @@ class Compactor:
             after_tokens=int(round(plan.kept_tokens + summary_tokens)),
             summary_tokens=int(round(summary_tokens)),
             over_limit=summary_tokens > self._policy.summary_token_limit,
+            trigger="manual" if manual else "auto",
         )
 
 
@@ -385,7 +461,10 @@ __all__ = [
     "build_summary_request",
     "build_transcript",
     "choose_cut",
+    "choose_manual_cut",
     "compose_summary",
     "first_conversation_index",
+    "is_compaction_summary",
+    "last_turn_start",
     "plan_compaction",
 ]

@@ -265,6 +265,12 @@
   #send:hover:not(:disabled){filter:brightness(1.08)}
   #send:active:not(:disabled){transform:scale(.97)}
   #send:disabled{opacity:.45;cursor:default}
+  /* 手动压缩按钮（/compact）：次级样式，常驻在输入框左侧 */
+  #compact-btn{background:#141b26;color:var(--muted);border:1px solid #24303f;
+    border-radius:11px;padding:11px 13px;font-size:12.5px;cursor:pointer;flex:none;
+    transition:color .15s, border-color .15s, opacity .15s;white-space:nowrap}
+  #compact-btn:hover:not(:disabled){color:var(--fg);border-color:#33445a}
+  #compact-btn:disabled{opacity:.4;cursor:default}
 
   /* ---------- trace panel ---------- */
   .evse{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--faint);
@@ -335,8 +341,9 @@
     <div id="chat"><div class="wrap"></div></div>
     <div class="runline" id="runline"><span>就绪</span></div>
     <form id="composer" autocomplete="off">
+      <button type="button" id="compact-btn" title="手动压缩上下文（等同输入 /compact）：把最后一轮之前的历史折叠成一条摘要">⟳ 压缩</button>
       <textarea id="text" rows="1"
-        placeholder="输入消息…（Enter 发送 · Shift+Enter 换行）"></textarea>
+        placeholder="输入消息…（Enter 发送 · Shift+Enter 换行 · /compact 手动压缩）"></textarea>
       <button type="submit" id="send">发送</button>
     </form>
   </section>
@@ -719,8 +726,14 @@ function handleFrame(kind, payload) {
     case "compact_applied": {
       // 压缩发生（`_05`）：聊天流里插一个折叠徽标，runline 说明一句。
       wrapEl.appendChild(compactNode(payload));
-      setRunline(`上下文已压缩：折叠 ${payload.folded} 条 → 约 ${fmtTokens(payload.after_tokens) || "?"} tokens`);
+      const how = payload.trigger === "manual" ? "手动压缩" : "上下文已压缩";
+      setRunline(`${how}：折叠 ${payload.folded} 条 → 约 ${fmtTokens(payload.after_tokens) || "?"} tokens`);
       scrollBottom();
+      break;
+    }
+    case "__compact_noop": {
+      // 收尾帧由 runCompact 统一处理（这里兜底：事件流里也留个痕）
+      showBanner(payload.message || "没有可压缩的历史");
       break;
     }
     case "compact_failed": {
@@ -854,13 +867,73 @@ async function openSession(id, opts = {}) {
 }
 
 /* ---------------- send ---------------- */
+/** 读一条 NDJSON 流：逐帧交给 onFrame；返回末帧（__done / __compact_done …）。 */
+async function streamFrames(url, body, onFrame) {
+  const res = await fetch(url, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+  let last = null;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1);
+      if (!line) continue;
+      let frame; try { frame = JSON.parse(line); } catch { continue; }
+      if (String(frame.kind).startsWith("__")) last = { kind: frame.kind, payload: frame.payload };
+      else { onFrame(frame.kind, frame.payload); appendLiveEvent(frame.kind, frame.payload); }
+    }
+  }
+  return last;
+}
+
+/** 手动压缩（/compact）：不跑 turn，只折叠历史；结果以帧到达。 */
+async function runCompact() {
+  if (state.sending) return;
+  if (!state.current) state.current = "default";
+  state.sending = true;
+  $("send").disabled = true; $("compact-btn").disabled = true;
+  removeWorking(); setRunning("正在压缩上下文…");
+  ensureWorking("压缩中（会调用一次模型做摘要）…");
+  let last = null;
+  try {
+    last = await streamFrames(`/api/sessions/${encodeURIComponent(state.current)}/compact`, {}, handleFrame);
+    removeWorking();
+    if (last && last.kind === "__error") setRunline(last.payload.message || "压缩失败", "err");
+    else if (last && last.kind === "__compact_noop") setIdle("没有可压缩的历史（只有当前一轮）");
+    else if (last && last.kind === "__compact_done") {
+      const before = fmtTokens(last.payload.before_tokens), after = fmtTokens(last.payload.after_tokens);
+      setIdle(`✓ 压缩完成：折叠 ${last.payload.folded} 条`
+        + (before && after ? `（约 ${before} → ${after} tokens）` : ""));
+    } else setIdle("压缩完成");
+  } catch (err) {
+    removeWorking();
+    setRunline(`出错：${esc(err.message)}`, "err");
+  } finally {
+    state.sending = false; $("send").disabled = false; $("compact-btn").disabled = false;
+    await openSession(state.current, { silent: true });
+  }
+}
+
+$("compact-btn").addEventListener("click", runCompact);
+
 $("composer").addEventListener("submit", async (e) => {
   e.preventDefault();
   const ta = $("text");
   const text = ta.value.trim();
   if (!text || state.sending) return;
+  if (text === "/compact" || text === "/compact ") {       // 斜杠命令：走手动压缩
+    ta.value = ""; autosize();
+    await runCompact();
+    return;
+  }
   if (!state.current) state.current = "default";
-  state.sending = true; $("send").disabled = true;
+  state.sending = true; $("send").disabled = true; $("compact-btn").disabled = true;
   ta.value = ""; autosize();
   if (wrapEl.querySelector(".empty")) wrapEl.innerHTML = "";
   wrapEl.appendChild(userNode(text)); scrollBottom();      // 即时反馈（完成后会用日志重渲染）
@@ -869,30 +942,15 @@ $("composer").addEventListener("submit", async (e) => {
   ensureWorking("思考中…");
   let done = null;
   try {
-    const res = await fetch(`/api/sessions/${encodeURIComponent(state.current)}/send`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
-    for (;;) {
-      const { value, done: rdone } = await reader.read();
-      if (rdone) break;
-      buf += dec.decode(value, { stream: true });
-      let idx;
-      while ((idx = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1);
-        if (!line) continue;
-        let frame; try { frame = JSON.parse(line); } catch { continue; }
-        if (frame.kind === "__done") done = frame.payload; else handleFrame(frame.kind, frame.payload);
-        if (frame.kind !== "__done") appendLiveEvent(frame.kind, frame.payload);
-      }
-    }
+    const last = await streamFrames(
+      `/api/sessions/${encodeURIComponent(state.current)}/send`, { text }, handleFrame,
+    );
+    if (last && last.kind === "__done") done = last.payload;
   } catch (err) {
     removeWorking();
     setRunline(`出错：${esc(err.message)}`, "err");
   } finally {
-    state.sending = false; $("send").disabled = false;
+    state.sending = false; $("send").disabled = false; $("compact-btn").disabled = false;
     await openSession(state.current, { silent: true });
     if (done) setIdle(`turn ${done.turn} · ${done.status} · ${done.steps} 步 · 最终回答已渲染`);
     else if (!$("runline").classList.contains("err")) setIdle("就绪");
