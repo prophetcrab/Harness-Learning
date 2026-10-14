@@ -3,301 +3,653 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>P3 mini harness · 插件化内核可见性</title>
+<title>mini harness · P3</title>
 <style>
   :root{
-    --bg:#0f1115; --panel:#161920; --panel-2:#1d2129; --line:#272c36;
-    --fg:#e6e8ec; --muted:#9aa3b2; --accent:#6ea8fe; --ok:#4ade80;
-    --warn:#fbbf24; --err:#f87171; --pend:#a78bfa;
+    --bg:#0b0d11; --panel:#11141a; --panel-2:#161a22; --panel-3:#1c212b;
+    --line:#232936; --line-2:#2c3444;
+    --fg:#e7eaf0; --muted:#8b93a5; --faint:#5c6478;
+    --accent:#6ea8fe; --accent-soft:#1e2c44;
+    --ok:#4ade80; --warn:#fbbf24; --err:#f87171; --pend:#a78bfa;
+    --mono:ui-monospace,Consolas,"Cascadia Mono","JetBrains Mono",monospace;
   }
   *{box-sizing:border-box}
+  html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--fg);
-    font:14px/1.55 "Segoe UI","Microsoft YaHei",system-ui,sans-serif}
-  header{padding:14px 18px;border-bottom:1px solid var(--line);
-    display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-  h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.2px}
-  .tag{font-size:12px;color:var(--muted);border:1px solid var(--line);
-    border-radius:99px;padding:2px 9px}
-  main{display:grid;grid-template-columns:240px 1fr 400px;gap:0;height:calc(100vh - 55px)}
-  .col{border-right:1px solid var(--line);overflow-y:auto;padding:14px}
-  .col:last-child{border-right:none}
-  .col h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;
-    color:var(--muted);margin:0 0 10px}
-  .item{padding:7px 9px;border-radius:7px;cursor:pointer;border:1px solid transparent}
+    font:14px/1.65 "Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  ::selection{background:#2b4a7a}
+  *{scrollbar-width:thin;scrollbar-color:#2a3140 transparent}
+  *::-webkit-scrollbar{width:10px;height:10px}
+  *::-webkit-scrollbar-thumb{background:#2a3140;border-radius:8px;
+    border:2px solid transparent;background-clip:content-box}
+  *::-webkit-scrollbar-thumb:hover{background:#3a4358;background-clip:content-box}
+  a{color:var(--accent)}
+
+  /* ---------- header ---------- */
+  header{height:52px;display:flex;align-items:center;gap:10px;padding:0 14px;
+    border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:nowrap}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:600;letter-spacing:.2px}
+  .logo{width:10px;height:10px;border-radius:3px;background:var(--accent);
+    box-shadow:0 0 12px #6ea8fe88}
+  .chip{font-size:12px;color:var(--muted);border:1px solid var(--line);
+    border-radius:99px;padding:2px 10px;white-space:nowrap;cursor:default}
+  .chip b{color:var(--fg);font-weight:600}
+  .spacer{flex:1}
+  .tbtn{background:transparent;color:var(--muted);border:1px solid var(--line);
+    border-radius:8px;padding:4px 11px;font-size:12px;cursor:pointer;
+    transition:all .15s}
+  .tbtn:hover{color:var(--fg);border-color:var(--line-2);background:var(--panel-2)}
+  .tbtn.on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+  .dot-status{width:8px;height:8px;border-radius:99px;background:var(--ok);
+    box-shadow:0 0 8px #4ade8088;flex:none}
+
+  /* ---------- layout ---------- */
+  main{display:grid;grid-template-columns:266px minmax(0,1fr) 372px;
+    grid-template-rows:minmax(0,1fr);
+    height:calc(100vh - 52px);overflow:hidden}
+  body.no-left main{grid-template-columns:minmax(0,1fr) 372px}
+  body.no-right main{grid-template-columns:266px minmax(0,1fr)}
+  body.no-left.no-right main{grid-template-columns:minmax(0,1fr)}
+  body.no-left #left{display:none}
+  body.no-right #right{display:none}
+  #left{border-right:1px solid var(--line);background:var(--panel);
+    overflow-y:auto;padding:14px 12px;min-height:0}
+  #right{border-left:1px solid var(--line);background:#0e1116;
+    overflow-y:auto;padding:12px;min-height:0}
+  #center{display:flex;flex-direction:column;min-width:0;min-height:0;background:
+    radial-gradient(1200px 400px at 50% -10%, #121722 0%, var(--bg) 60%)}
+
+  .side-head{display:flex;align-items:center;justify-content:space-between;
+    margin:0 2px 9px}
+  .side-head h2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;
+    color:var(--muted);margin:0;font-weight:600}
+  .count{font-size:11px;color:var(--faint)}
+
+  /* ---------- sessions ---------- */
+  #sessions{display:flex;flex-direction:column;gap:3px}
+  .item{padding:8px 10px;border-radius:9px;cursor:pointer;
+    border:1px solid transparent;transition:background .12s}
   .item:hover{background:var(--panel-2)}
-  .item.active{background:var(--panel-2);border-color:var(--accent)}
-  .item .sub{color:var(--muted);font-size:12px}
-  .plug{display:flex;justify-content:space-between;gap:8px;padding:5px 0;
-    border-bottom:1px dashed var(--line)}
-  .dot{display:inline-block;width:7px;height:7px;border-radius:99px;margin-right:7px}
+  .item.active{background:var(--panel-2);border-color:#31405c;
+    box-shadow:inset 2px 0 0 var(--accent)}
+  .item-t{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
+  .item-s{color:var(--faint);font-size:11.5px;margin-top:1px}
+  .mini{background:var(--panel-2);border:1px solid var(--line-2);color:var(--fg);
+    border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;transition:all .15s}
+  .mini:hover{border-color:var(--accent);color:var(--accent)}
+  .side-empty{color:var(--faint);font-size:12px;padding:6px 2px}
+
+  /* ---------- plugins ---------- */
+  #plugins{display:flex;flex-direction:column}
+  .plug{display:flex;align-items:center;gap:8px;padding:5px 2px;
+    border-bottom:1px dashed #1c212b;font-size:12.5px}
+  .plug:last-child{border-bottom:none}
+  .plug .dot{width:7px;height:7px;border-radius:99px;flex:none}
   .dot.active{background:var(--ok)} .dot.pending{background:var(--pend)}
   .dot.failed{background:var(--err)}
-  .mono{font-family:ui-monospace,Consolas,"Cascadia Mono",monospace;font-size:12px}
-  .msg{margin-bottom:12px;padding:9px 11px;border-radius:8px;background:var(--panel);
-    border:1px solid var(--line);white-space:pre-wrap;word-break:break-word}
-  .msg .who{font-size:11px;color:var(--muted);margin-bottom:5px;letter-spacing:.05em}
-  .msg.user{background:#1a2233;border-color:#274066}
-  .msg.tool{background:#1c1f17;border-color:#3a4227}
-  .msg.system{background:#171a24}
-  .msg.tool .who{color:var(--warn)}
-  form{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line);
-    position:sticky;bottom:0;background:var(--bg)}
-  input[type=text]{flex:1;background:var(--panel-2);border:1px solid var(--line);
-    color:var(--fg);padding:9px 11px;border-radius:8px;outline:none}
-  input[type=text]:focus{border-color:var(--accent)}
-  button{background:var(--accent);color:#08111f;border:none;border-radius:8px;
-    padding:9px 15px;font-weight:600;cursor:pointer}
-  button:disabled{opacity:.5;cursor:default}
-  .ev{padding:3px 0;border-bottom:1px solid #1b1f27;display:flex;gap:8px}
-  .ev .seq{color:var(--muted);min-width:34px;text-align:right}
-  .ev .ty{color:var(--accent)}
-  .ev.sys .ty{color:var(--warn)}
-  .empty{color:var(--muted);font-size:13px;padding:8px 2px}
-  .banner{margin:0 0 10px;padding:8px 10px;border-radius:8px;font-size:12px;
-    background:#1c1f17;border:1px solid #3a4227;color:var(--warn);display:none}
-  .status{font-size:12px;color:var(--muted);padding:0 2px 8px;min-height:18px}
-  .tools{color:var(--muted);font-size:12px;margin-top:6px}
+  .plug-n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .plug-i{color:var(--faint);font-size:11px}
+
+  /* ---------- chat ---------- */
+  #chat{flex:1;overflow-y:auto;padding:26px 22px 12px;scroll-behavior:smooth;
+    min-height:0}
+  .wrap{max-width:820px;margin:0 auto}
+  .row{margin:0 0 14px;display:flex}
+  .row.user{justify-content:flex-end}
+  .row.assistant{justify-content:flex-start}
+  .row.assistant + .row.assistant{margin-top:-4px}
+  .msg.user{background:#1b2740;border:1px solid #2b3f63;border-radius:14px 14px 4px 14px;
+    padding:9px 13px;max-width:76%;white-space:pre-wrap;word-break:break-word}
+  .prose{max-width:100%;min-width:0;word-break:break-word}
+  .prose p{margin:0 0 9px} .prose p:last-child{margin-bottom:0}
+  .prose ul,.prose ol{margin:2px 0 9px;padding-left:22px}
+  .prose code{background:#1a2029;border:1px solid #262e3b;border-radius:5px;
+    padding:1px 5px;font-family:var(--mono);font-size:12.5px}
+  .prose a{text-decoration:underline;text-underline-offset:2px}
+  .codeblock{background:#0d1015;border:1px solid var(--line);border-radius:10px;
+    margin:8px 0;overflow:hidden}
+  .code-head{display:flex;justify-content:space-between;align-items:center;
+    padding:5px 10px;background:#12161d;border-bottom:1px solid var(--line);
+    font-size:11px;color:var(--muted)}
+  .copy{background:transparent;border:1px solid var(--line-2);color:var(--muted);
+    border-radius:6px;font-size:11px;padding:1px 8px;cursor:pointer}
+  .copy:hover{color:var(--fg);border-color:var(--accent)}
+  .codeblock pre{margin:0;padding:11px 13px;overflow-x:auto;font-family:var(--mono);
+    font-size:12.5px;line-height:1.55}
+  .row.status{justify-content:center;margin:2px 0 16px}
+  .row.status span{font-size:11px;color:var(--faint);border:1px solid #1c212b;
+    border-radius:99px;padding:1px 11px}
+  .row.sys{justify-content:flex-start}
+  .syschip{font-size:12px;color:var(--muted)}
+  .syschip summary{cursor:pointer;list-style:none;display:inline-block;
+    border:1px dashed var(--line-2);border-radius:8px;padding:2px 10px}
+  .syschip summary::-webkit-details-marker{display:none}
+  .syschip summary:hover{color:var(--fg)}
+  .syschip pre{max-width:760px;max-height:300px;overflow:auto;background:#0d1015;
+    border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+    font-family:var(--mono);font-size:12px;white-space:pre-wrap;margin:8px 0 0}
+  .sysnote{font-size:11.5px;color:var(--faint);border-left:2px solid var(--line-2);
+    padding:1px 10px}
+
+  /* tool cards */
+  .toolcard{border:1px solid var(--line);border-radius:10px;background:#10141b;
+    margin:6px 0 10px;max-width:760px;overflow:hidden;
+    border-left:3px solid var(--warn)}
+  .toolcard.ok{border-left-color:var(--ok)}
+  .toolcard.error{border-left-color:var(--err)}
+  .tool-head{display:flex;align-items:center;gap:9px;padding:7px 11px;
+    font-size:12.5px}
+  .tool-name{font-weight:600;font-family:var(--mono)}
+  .tool-args{color:var(--muted);font-size:11.5px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+  .tool-state{font-size:11.5px;color:var(--warn);flex:none}
+  .toolcard.ok .tool-state{color:var(--ok)}
+  .toolcard.error .tool-state{color:var(--err)}
+  .tool-body pre{margin:0;padding:8px 12px 10px;border-top:1px dashed #1c212b;
+    font-family:var(--mono);font-size:12px;white-space:pre-wrap;
+    max-height:260px;overflow:auto;color:#c3cad8}
+  .tool-body pre.one{white-space:pre-wrap}
+  .tool-body details summary{cursor:pointer;color:var(--muted);font-size:11.5px;
+    padding:6px 12px;border-top:1px dashed #1c212b}
+
+  /* working indicator */
+  .row.working span.dots{display:inline-flex;align-items:center;gap:4px}
+  .dots i{width:5px;height:5px;border-radius:50%;background:var(--muted);
+    animation:bounce 1.15s infinite}
+  .dots i:nth-child(2){animation-delay:.15s}
+  .dots i:nth-child(3){animation-delay:.3s}
+  @keyframes bounce{0%,60%,100%{transform:translateY(0);opacity:.45}
+    30%{transform:translateY(-4px);opacity:1}}
+  .working{display:flex;align-items:center;gap:9px;color:var(--muted);
+    font-size:12.5px;margin:0 0 14px}
+
+  /* empty state */
+  .empty{max-width:560px;margin:9vh auto 0;text-align:center;color:var(--muted)}
+  .empty-ic{font-size:30px;color:var(--accent);opacity:.85}
+  .empty-t{font-size:17px;color:var(--fg);margin:8px 0 4px;font-weight:600}
+  .empty-s{font-size:12.5px;margin-bottom:18px}
+  .hints{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+  .hint{background:var(--panel-2);border:1px solid var(--line-2);color:var(--muted);
+    border-radius:99px;padding:6px 14px;font-size:12.5px;cursor:pointer;
+    transition:all .15s}
+  .hint:hover{border-color:var(--accent);color:var(--fg)}
+
+  /* ---------- runline + composer ---------- */
+  .runline{display:flex;align-items:center;gap:8px;padding:7px 22px;
+    font-size:12px;color:var(--muted);border-top:1px solid #161a22;min-height:31px}
+  .runline.err{color:var(--err)}
+  .spinner{width:10px;height:10px;border:2px solid var(--warn);
+    border-top-color:transparent;border-radius:50%;flex:none;
+    animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #composer{display:flex;gap:9px;align-items:flex-end;padding:10px 22px 14px;
+    border-top:1px solid var(--line);background:var(--panel)}
+  #text{flex:1;resize:none;background:var(--panel-2);border:1px solid var(--line-2);
+    border-radius:12px;color:var(--fg);padding:11px 14px;
+    font:inherit;line-height:1.55;max-height:180px;outline:none;
+    transition:border-color .15s, box-shadow .15s}
+  #text:focus{border-color:var(--accent);box-shadow:0 0 0 3px #6ea8fe22}
+  #text::placeholder{color:var(--faint)}
+  #send{background:var(--accent);color:#08111f;border:none;border-radius:11px;
+    padding:11px 18px;font-weight:600;font-size:13.5px;cursor:pointer;
+    transition:opacity .15s, transform .05s;flex:none}
+  #send:hover:not(:disabled){filter:brightness(1.08)}
+  #send:active:not(:disabled){transform:scale(.97)}
+  #send:disabled{opacity:.45;cursor:default}
+
+  /* ---------- trace panel ---------- */
+  .evse{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--faint);
+    margin:9px 0 3px;text-transform:none}
+  .evse::before,.evse::after{content:"";height:1px;background:#1b2029;flex:1}
+  table#events{width:100%;border-collapse:collapse;font-size:11.5px}
+  .ev td{padding:3px 4px;border-bottom:1px solid #14181f;
+    vertical-align:top;cursor:pointer}
+  .ev:hover td{background:#12161d}
+  .ev-seq{color:var(--faint);text-align:right;width:30px;font-family:var(--mono)}
+  .ev-type{font-family:var(--mono);white-space:nowrap;color:var(--muted);
+    max-width:120px;overflow:hidden;text-overflow:ellipsis}
+  .ev-sum{color:#9aa3b2;word-break:break-word}
+  .ev-time{color:#3d4658;white-space:nowrap;font-family:var(--mono);text-align:right}
+  .ev.session .ev-type{color:var(--pend)}
+  .ev.turn .ev-type{color:var(--accent)}
+  .ev.step .ev-type{color:#5aa0e0}
+  .ev.user .ev-type{color:#7dd3fc}
+  .ev.assistant .ev-type{color:var(--ok)}
+  .ev.tool .ev-type{color:var(--warn)}
+  .ev.system .ev-type{color:var(--pend)}
+  .ev-raw td{background:#0c0f14}
+  .ev-raw pre{margin:0;padding:8px 10px;font-family:var(--mono);font-size:11px;
+    white-space:pre-wrap;color:#9fb0c8;max-height:300px;overflow:auto}
+  .banner{margin:0 0 14px;padding:8px 12px;border-radius:9px;font-size:12px;
+    background:#1c1f17;border:1px solid #3a4227;color:var(--warn)}
+  [hidden]{display:none!important}
 </style>
 </head>
 <body>
 <header>
-  <h1>mini harness <span class="tag">P3 · 完全插件化</span></h1>
-  <span class="tag" id="url-tag">…</span>
-  <span class="tag" id="tools-tag">工具面 …</span>
-  <span class="tag" id="svc-tag">服务 …</span>
+  <div class="brand"><span class="logo"></span>mini harness</div>
+  <span class="chip">P3 · 完全插件化</span>
+  <span class="chip" id="host-badge">…</span>
+  <span class="chip" id="tools-badge" title="">工具 …</span>
+  <div class="spacer"></div>
+  <button class="tbtn on" id="toggle-left" title="折叠 / 展开左栏">会话</button>
+  <button class="tbtn on" id="toggle-right" title="折叠 / 展开轨迹栏">轨迹</button>
+  <span class="dot-status" title="服务在线"></span>
 </header>
 
 <main>
-  <section class="col">
-    <h2>插件台账</h2>
-    <div id="plugins"></div>
-    <h2 style="margin-top:18px">会话</h2>
+  <section id="left">
+    <div class="side-head"><h2>会话</h2>
+      <button class="mini" id="new-session">＋ 新会话</button></div>
     <div id="sessions"></div>
-    <button id="new-session" style="margin-top:10px;width:100%">＋ 新会话</button>
+    <div class="side-head" style="margin-top:20px">
+      <h2>插件台账</h2><span class="count" id="plugin-count"></span></div>
+    <div id="plugins"></div>
   </section>
 
-  <section class="col" style="display:flex;flex-direction:column;padding:0">
-    <div style="flex:1;overflow-y:auto;padding:14px">
-      <div class="banner" id="banner"></div>
-      <div class="status" id="status"></div>
-      <div id="chat"><div class="empty">选一个会话，或点"新会话"开始对话。</div></div>
-    </div>
-    <form id="composer">
-      <input type="text" id="text" placeholder="输入消息…（Enter 发送）" autocomplete="off">
+  <section id="center">
+    <div id="chat"><div class="wrap"></div></div>
+    <div class="runline" id="runline"><span>就绪</span></div>
+    <form id="composer" autocomplete="off">
+      <textarea id="text" rows="1"
+        placeholder="输入消息…（Enter 发送 · Shift+Enter 换行）"></textarea>
       <button type="submit" id="send">发送</button>
     </form>
   </section>
 
-  <section class="col">
-    <h2>事件流 <span class="mono" id="seq-tag" style="float:right"></span></h2>
-    <div id="events"><div class="empty">选一个会话后显示它的 append-only 事件。</div></div>
+  <section id="right">
+    <div class="side-head"><h2>事件轨迹</h2>
+      <span class="count mono" id="seq-tag"></span></div>
+    <table id="events"><tbody></tbody></table>
   </section>
 </main>
 
 <script>
+"use strict";
+/* ---------------- utils ---------------- */
 const $ = (id) => document.getElementById(id);
-let current = null;      // 当前会话 id
-let sending = false;
+const chatEl = $("chat"), wrapEl = chatEl.querySelector(".wrap");
+const sessionsEl = $("sessions"), pluginsEl = $("plugins"), eventsEl = $("events");
+const state = { current: null, sending: false, follow: true };
+window.addEventListener("error", (e) => { window.__lastError = String(e.message || e); });
 
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+  (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const clip = (s, n = 120) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n) + "…" : s; };
+const cssEsc = (s) => (window.CSS && CSS.escape) ? CSS.escape(String(s))
+  : String(s).replace(/["\\]/g, "\\$&");
+const fmtTime = (iso) => { try { return new Date(iso).toLocaleTimeString("zh-CN", { hour12: false }); }
+  catch { return ""; } };
+const el = (html) => { const t = document.createElement("template");
+  t.innerHTML = html.trim(); return t.content.firstElementChild; };
+
+/* ---------------- mini markdown ---------------- */
+let codeSeq = 0;
+function codeBlockHtml(lang, code) {
+  const id = `code-${++codeSeq}`;
+  return `<div class="codeblock"><div class="code-head"><span>${esc(lang || "text")}</span>`
+    + `<button type="button" class="copy" data-pre="${id}">复制</button></div>`
+    + `<pre id="${id}">${esc(code.replace(/\n$/, ""))}</pre></div>`;
+}
+function md(src) {
+  const fences = [], inlines = [];
+  let t = String(src ?? "");
+  t = t.replace(/```([\w+#.-]*)[ \t]*\r?\n?([\s\S]*?)```/g, (m, lang, code) => {
+    fences.push([lang, code]); return `\uE000F${fences.length - 1}\uE000`;
+  });
+  t = t.replace(/`([^`\n]+)`/g, (m, c) => { inlines.push(c); return `\uE000I${inlines.length - 1}\uE000`; });
+  t = esc(t);
+  t = t.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  t = t.replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,，。！？!?；;])/g, "$1<em>$2</em>");
+  t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  const out = []; let list = null;
+  const flush = () => { if (list) { out.push(
+    `<${list.tag}>${list.items.map((i) => `<li>${i}</li>`).join("")}</${list.tag}>`); list = null; } };
+  for (const line of t.split("\n")) {
+    const s = line.trim();
+    if (/^\uE000F\d+\uE000$/.test(s)) { flush(); out.push(s); continue; }
+    if (!s) { flush(); continue; }
+    let m = s.match(/^[-*•]\s+(.*)$/);
+    if (m) { if (!list || list.tag !== "ul") { flush(); list = { tag: "ul", items: [] }; }
+      list.items.push(m[1]); continue; }
+    m = s.match(/^\d+[.)]\s+(.*)$/);
+    if (m) { if (!list || list.tag !== "ol") { flush(); list = { tag: "ol", items: [] }; }
+      list.items.push(m[1]); continue; }
+    flush(); out.push(`<p>${s}</p>`);
+  }
+  flush();
+  let html = out.join("");
+  html = html.replace(/\uE000I(\d+)\uE000/g, (m, i) => `<code>${esc(inlines[+i])}</code>`);
+  html = html.replace(/\uE000F(\d+)\uE000/g, (m, i) => codeBlockHtml(fences[+i][0], fences[+i][1]));
+  return html;
+}
+
+/* ---------------- chat nodes ---------------- */
+function userNode(text) {
+  return el(`<div class="row user"><div class="msg user">${esc(text).replace(/\n/g, "<br>")}</div></div>`);
+}
+function assistantNode(content) {
+  return el(`<div class="row assistant"><div class="prose">${md(content)}</div></div>`);
+}
+function turnStatusNode(turn, status, steps) {
+  const label = { done: "完成", max_steps: "步数用尽", cancelled: "已取消" }[status] || status;
+  return el(`<div class="row status"><span>turn ${esc(turn)} · ${esc(label)} · ${esc(steps)} 步</span></div>`);
+}
+function systemChip(prompt) {
+  return el(`<div class="row sys"><details class="syschip">`
+    + `<summary>系统提示词（点开查看）</summary><pre>${esc(prompt)}</pre></details></div>`);
+}
+function sysNoteNode() { return el(`<div class="row sys"><div class="sysnote">系统提示词已更新</div></div>`); }
+
+function toolCard({ callId, name, args, result, isError }) {
+  const argsText = args == null ? "" : (typeof args === "string" ? args : JSON.stringify(args));
+  const node = el(`<div class="toolcard" data-call="${esc(callId)}">`
+    + `<div class="tool-head"><span class="tool-name">${esc(name)}</span>`
+    + `<span class="tool-args">${esc(clip(argsText, 110))}</span>`
+    + `<span class="tool-state">运行中…</span></div>`
+    + `<div class="tool-body"></div></div>`);
+  if (result !== undefined) fillToolCard(node, result, isError);
+  return node;
+}
+function fillToolCard(node, result, isError) {
+  node.classList.add(isError ? "error" : "ok");
+  node.querySelector(".tool-state").textContent = isError ? "✗ 失败" : "✓ 完成";
+  const body = node.querySelector(".tool-body");
+  const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+  if (text == null || text === "{}" || text === "") { body.remove(); return; }
+  body.innerHTML = (text.includes("\n") || text.length > 200)
+    ? `<details><summary>结果（${text.length} 字符）</summary><pre>${esc(clip(text, 4000))}</pre></details>`
+    : `<pre class="one">${esc(text)}</pre>`;
+}
+
+/* ---------------- chat rendering ---------------- */
+function renderChatFromEvents(events) {
+  wrapEl.innerHTML = "";
+  if (!events.length) { wrapEl.innerHTML = emptyStateHtml(); return; }
+  for (const ev of events) {
+    const d = ev.data || {};
+    switch (ev.type) {
+      case "session/start": if (d.system_prompt) wrapEl.appendChild(systemChip(d.system_prompt)); break;
+      case "system/message": wrapEl.appendChild(sysNoteNode()); break;
+      case "user/message": wrapEl.appendChild(userNode(d.content)); break;
+      case "assistant/message":
+        if (d.content) wrapEl.appendChild(assistantNode(d.content));
+        for (const call of (d.tool_calls || []))
+          wrapEl.appendChild(toolCard({ callId: call.id, name: call.name, args: call.arguments }));
+        break;
+      case "tool/result": {
+        const node = wrapEl.querySelector(`[data-call="${cssEsc(d.call_id)}"]`);
+        if (node) fillToolCard(node, d.result, d.is_error);
+        break;
+      }
+      case "turn/end": wrapEl.appendChild(turnStatusNode(d.turn, d.status, d.steps ?? 0)); break;
+    }
+  }
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+function emptyStateHtml() {
+  return `<div class="empty"><div class="empty-ic">◍</div>
+    <div class="empty-t">开始一段对话</div>
+    <div class="empty-s">这个会话还没有消息。试试：</div>
+    <div class="hints">
+      <button type="button" class="hint" data-q="工作区里有哪些文件？">工作区里有哪些文件？</button>
+      <button type="button" class="hint" data-q="帮我算 1234*56.78">帮我算 1234*56.78</button>
+      <button type="button" class="hint" data-q="用 shell 看看当前目录">用 shell 看看当前目录</button>
+    </div></div>`;
+}
+
+/* ---------------- live frames ---------------- */
+function setRunline(html, cls) {
+  const line = $("runline");
+  line.className = "runline" + (cls ? " " + cls : "");
+  line.innerHTML = html;
+}
+function setIdle(text) { setRunline(`<span>${esc(text)}</span>`); }
+function setRunning(text) {
+  setRunline(`<span class="spinner"></span><span>${esc(text)}</span>`);
+}
+function ensureWorking(text) {
+  let node = wrapEl.querySelector(".working");
+  if (!node) { node = el(`<div class="row working"><span class="dots"><i></i><i></i><i></i></span><span class="wt"></span></div>`);
+    wrapEl.appendChild(node); }
+  node.querySelector(".wt").textContent = text;
+  scrollBottom();
+}
+function removeWorking() { const n = wrapEl.querySelector(".working"); if (n) n.remove(); }
+function scrollBottom() { if (state.follow) chatEl.scrollTop = chatEl.scrollHeight; }
+
+function handleFrame(kind, payload) {
+  switch (kind) {
+    case "step_request": setRunning(`第 ${payload.step} 步 · 请求模型…`);
+      ensureWorking(`第 ${payload.step} 步 · 请求模型（${payload.message_count} 条消息）`); break;
+    case "step_response":
+      if (payload.content) wrapEl.appendChild(assistantNode(payload.content));
+      for (const c of (payload.tool_calls || []))
+        wrapEl.appendChild(toolCard({ callId: c.id, name: c.name, args: c.arguments }));
+      if (payload.tool_calls?.length) {
+        setRunning(`第 ${payload.step} 步 · 执行工具…`);
+        ensureWorking(`执行 ${payload.tool_calls.map((c) => c.name).join("、")}…`);
+      }
+      scrollBottom(); break;
+    case "tool_result": {
+      const node = wrapEl.querySelector(`[data-call="${cssEsc(payload.call_id)}"]`);
+      if (node) fillToolCard(node, payload.result, payload.is_error);
+      scrollBottom(); break;
+    }
+    case "turn_end":
+      removeWorking();
+      wrapEl.appendChild(turnStatusNode(payload.turn, payload.status, payload.steps));
+      scrollBottom(); break;
+    case "__repair": showBanner(payload.message || "上次会话被强杀，日志尾部已自动修复"); break;
+    case "__error": removeWorking(); setRunline(`出错：${esc(payload.message)}`, "err"); break;
+    default: break;
+  }
+}
+function showBanner(text) { const b = $("banner"); b.textContent = text; b.hidden = false; }
+
+/* ---------------- trace panel ---------------- */
+let evRows = [];
+function evCat(type) { return ({ session: 1, turn: 1, step: 1, user: 1, assistant: 1, tool: 1, system: 1 })[String(type).split("/")[0]] ? String(type).split("/")[0] : "other"; }
+function evSummary(type, d) {
+  d = d || {};
+  switch (type) {
+    case "session/start": return "会话建立（system_prompt + 装配单）";
+    case "system/message": return clip(String(d.content || "").replace(/\s+/g, " "), 70);
+    case "turn/start": return `turn ${d.turn}`;
+    case "user/message": return clip(String(d.content || "").replace(/\s+/g, " "), 70);
+    case "step/start": return `turn ${d.turn} · step ${d.step} · ${d.message_count} 条消息 / ${d.tool_count} 工具`;
+    case "step/end": return `step ${d.step} 结束`;
+    case "assistant/message": return d.tool_calls?.length
+      ? `申请调用 ${d.tool_calls.map((c) => c.name).join("、")}`
+      : clip(String(d.content || "").replace(/\s+/g, " "), 70);
+    case "tool/result": return `${d.name} ${d.is_error ? "✗" : "✓"} ${clip(JSON.stringify(d.result), 46)}`;
+    case "turn/end": return `${d.status} · ${d.steps} 步`;
+    default: return clip(JSON.stringify(d), 70);
+  }
+}
+function evRowHtml(i, seq, type, summary, ts) {
+  return `<tr class="ev ${evCat(type)}" data-i="${i}" title="${esc(summary)}">`
+    + `<td class="ev-seq">${seq ?? "·"}</td>`
+    + `<td class="ev-type">${esc(type)}</td>`
+    + `<td class="ev-sum">${esc(summary)}</td>`
+    + `<td class="ev-time">${ts ? esc(fmtTime(ts)) : ""}</td></tr>`;
+}
+function renderEventsFromHistory(events) {
+  evRows = events.map((e) => ({ seq: e.seq, type: e.type, data: e.data, ts: e.ts }));
+  const body = eventsEl.querySelector("tbody");
+  body.innerHTML = "";
+  let lastTurn = null;
+  for (let i = 0; i < evRows.length; i++) {
+    const ev = evRows[i];
+    if (ev.type === "turn/start" && ev.data?.turn !== lastTurn) {
+      lastTurn = ev.data.turn;
+      body.insertAdjacentHTML("beforeend", `<tr class="evse"><td colspan="4"><span>turn ${esc(lastTurn)}</span></td></tr>`);
+    }
+    body.insertAdjacentHTML("beforeend", evRowHtml(i, ev.seq, ev.type, evSummary(ev.type, ev.data), ev.ts));
+  }
+  $("seq-tag").textContent = evRows.length ? `≤ ${evRows.at(-1).seq}` : "";
+  eventsEl.scrollTop = eventsEl.scrollHeight;
+}
+function appendLiveEvent(kind, payload) {
+  const map = { turn_start: "turn/start", step_request: "step/start", step_response: "assistant/message", tool_result: "tool/result", step_end: "step/end", turn_end: "turn/end" };
+  const type = map[kind] || kind;
+  evRows.push({ seq: null, type, data: payload, ts: null });
+  eventsEl.querySelector("tbody").insertAdjacentHTML("beforeend",
+    evRowHtml(evRows.length - 1, null, type, evSummary(type, payload), null));
+  eventsEl.scrollTop = eventsEl.scrollHeight;
+}
+eventsEl.addEventListener("click", (e) => {
+  const row = e.target.closest("tr.ev"); if (!row) return;
+  const next = row.nextElementSibling;
+  if (next && next.classList.contains("ev-raw")) { next.remove(); return; }
+  const item = evRows[+row.dataset.i]; if (!item) return;
+  const data = { ...(item.data || {}) };
+  if (data.prompt_trace) data.prompt_trace = "(装配单略)";
+  const tr = document.createElement("tr"); tr.className = "ev-raw";
+  tr.innerHTML = `<td colspan="4"><pre>${esc(JSON.stringify(data, null, 2))}</pre></td>`;
+  row.after(tr);
+});
+
+/* ---------------- ledger / sessions ---------------- */
 async function api(path, opts) {
   const res = await fetch(path, opts);
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json();
 }
-
-// ---------- 台账 ----------
 async function loadLedger() {
   const data = await api("/api/ledger");
-  $("url-tag").textContent = location.host;
-  $("tools-tag").textContent = `工具面 ${data.tools.length}：${data.tools.join(" · ")}`;
-  $("svc-tag").textContent = `服务：${data.services.join(" · ")}`;
-  $("plugins").innerHTML = data.plugins.map((p) => `
-    <div class="plug">
-      <span><span class="dot ${p.status}"></span>${p.name}</span>
-      <span class="mono" style="color:var(--muted)">${p.inject.length ? "← " + p.inject.join(",") : ""}</span>
-    </div>`).join("");
+  const tools = data.tools || [], plugins = data.plugins || [];
+  $("tools-badge").innerHTML = `工具 <b>${tools.length}</b>`;
+  $("tools-badge").title = tools.join(" · ");
+  pluginsEl.innerHTML = plugins.map((p) => `
+    <div class="plug" title="依赖：${p.inject.length ? esc(p.inject.join(", ")) : "无"}">
+      <span class="dot ${esc(p.status)}"></span>
+      <span class="plug-n">${esc(p.name)}</span>
+      ${p.inject.length ? `<span class="plug-i mono">← ${esc(p.inject.join(","))}</span>` : ""}
+    </div>`).join("") || `<div class="side-empty">（无）</div>`;
+  $("plugin-count").textContent =
+    `${plugins.filter((p) => p.status === "active").length}/${plugins.length} 活跃`;
 }
-
-// ---------- 会话 ----------
 async function loadSessions() {
   const data = await api("/api/sessions");
-  if (!data.sessions.length) {
-    $("sessions").innerHTML = `<div class="empty">还没有会话。</div>`;
-    return;
-  }
-  $("sessions").innerHTML = data.sessions.map((s) => `
-    <div class="item ${s.id === current ? "active" : ""}" data-id="${s.id}">
-      <div>${s.id}</div>
-      <div class="sub">${s.turns} 个 turn · seq ${s.last_seq}${s.last_status ? " · " + s.last_status : ""}</div>
-    </div>`).join("");
-  document.querySelectorAll("#sessions .item").forEach((el) => {
-    el.onclick = () => openSession(el.dataset.id);
-  });
+  const items = data.sessions || [];
+  sessionsEl.innerHTML = items.length ? items.map((s) => `
+    <div class="item ${s.id === state.current ? "active" : ""}" data-id="${esc(s.id)}">
+      <div class="item-t">${esc(s.id)}</div>
+      <div class="item-s">${s.turns} turns · seq ${s.last_seq}${s.last_status ? ` · ${esc(s.last_status)}` : ""}</div>
+    </div>`).join("") : `<div class="side-empty">还没有会话</div>`;
 }
-
-async function openSession(id) {
-  const switched = current !== id;
-  current = id;
-  $("banner").style.display = "none";
-  if (switched) $("status").textContent = "";  // 切换会话才清状态；刷新同会话保留 turn 结果
+async function openSession(id, opts = {}) {
+  state.current = id;
+  if (!opts.silent) setIdle("加载中…");
   const data = await api(`/api/sessions/${encodeURIComponent(id)}/events`);
-  renderMessages(data.messages);
-  renderEvents(data.events);
-  $("seq-tag").textContent = data.events.length ? `seq ≤ ${data.events.at(-1).seq}` : "";
+  renderChatFromEvents(data.events || []);
+  renderEventsFromHistory(data.events || []);
   await loadSessions();
+  if (!opts.silent) setIdle(`会话 ${id} · ${(data.events || []).length} 条事件`);
 }
 
-function renderMessages(messages) {
-  if (!messages.length) {
-    $("chat").innerHTML = `<div class="empty">这个会话还没有消息。</div>`;
-    return;
-  }
-  $("chat").innerHTML = messages.map((m) => `
-    <div class="msg ${m.role}">
-      <div class="who">${m.role}${m.tools.length ? " · 调用 " + m.tools.join(", ") : ""}</div>
-      ${escapeHtml(m.content || (m.tools.length ? "（申请工具调用）" : ""))}
-    </div>`).join("");
-  $("chat").scrollIntoView(false);
-  window.scrollTo(0, document.body.scrollHeight);
-  document.querySelector("main > section:nth-child(2) div").scrollTop = 1e9;
-}
-
-function renderEvents(events) {
-  if (!events.length) {
-    $("events").innerHTML = `<div class="empty">暂无事件。</div>`;
-    return;
-  }
-  $("events").innerHTML = events.map((e) => `
-    <div class="ev ${e.type.startsWith("system") ? "sys" : ""}">
-      <span class="seq mono">${e.seq}</span>
-      <span class="ty mono">${e.type}</span>
-    </div>`).join("");
-  lastSeq = events.at(-1).seq;
-}
-
-function appendEvent(kind, payload) {
-  const box = $("events");
-  if (box.querySelector(".empty")) box.innerHTML = "";
-  if (kind === "system/message") {
-    box.insertAdjacentHTML("beforeend",
-      `<div class="ev sys"><span class="seq mono">·</span>
-       <span class="ty mono">system/message</span></div>`);
-    return;
-  }
-  const line = toolLine(kind, payload);
-  if (line) box.insertAdjacentHTML("beforeend", line);
-  box.scrollTop = box.scrollHeight;
-}
-
-function toolLine(kind, payload) {
-  if (kind === "tool_result") {
-    const mark = payload.is_error ? "✗" : "✓";
-    return `<div class="ev"><span class="seq mono">·</span>
-      <span class="ty mono">tool ${escapeHtml(payload.name)} ${mark}</span></div>`;
-  }
-  if (kind === "step_response" && payload.tool_calls?.length) {
-    const names = payload.tool_calls.map((c) => c.name).join(", ");
-    return `<div class="ev"><span class="seq mono">·</span>
-      <span class="ty mono">申请 ${escapeHtml(names)}</span></div>`;
-  }
-  return null;
-}
-
-let lastSeq = 0;
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-}
-
-// ---------- 发送 ----------
-$("composer").onsubmit = async (event) => {
-  event.preventDefault();
-  const text = $("text").value.trim();
-  if (!text || sending) return;
-  if (!current) current = "default";
-  sending = true;
-  $("send").disabled = true;
-  $("status").textContent = "运行中…（事件会实时出现在右栏）";
-
-  // 本地先显示用户消息
-  const box = $("chat");
-  if (box.querySelector(".empty")) box.innerHTML = "";
-  box.insertAdjacentHTML("beforeend",
-    `<div class="msg user"><div class="who">user</div>${escapeHtml(text)}</div>`);
-  $("text").value = "";
-
+/* ---------------- send ---------------- */
+$("composer").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const ta = $("text");
+  const text = ta.value.trim();
+  if (!text || state.sending) return;
+  if (!state.current) state.current = "default";
+  state.sending = true; $("send").disabled = true;
+  ta.value = ""; autosize();
+  if (wrapEl.querySelector(".empty")) wrapEl.innerHTML = "";
+  wrapEl.appendChild(userNode(text)); scrollBottom();      // 即时反馈（完成后会用日志重渲染）
+  setRunning("运行中…");
+  ensureWorking("思考中…");
+  let done = null;
   try {
-    const res = await fetch(`/api/sessions/${encodeURIComponent(current)}/send`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({text}),
+    const res = await fetch(`/api/sessions/${encodeURIComponent(state.current)}/send`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
     });
     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const {value, done} = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, {stream: true});
-      let index;
-      while ((index = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, index).trim();
-        buffer = buffer.slice(index + 1);
-        if (line) handleFrame(JSON.parse(line));
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { value, done: rdone } = await reader.read();
+      if (rdone) break;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1);
+        if (!line) continue;
+        let frame; try { frame = JSON.parse(line); } catch { continue; }
+        if (frame.kind === "__done") done = frame.payload; else handleFrame(frame.kind, frame.payload);
+        if (frame.kind !== "__done") appendLiveEvent(frame.kind, frame.payload);
       }
     }
   } catch (err) {
-    $("status").textContent = `出错：${err.message}`;
+    removeWorking();
+    setRunline(`出错：${esc(err.message)}`, "err");
   } finally {
-    sending = false;
-    $("send").disabled = false;
-    await openSession(current);
-  }
-};
-
-function handleFrame(frame) {
-  const {kind, payload} = frame;
-  if (kind === "__done") {
-    $("status").textContent =
-      `turn ${payload.turn} · ${payload.status} · ${payload.steps} 步`;
-    $("chat").insertAdjacentHTML("beforeend",
-      `<div class="msg assistant"><div class="who">assistant</div>${escapeHtml(payload.final_text)}</div>`);
-    $("chat").scrollTop = $("chat").scrollHeight;
-    return;
-  }
-  if (kind === "__repair") {
-    const banner = $("banner");
-    banner.style.display = "block";
-    banner.textContent = payload.message;
-    return;
-  }
-  if (kind === "__error") {
-    $("status").textContent = payload.message;
-    return;
-  }
-  if (kind === "step_request") $("status").textContent = `第 ${payload.step} 步：请求模型…`;
-  appendEvent(kind, payload);
-}
-
-// Enter 显式提交（不依赖各浏览器对隐式提交的差异）。
-$("text").addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    $("composer").requestSubmit();
+    state.sending = false; $("send").disabled = false;
+    await openSession(state.current, { silent: true });
+    if (done) setIdle(`turn ${done.turn} · ${done.status} · ${done.steps} 步 · 最终回答已渲染`);
+    else if (!$("runline").classList.contains("err")) setIdle("就绪");
   }
 });
 
-$("new-session").onclick = () => {
-  // 不弹 prompt（对话框在自动化/键盘场景下最容易卡）：直接生成一个新会话 id。
-  const id = "web-" + Date.now().toString(36);
-  openSession(id);
-};
+/* ---------------- composer + interactions ---------------- */
+const ta = $("text");
+function autosize() { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 180) + "px"; }
+ta.addEventListener("input", autosize);
+ta.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); }
+});
+chatEl.addEventListener("scroll", () => {
+  state.follow = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 90;
+});
+chatEl.addEventListener("click", async (e) => {
+  const hint = e.target.closest(".hint");
+  if (hint) { ta.value = hint.dataset.q; autosize(); ta.focus(); return; }
+  const btn = e.target.closest(".copy");
+  if (btn) {
+    const pre = document.getElementById(btn.dataset.pre);
+    if (!pre) return;
+    try { await navigator.clipboard.writeText(pre.textContent);
+      btn.textContent = "已复制"; setTimeout(() => (btn.textContent = "复制"), 1200);
+    } catch { btn.textContent = "复制失败"; }
+  }
+});
+sessionsEl.addEventListener("click", (e) => {
+  const item = e.target.closest(".item");
+  if (item) openSession(item.dataset.id);
+});
+$("new-session").addEventListener("click", () => {
+  openSession("web-" + Date.now().toString(36));
+});
+$("toggle-left").addEventListener("click", () => {
+  document.body.classList.toggle("no-left");
+  $("toggle-left").classList.toggle("on", !document.body.classList.contains("no-left"));
+});
+$("toggle-right").addEventListener("click", () => {
+  document.body.classList.toggle("no-right");
+  $("toggle-right").classList.toggle("on", !document.body.classList.contains("no-right"));
+});
 
-// ---------- 启动 ----------
-loadLedger();
-loadSessions();
-setInterval(loadSessions, 5000);   // 后台有别的写入时也能跟上
+/* ---------------- init ---------------- */
+(async function init() {
+  $("host-badge").textContent = location.host;
+  try {
+    await Promise.all([loadLedger(), loadSessions()]);
+    // 默认打开最近一个会话；没有就停在空态
+    const first = sessionsEl.querySelector(".item");
+    if (first) await openSession(first.dataset.id, { silent: true });
+    else setIdle("就绪 · 点「＋ 新会话」开始");
+  } catch (err) {
+    setRunline(`初始化失败：${esc(err.message)}`, "err");
+  }
+  setInterval(loadSessions, 5000);
+  setInterval(loadLedger, 15000);
+})();
 </script>
 </body>
 </html>
