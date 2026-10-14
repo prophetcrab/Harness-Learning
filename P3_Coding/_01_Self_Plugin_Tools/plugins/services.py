@@ -26,9 +26,12 @@ RPC_SERVICE = "rpc"
 SELF_TOOLS_SERVICE = "self-tools"
 #: 示例插件 clock 提供的服务（演示"装载即扩展、卸载即回卷"）。
 CLOCK_SERVICE = "clock"
+#: 审批策略（浏览器手动审批；见 plugins/web_approval.py）。
+APPROVAL_SERVICE = "approval"
 
 __all__ = [
     "AGENT_SERVICE",
+    "APPROVAL_SERVICE",
     "CLOCK_SERVICE",
     "FS_SERVICE",
     "LLM_SERVICE",

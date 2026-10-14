@@ -41,7 +41,13 @@ from urllib.parse import unquote, urlparse
 
 from components.session import derive_messages
 from kernel import Context
-from plugins.services import AGENT_SERVICE, SESSIONS_SERVICE, TOOLS_SERVICE, WEBUI_SERVICE
+from plugins.services import (
+    AGENT_SERVICE,
+    APPROVAL_SERVICE,
+    SESSIONS_SERVICE,
+    TOOLS_SERVICE,
+    WEBUI_SERVICE,
+)
 
 #: 静态页面路径（与本插件同包目录结构：mini_harness/webui/index.html）。
 PAGE_PATH = Path(__file__).resolve().parents[1] / "webui" / "index.html"
@@ -176,6 +182,10 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
             elif route.startswith("/api/sessions/") and route.endswith("/events"):
                 session_id = unquote(route[len("/api/sessions/") : -len("/events")])
                 self._send_json(200, _session_detail(sessions, session_id))
+            elif route == "/api/approvals":
+                policy = ctx.get(APPROVAL_SERVICE)
+                pending = policy.pending_list() if policy is not None else []
+                self._send_json(200, {"pending": pending})
             else:
                 self._send_json(404, {"error": f"未知路由：{route}"})
 
@@ -184,6 +194,17 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
             if route.startswith("/api/sessions/") and route.endswith("/send"):
                 session_id = unquote(route[len("/api/sessions/") : -len("/send")])
                 self._stream_turn(session_id)
+            elif route.startswith("/api/approvals/"):
+                request_id = unquote(route[len("/api/approvals/") :])
+                body = self._read_json()
+                policy = ctx.get(APPROVAL_SERVICE)
+                if policy is None:
+                    self._send_json(404, {"error": "当前没有审批策略"})
+                elif policy.resolve(request_id, bool(body.get("approved")), str(body.get("note") or "")):
+                    self._send_json(200, {"ok": True, "id": request_id,
+                                          "approved": bool(body.get("approved"))})
+                else:
+                    self._send_json(404, {"error": f"没有等待中的审批：{request_id}"})
             else:
                 self._send_json(404, {"error": f"未知路由：{route}"})
 
@@ -206,7 +227,13 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
                 self._write_event(kind, payload)
 
             # 会话缓存与剧本 provider 都不是线程安全的：turn 在这里串行执行。
+            # 审批通道也在这把锁**之内**挂/摘：保证"问人"永远问当前真正在跑的
+            # 那个 turn 的连接（锁外挂会让等待中的 turn 互相抢通道）。
+            policy = ctx.get(APPROVAL_SERVICE)
             with lock:
+                handle = None
+                if policy is not None and hasattr(policy, "attach_stream"):
+                    handle = policy.attach_stream(emit)
                 opened = agent.open(session_id, on_event=emit)
                 if opened.repaired and session_id not in state["repaired_reported"]:
                     state["repaired_reported"].add(session_id)
@@ -216,6 +243,9 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
                 except Exception as exc:  # 兜底：异常也以帧的形式告知前端，不炸服务
                     emit("__error", {"message": f"turn 执行失败：{exc}"})
                     return
+                finally:
+                    if handle is not None and hasattr(policy, "detach_stream"):
+                        policy.detach_stream(handle)  # 只摘自己挂的那个（身份校验）
             emit(
                 "__done",
                 {

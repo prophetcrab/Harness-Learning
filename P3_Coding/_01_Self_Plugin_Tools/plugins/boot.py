@@ -30,6 +30,7 @@ from plugins.self_tools import self_tools_plugin
 from plugins.services import AGENT_SERVICE
 from plugins.sessions import SessionsPlugin
 from plugins.tools import ToolsPlugin
+from plugins.web_approval import web_approval_plugin
 
 
 @dataclass
@@ -106,6 +107,9 @@ def boot_offline(
         ToolsPlugin(workspace=workspace),
     ]
     if self_tools:
+        # 装了自扩展工具就一并装浏览器审批：装卸/安装类操作要有人点头，
+        # 没有终端可问时由界面弹卡片（无界面时该策略 fail-closed）。
+        plugins.append(web_approval_plugin())
         plugins.append(self_tools_plugin())
     plugins.append(AgentPlugin(approval=approval, max_steps=max_steps))
     return boot(plugins=plugins, workspace=workspace)
@@ -138,6 +142,9 @@ def boot_realtime(
         ToolsPlugin(workspace=workspace),
     ]
     if self_tools:
+        # 装了自扩展工具就一并装浏览器审批：装卸/安装类操作要有人点头，
+        # 没有终端可问时由界面弹卡片（无界面时该策略 fail-closed）。
+        plugins.append(web_approval_plugin())
         plugins.append(self_tools_plugin())
     plugins.append(AgentPlugin(approval=approval, max_steps=max_steps))
     return boot(plugins=plugins, workspace=workspace)

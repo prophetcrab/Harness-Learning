@@ -30,6 +30,8 @@ from plugins.agent import AgentPlugin, AgentService, HarnessSession
 from plugins.boot import Booted, boot, boot_offline, boot_realtime
 from plugins.clock import ClockPlugin, ClockService, clock_plugin
 from plugins.events import (
+    APPROVAL_REQUESTED,
+    APPROVAL_RESOLVED,
     LLM_REQUEST,
     LLM_RESPONSE,
     LOOP_EVENT,
@@ -69,6 +71,7 @@ from plugins.self_tools import (
 )
 from plugins.services import (
     AGENT_SERVICE,
+    APPROVAL_SERVICE,
     CLOCK_SERVICE,
     FS_SERVICE,
     LLM_SERVICE,
@@ -82,10 +85,18 @@ from plugins.services import (
 )
 from plugins.sessions import ObservableSession, SessionsPlugin, SessionsService
 from plugins.tools import ToolsPlugin
+from plugins.web_approval import (
+    WebApprovalPlugin,
+    WebApprovalPolicy,
+    web_approval_plugin,
+)
 from plugins.webui import WebUiPlugin, WebUiService, webui_plugin
 
 __all__ = [
     "AGENT_SERVICE",
+    "APPROVAL_REQUESTED",
+    "APPROVAL_RESOLVED",
+    "APPROVAL_SERVICE",
     "CLOCK_SERVICE",
     "DEFAULT_CATALOG_NAMES",
     "DEFAULT_UNLOADABLE",
@@ -130,6 +141,8 @@ __all__ = [
     "SessionsPlugin",
     "SessionsService",
     "ToolsPlugin",
+    "WebApprovalPlugin",
+    "WebApprovalPolicy",
     "WebUiPlugin",
     "WebUiService",
     "boot",
@@ -147,6 +160,7 @@ __all__ = [
     "rpc_plugin",
     "scripted_proc_plugin",
     "self_tools_plugin",
+    "web_approval_plugin",
     "serve_stdio",
     "webui_plugin",
 ]

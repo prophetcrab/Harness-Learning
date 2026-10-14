@@ -199,6 +199,34 @@
     transition:all .15s}
   .hint:hover{border-color:var(--accent);color:var(--fg)}
 
+  /* 审批卡片 */
+  .approval{border:1px solid #4a3a20;border-left:3px solid var(--warn);
+    border-radius:10px;background:#181a14;margin:9px 0 12px;max-width:760px;
+    overflow:hidden;animation:apvin .2s ease-out}
+  @keyframes apvin{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .apv-head{display:flex;align-items:center;gap:9px;padding:8px 12px;font-size:13px}
+  .apv-ic{color:var(--warn);font-size:15px}
+  .apv-title{font-weight:600}
+  .apv-tool{font-family:var(--mono);color:var(--warn);font-size:12px}
+  .apv-reason{color:var(--muted);font-size:12px;padding:0 12px 6px}
+  .apv-code{margin:0 12px;border:1px solid var(--line);border-radius:8px;
+    background:#0d1015;max-height:320px;overflow:auto}
+  .apv-code pre{margin:0;padding:10px 12px;font-family:var(--mono);font-size:12px;
+    white-space:pre;line-height:1.5}
+  .apv-actions{display:flex;gap:9px;padding:10px 12px;align-items:center}
+  .apv-approve{background:var(--ok);color:#06210f;border:none;border-radius:8px;
+    padding:7px 16px;font-weight:600;font-size:13px;cursor:pointer}
+  .apv-approve:hover{filter:brightness(1.08)}
+  .apv-deny{background:transparent;color:var(--err);border:1px solid #5a2a2a;
+    border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer}
+  .apv-deny:hover{background:#241717}
+  .apv-done{font-size:12px;padding:9px 12px}
+  .apv-done.ok{color:var(--ok)} .apv-done.no{color:var(--err)}
+  .apv-wait{color:var(--muted);font-size:12px}
+  .plug-new{animation:flash 1.4s ease-out}
+  @keyframes flash{0%{background:#1e2c44}100%{background:transparent}}
+  .dot.new{background:var(--ok);box-shadow:0 0 9px var(--ok)}
+
   /* ---------- runline + composer ---------- */
   .runline{display:flex;align-items:center;gap:8px;padding:7px 22px;
     font-size:12px;color:var(--muted);border-top:1px solid #161a22;min-height:31px}
@@ -504,6 +532,36 @@ function emptyStateHtml() {
     </div></div>`;
 }
 
+/* ---------------- approvals ---------------- */
+function approvalNode(req) {
+  const node = el(`<div class="approval" data-apv="${esc(req.id)}">
+    <div class="apv-head"><span class="apv-ic">⚠</span>
+      <span class="apv-title">需要你的批准</span>
+      <span class="apv-tool">${esc(req.tool)}</span></div>
+    <div class="apv-reason">${esc(req.reason || "该操作被标记为需要审批")}</div>
+    ${req.preview ? `<div class="apv-code"><pre>${esc(req.preview)}</pre></div>` : ""}
+    <div class="apv-actions">
+      <button type="button" class="apv-approve">批准并执行</button>
+      <button type="button" class="apv-deny">拒绝</button>
+      <span class="apv-wait">等待你的决定…</span></div></div>`);
+  return node;
+}
+async function answerApproval(node, approved) {
+  const id = node.dataset.apv;
+  node.querySelector(".apv-actions").remove();
+  try {
+    await fetch("/api/approvals/" + encodeURIComponent(id), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approved }),
+    });
+    const done = el(`<div class="apv-done ${approved ? "ok" : "no"}">`
+      + (approved ? "✓ 已批准，正在执行…" : "✗ 已拒绝（模型会收到拒绝原因）") + "</div>");
+    node.appendChild(done);
+  } catch (err) {
+    node.appendChild(el(`<div class="apv-done no">提交失败：${esc(err.message)}</div>`));
+  }
+}
+
 /* ---------------- live frames ---------------- */
 function setRunline(html, cls) {
   const line = $("runline");
@@ -546,6 +604,12 @@ function handleFrame(kind, payload) {
       removeWorking();
       wrapEl.appendChild(turnStatusNode(payload.turn, payload.status, payload.steps));
       scrollBottom(); break;
+    case "__approval": {
+      removeWorking();
+      const node = approvalNode(payload);
+      wrapEl.appendChild(node); scrollBottom();
+      setRunline("等待你的审批…"); break;
+    }
     case "__repair": showBanner(payload.message || "上次会话被强杀，日志尾部已自动修复"); break;
     case "__error": removeWorking(); setRunline(`出错：${esc(payload.message)}`, "err"); break;
     default: break;
@@ -622,17 +686,26 @@ async function api(path, opts) {
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json();
 }
+let knownPlugins = null;
 async function loadLedger() {
   const data = await api("/api/ledger");
   const tools = data.tools || [], plugins = data.plugins || [];
+  // 插件集合变化 → 高亮新增的那一行（"装完立刻出现在左栏"的视觉反馈）
+  const names = plugins.map((p) => p.name);
+  const added = knownPlugins ? names.filter((n) => !knownPlugins.includes(n)) : [];
+  const removed = knownPlugins ? knownPlugins.filter((n) => !names.includes(n)) : [];
+  knownPlugins = names;
   $("tools-badge").innerHTML = `工具 <b>${tools.length}</b>`;
   $("tools-badge").title = tools.join(" · ");
   pluginsEl.innerHTML = plugins.map((p) => `
-    <div class="plug" title="依赖：${p.inject.length ? esc(p.inject.join(", ")) : "无"}">
-      <span class="dot ${esc(p.status)}"></span>
+    <div class="plug ${added.includes(p.name) ? "plug-new" : ""}"
+         title="依赖：${p.inject.length ? esc(p.inject.join(", ")) : "无"}">
+      <span class="dot ${esc(p.status)}${added.includes(p.name) ? " new" : ""}"></span>
       <span class="plug-n">${esc(p.name)}</span>
       ${p.inject.length ? `<span class="plug-i mono">← ${esc(p.inject.join(","))}</span>` : ""}
     </div>`).join("") || `<div class="side-empty">（无）</div>`;
+  if (added.length) setIdle(`插件台账更新：新增 ${added.join("、")}`
+    + (removed.length ? `；移除 ${removed.join("、")}` : ""));
   $("plugin-count").textContent =
     `${plugins.filter((p) => p.status === "active").length}/${plugins.length} 活跃`;
 }
@@ -713,6 +786,10 @@ chatEl.addEventListener("scroll", () => {
 chatEl.addEventListener("click", async (e) => {
   const hint = e.target.closest(".hint");
   if (hint) { ta.value = hint.dataset.q; autosize(); ta.focus(); return; }
+  const apvOk = e.target.closest(".apv-approve");
+  if (apvOk) { answerApproval(apvOk.closest(".approval"), true); return; }
+  const apvNo = e.target.closest(".apv-deny");
+  if (apvNo) { answerApproval(apvNo.closest(".approval"), false); return; }
   const pv = e.target.closest(".preview-btn");
   if (pv) {
     const id = pv.dataset.pre;
@@ -774,7 +851,7 @@ $("toggle-right").addEventListener("click", () => {
     setRunline(`初始化失败：${esc(err.message)}`, "err");
   }
   setInterval(loadSessions, 5000);
-  setInterval(loadLedger, 15000);
+  setInterval(loadLedger, 2500);
 })();
 </script>
 </body>

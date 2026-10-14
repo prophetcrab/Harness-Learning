@@ -11,6 +11,8 @@
                     RPC `session.follow` 的推送源（sessions 插件的 ObservableSession 发）
     plugin/loaded   插件被装载（payload: name, status）——自扩展工具的留痕
     plugin/unloaded 插件被卸载（payload: name）——自扩展工具的留痕
+    approval/requested  一次人工审批被提交（payload: pending）——浏览器审批
+    approval/resolved   人工审批有了结果（payload: id, tool, approved, note）
     loop/event      主循环的原始事件（payload: session, kind, payload）
 
 **瀑布**（`ctx.waterfall`，可改写值；handler 用 `(value, **context)` 接，返回非 None 即替换）
@@ -41,6 +43,8 @@ SESSION_OPENED = "session/opened"
 SESSION_EVENT = "session/event"
 PLUGIN_LOADED = "plugin/loaded"      # 自扩展工具：装载留痕（`_01`）
 PLUGIN_UNLOADED = "plugin/unloaded"  # 自扩展工具：卸载留痕（`_01`）
+APPROVAL_REQUESTED = "approval/requested"  # 浏览器审批：提交（`_01`）
+APPROVAL_RESOLVED = "approval/resolved"    # 浏览器审批：有结果（`_01`）
 LOOP_EVENT = "loop/event"  # 主循环的原始事件（kind + payload），观测用
 
 # 瀑布
@@ -48,6 +52,8 @@ PROMPT_VARIABLES = "prompt/variables"
 LLM_REQUEST = "llm/request"
 
 __all__ = [
+    "APPROVAL_REQUESTED",
+    "APPROVAL_RESOLVED",
     "LLM_REQUEST",
     "LLM_RESPONSE",
     "LOOP_EVENT",

@@ -15,6 +15,8 @@ P3 第 1 阶段（对应 [PLAN.md](../PLAN.md)）。**本阶段只加一个机�
 |---|---|---|
 | `plugins/self_tools.py` | ★ **本阶段的机制** | `SelfToolsService`（list / load / unload，结构化错误）+ `SelfToolsPlugin`（提供 `self-tools` 服务并注册三件工具） |
 | `plugins/clock.py` | ★ 示例可装卸插件 | `ClockPlugin`：装载它多一个 `now` 工具与 `clock` 服务，卸载即回卷——用来演示"装载即扩展" |
+| `plugins/web_approval.py` | ★ 浏览器审批（决策 0024） | `WebApprovalPolicy`：把"问人"搬到界面——推审批卡片、等点击、无应答 fail-closed；`chat.py --web --self-tools` 默认启用 |
+| `install_plugin`（在 self_tools 里） | ★ 从工作区安装新代码 | 读 `.py` → **人工审批（看得到源码）** → 装载 → 入白名单；被拒则零副作用，装载失败回滚白名单登记 |
 | `chat.py` | 入口 | 新增 `--self-tools` 开关（离线/真实两种组合都支持） |
 | `plugins/boot.py` | 装配 | `boot_offline/boot_realtime` 新增 `self_tools=False` 参数 |
 | `plugins/services.py` / `events.py` | 词汇 | 新增 `SELF_TOOLS_SERVICE` / `CLOCK_SERVICE`；新增 `plugin/loaded`、`plugin/unloaded` 广播事件 |

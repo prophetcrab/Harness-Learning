@@ -32,15 +32,25 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from components.tools import define_tool, schema_from_model
+from components.tools import ApprovalDecision, ApprovalRequest, define_tool, schema_from_model
 from kernel import Context, plugin_name
 from plugins.events import PLUGIN_LOADED, PLUGIN_UNLOADED
-from plugins.services import SELF_TOOLS_SERVICE, TOOLS_SERVICE
+from plugins.services import (
+    APPROVAL_SERVICE,
+    FS_SERVICE,
+    SELF_TOOLS_SERVICE,
+    TOOLS_SERVICE,
+)
+
+#: 线程局部标记：工具路径下管线已完成审批，服务层据此不重复问
+#: （工具在管线的工作线程里跑，所以用线程局部而不是全局标记）。
+_approved_call = threading.local()
 
 #: 默认的可装载白名单：插件名 → 工厂函数（惰性导入，避免模块级循环依赖）。
 DEFAULT_CATALOG_NAMES = ("clock", "webui", "rpc")
@@ -72,6 +82,19 @@ class LoadPluginArgs(BaseModel):
 class UnloadPluginArgs(BaseModel):
     name: str = Field(
         description="要卸载的插件名（取值见 list_plugins 返回的 unloadable 清单）"
+    )
+
+
+class InstallPluginArgs(BaseModel):
+    path: str = Field(
+        description="工作区内插件文件路径（相对工作区根的 .py 文件），"
+        "例如 'plugins/my_tool.py'。文件里要有一个返回插件对象的 factory 函数，"
+        "或一个名为 <插件名>_plugin 的工厂函数。"
+    )
+    entry: str | None = Field(
+        default=None,
+        description="工厂函数名（可选）；不给则自动找 factory / <模块名>_plugin / "
+        "唯一的 Plugin 类。",
     )
 
 
@@ -115,6 +138,18 @@ class SelfToolsService:
     @property
     def unloadable(self) -> list[str]:
         return sorted(self._unloadable)
+
+    def register_factory(self, name: str, factory: Callable[[], object]) -> None:
+        """把一个新的插件工厂加进可装载白名单（**手动审批通过后**才调用）。
+
+        这是"先审批、后入白名单"的写入端：用户看过代码并批准，才把名字登记进
+        catalog；登记完立刻用它装载，所以"批准"与"生效"是同一个动作的两半。
+        """
+        self._catalog[name] = factory
+
+    def make_unloadable(self, name: str) -> None:
+        """把一个插件加进可卸载白名单（同样由审批路径调用）。"""
+        self._unloadable = frozenset(set(self._unloadable) | {name})
 
     def list_plugins(self) -> dict[str, Any]:
         """插件台账 + 白名单 + 当前工具面（与 ctx.plugins 同源，永不发岔）。"""
@@ -218,6 +253,182 @@ class SelfToolsService:
             "tools_removed": sorted(tools_before - set(self._registry.names)),
         }
 
+    # ------------------------------------------------------------------
+    # 从工作区安装（先审批、后入白名单、再激活）
+    # ------------------------------------------------------------------
+
+    def _request_install_approval(self, path: str, source: str) -> ApprovalDecision:
+        """在服务层自己问一次审批（不依赖工具管线）。
+
+        工具调用会先被管线的 pre 阶段拦一次（`needs_approval=True`）；但服务的
+        公共方法也可能被**直接调用**（测试、未来别的入口）。"引入新代码"这件事
+        太敏感，不能只靠调用方记得走管线——所以这里再问一次，**没策略就拒绝**
+        （fail-closed）。管线里已批准过的场景，WеbApprovalPolicy 会立刻弹第二次
+        卡片；显式传了 `ScriptedApprover` 的测试则各自消费一条剧本。
+
+        为避免重复弹窗，管线批准时会通过 `ctx` 记住"这次安装已放行"——
+        见 `_install_preapproved`。
+        """
+        request = ApprovalRequest(
+            tool_name="install_plugin",
+            arguments={"path": path, "bytes": len(source.encode("utf-8"))},
+            reason="安装新插件（会引入可执行代码）——请确认源码",
+        )
+        policy = self._ctx.get(APPROVAL_SERVICE)
+        if policy is None:
+            return ApprovalDecision(
+                False, "没有审批策略：引入新代码必须有人批准（fail-closed 拒绝）"
+            )
+        return policy.approve(request)
+
+    def install(self, path: str, entry: str | None = None) -> dict[str, Any]:
+        """把一个**工作区里的 .py 文件**安装成插件：读代码 → 审批 → 装载 → 入白名单。
+
+        与 `load` 的区别：`load` 只能装**已经在白名单里**的（装配方预先批准的
+        名字）；`install` 允许引入**新代码**，因此它的安全边界只有一条——
+        **人工审批**（工具标了 needs_approval，界面会把源码摆给审批人看）。
+        审批被拒 → 什么都不发生；审批通过 → 登记进白名单并立即装载。
+
+        这条路是 P3 `_01` 唯一"能引入新代码"的入口，所以除了审批之外，
+        还刻意做了三件事：只读工作区内的文件（走 fs 服务，天然受沙箱限制）、
+        只接受 .py、装载失败不留下半装状态（内核保证）。
+        """
+        if not path.endswith(".py"):
+            return {"error": f"只接受 .py 文件：{path}", "code": "INSTALL_BAD_PATH"}
+
+        fs = self._ctx.get(FS_SERVICE)
+        if fs is None:
+            return {"error": "没有文件系统服务，无法读取插件源码", "code": "INSTALL_NO_FS"}
+        try:
+            source = fs.read_text(path)
+        except Exception as exc:  # noqa: BLE001 —— 读不到就是给模型的输入
+            return {"error": f"读取插件源码失败：{exc}", "code": "INSTALL_READ_FAILED"}
+
+        # 审批：工具路径下管线已经问过了（见 install_plugin 工具的包装器把标记
+        # 置上）；直接调服务（测试 / 未来别的入口）则由服务自己问，问不到即拒绝。
+        if getattr(_approved_call, "tool", None) != "install_plugin":
+            decision = self._request_install_approval(path, source)
+            if not decision.allowed:
+                return {
+                    "error": f"安装被拒绝：{decision.reason}",
+                    "code": "PLUGIN_ACCESS_DENIED",
+                    "path": path,
+                }
+
+        try:
+            plugin, factory, name = _plugin_from_source(source, path, entry)
+        except Exception as exc:  # noqa: BLE001 —— 代码有问题，如实回给模型
+            return {"error": f"解析插件失败：{exc}", "code": "INSTALL_PARSE_FAILED"}
+
+        # 白名单内重名：交给 load 的既有语义（已装载 → 结构化错误）
+        services_before = set(self._ctx.services)
+        tools_before = set(self._registry.names)
+
+        self.register_factory(name, factory)
+        self.make_unloadable(name)  # 自己装的，允许自己卸（同样是审批过的动作）
+
+        try:
+            self._ctx.load_plugin(factory())
+        except Exception as exc:  # noqa: BLE001
+            self._catalog.pop(name, None)  # 装载失败：撤销刚做的白名单登记
+            return {"error": f"装载失败：{exc}", "code": "PLUGIN_LOAD_FAILED"}
+
+        info = next((i for i in self._ctx.plugins if i.name == name), None)
+        status = info.status if info is not None else "unknown"
+        self._ctx.emit(PLUGIN_LOADED, name=name, status=status, source=path)
+        result: dict[str, Any] = {
+            "installed": name,
+            "source": path,
+            "status": status,
+            "registered_in_whitelist": True,
+            "services_added": sorted(set(self._ctx.services) - services_before),
+            "tools_added": sorted(set(self._registry.names) - tools_before),
+        }
+        for key in result["services_added"]:
+            endpoint = _endpoint_of(self._ctx.get(key))
+            if endpoint is not None:
+                result.setdefault("endpoints", {})[key] = endpoint
+        if result["tools_added"]:
+            result["note"] = "新工具从**下一轮**对话开始出现在工具面里"
+        if status == "pending":
+            missing = list(info.missing) if info is not None else []
+            result["note"] = f"依赖未满足（缺 {missing}），插件处于等待状态"
+        return result
+
+
+def _plugin_from_source(
+    source: str, path: str, entry: str | None
+) -> tuple[object, Callable[[], object], str]:
+    """把一段源码编译成"插件工厂"，返回 (插件实例, 工厂, 名字)。
+
+    约定（与项目里的插件写法一致）：源码里应有
+      · `def factory(): return Plugin()`，或
+      · `def <模块名>_plugin(): ...`，或
+      · 唯一一个带 `setup` 方法的类（自动实例化）。
+    entry 显式给了就用它。
+    """
+    import importlib.util
+    import sys
+    import tempfile
+    from pathlib import Path
+
+    stem = Path(path).stem
+    module_name = f"user_plugin_{stem}"
+    # 写进临时文件再 import（源码来自工作区，用文件路径加载最直观）
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".py", prefix=f"{module_name}_", delete=False, encoding="utf-8"
+    ) as handle:
+        handle.write(source)
+        tmp_path = handle.name
+    try:
+        spec = importlib.util.spec_from_file_location(module_name, tmp_path)
+        if spec is None or spec.loader is None:
+            raise ValueError("无法为该文件建立模块规格")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+    finally:
+        try:
+            Path(tmp_path).unlink()
+        except OSError:
+            pass
+
+    candidates: list[str] = []
+    if entry:
+        candidates.append(entry)
+    candidates += ["factory", f"{stem}_plugin", f"{stem}_plugin"]
+    for attr in ("plugin", "PLUGIN"):
+        candidates.append(attr)
+
+    for attr in candidates:
+        obj = getattr(module, attr, None)
+        if obj is None:
+            continue
+        if callable(obj) and not hasattr(obj, "setup"):
+            instance = obj()
+        else:
+            instance = obj
+        if hasattr(instance, "setup"):
+            factory = (lambda fn=obj: fn()) if callable(obj) and not hasattr(obj, "setup") \
+                else (lambda inst=instance: inst)
+            name = plugin_name(instance)
+            return instance, factory, name
+
+    # 兜底：找唯一的"带 setup 的类"
+    classes = [
+        value for value in vars(module).values()
+        if isinstance(value, type) and hasattr(value, "setup")
+    ]
+    if len(classes) == 1:
+        cls = classes[0]
+        instance = cls()
+        return instance, cls, plugin_name(instance)
+
+    raise ValueError(
+        "找不到插件入口：请在源码里定义 factory()、"
+        f"{stem}_plugin()，或唯一一个带 setup 方法的类"
+    )
+
 
 class SelfToolsPlugin:
     """提供 `self-tools` 服务与三件自扩展工具（inject tools：要登记工具）。"""
@@ -272,10 +483,30 @@ class SelfToolsPlugin:
             ),
             service.unload,
         )
+        def install_tool(path: str, entry: str | None = None) -> dict[str, Any]:
+            """install_plugin 的工具入口：标记"管线已审批"，再交给服务。"""
+            _approved_call.tool = "install_plugin"
+            try:
+                return service.install(path, entry)
+            finally:
+                _approved_call.tool = None
+
+        registry.register(
+            define_tool(
+                "install_plugin",
+                "从**工作区里的 .py 文件**安装一个新插件（这条路径允许引入新代码）。"
+                "需要人工审批——审批人会看到源码全文，批准后才装载并加入白名单；"
+                "被拒则什么都不发生。插件源码里要有 factory()、<文件名>_plugin()，"
+                "或唯一一个带 setup 方法的类。",
+                schema_from_model(InstallPluginArgs),
+                needs_approval=True,
+            ),
+            install_tool,
+        )
 
         def dispose() -> None:
             # 工具注册表在 ctx 之外：撤销要显式写出来（与 tools 插件同一纪律）。
-            for tool in ("list_plugins", "load_plugin", "unload_plugin"):
+            for tool in ("list_plugins", "load_plugin", "unload_plugin", "install_plugin"):
                 registry.unregister(tool)
 
         return dispose

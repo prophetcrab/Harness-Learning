@@ -36,7 +36,11 @@ DEFAULT_WORKSPACE = HERE / "demo_workspace" / "ws"
 
 
 def build_approval(args: argparse.Namespace) -> ApprovalPolicy | None:
-    """审批策略：默认终端 y/n；--no-approve 自动放行；--deny 全部拒绝。"""
+    """审批策略：Web + 自扩展模式交给浏览器卡片；否则终端 y/n；两个开关强制放行/拒绝。
+
+    返回 None = "不要在装配时定死策略"——agent 会退回用 ctx 里的 `approval`
+    服务（装了 web-approval 就是浏览器审批；没装则 fail-closed 拒绝）。
+    """
     if args.no_approve:
         from components.tools import AutoApprove
 
@@ -45,6 +49,9 @@ def build_approval(args: argparse.Namespace) -> ApprovalPolicy | None:
         from components.tools import AutoDeny
 
         return AutoDeny("命令行指定了 --deny")
+    if args.web and args.self_tools:
+        # 界面 + 自扩展：审批点在浏览器里（web-approval 插件已随之装载）。
+        return None
     if not sys.stdin.isatty():
         # 非交互终端问不到人：fail-closed（拒绝一切需审批操作）。
         from components.tools import AutoDeny

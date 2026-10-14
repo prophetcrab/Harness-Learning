@@ -39,6 +39,7 @@ from kernel import Context
 from plugins.events import LOOP_EVENT, TURN_END, TURN_START
 from plugins.services import (
     AGENT_SERVICE,
+    APPROVAL_SERVICE,
     LLM_SERVICE,
     PROMPT_SERVICE,
     SESSIONS_SERVICE,
@@ -170,9 +171,13 @@ class AgentService:
             self._ctx.emit(LOOP_EVENT, session=session_id, kind=kind, payload=payload)
 
         # 4) 工具管线 + 主循环（历史由日志投影——不存在单独的恢复分支）。
+        # 审批策略：显式传入的优先；否则用 ctx 里的 `approval` 服务
+        # （plugins/web_approval.py 提供——界面场景下就是"在浏览器里点批准"）；
+        # 两者都没有 → None = 管线按 fail-closed 拒绝一切需审批操作。
+        approval = self._approval if self._approval is not None else self._ctx.get(APPROVAL_SERVICE)
         pipeline = ToolPipeline(
             self._registry,
-            approval=self._approval,
+            approval=approval,
             timeout=self._timeout,
             middlewares=self._middlewares,
         )
