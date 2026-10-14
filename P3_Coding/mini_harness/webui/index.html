@@ -108,6 +108,29 @@
   .prose code{background:#1a2029;border:1px solid #262e3b;border-radius:5px;
     padding:1px 5px;font-family:var(--mono);font-size:12.5px}
   .prose a{text-decoration:underline;text-underline-offset:2px}
+  /* 标题 / 引用 / 分隔线 / 删除线 */
+  .prose h1,.prose h2,.prose h3,.prose h4{margin:13px 0 7px;line-height:1.35;font-weight:650}
+  .prose h1{font-size:17px} .prose h2{font-size:16px}
+  .prose h3{font-size:14.5px} .prose h4{font-size:13.5px;color:var(--muted)}
+  .prose > :first-child{margin-top:0}
+  .prose blockquote{margin:8px 0;padding:2px 12px;border-left:3px solid var(--line-2);
+    color:var(--muted)}
+  .prose hr{border:none;border-top:1px solid var(--line);margin:13px 0}
+  .prose del{color:var(--muted)}
+  /* 表格 */
+  .tablewrap{overflow-x:auto;margin:8px 0}
+  .prose table{border-collapse:collapse;width:100%;font-size:13px}
+  .prose th,.prose td{border:1px solid var(--line);padding:5px 10px;
+    text-align:left;vertical-align:top}
+  .prose th{background:#161a22;font-weight:600;white-space:nowrap}
+  .prose tbody tr:nth-child(odd) td{background:#0f1218}
+  /* 代码块：动作按钮 + 预览 */
+  .code-actions{display:flex;gap:6px}
+  .preview-btn{background:transparent;border:1px solid var(--line-2);color:var(--accent);
+    border-radius:6px;font-size:11px;padding:1px 8px;cursor:pointer}
+  .preview-btn:hover{border-color:var(--accent);background:var(--accent-soft)}
+  .previewbox{border-top:1px solid var(--line);background:#fff}
+  .preview-frame{width:100%;height:360px;border:0;display:block;background:#fff}
   .codeblock{background:#0d1015;border:1px solid var(--line);border-radius:10px;
     margin:8px 0;overflow:hidden}
   .code-head{display:flex;justify-content:space-between;align-items:center;
@@ -287,11 +310,36 @@ const el = (html) => { const t = document.createElement("template");
 
 /* ---------------- mini markdown ---------------- */
 let codeSeq = 0;
+const previewCode = {};   // code id → {lang, code}：预览内容按需在切换时注入
 function codeBlockHtml(lang, code) {
   const id = `code-${++codeSeq}`;
+  const l = String(lang || "").toLowerCase();
+  const previewable = ["html", "htm", "svg", "css"].includes(l);
+  previewCode[id] = { lang: l, code };
   return `<div class="codeblock"><div class="code-head"><span>${esc(lang || "text")}</span>`
-    + `<button type="button" class="copy" data-pre="${id}">复制</button></div>`
-    + `<pre id="${id}">${esc(code.replace(/\n$/, ""))}</pre></div>`;
+    + `<span class="code-actions">`
+    + (previewable ? `<button type="button" class="preview-btn" data-pre="${id}">预览</button>` : "")
+    + `<button type="button" class="copy" data-pre="${id}">复制</button></span></div>`
+    + `<pre id="${id}">${esc(code.replace(/\n$/, ""))}</pre>`
+    + (previewable ? `<div class="previewbox" id="pv-${id}" hidden></div>` : "")
+    + `</div>`;
+}
+function previewSrc(id) {
+  const { lang, code } = previewCode[id] || {};
+  if (lang === "css") {
+    // CSS 片段单独预览没有意义：给一个最小示例骨架，让样式有东西可作用
+    return `<!doctype html><html><head><meta charset="utf-8"><style>${code}</style></head>`
+      + `<body style="font:14px/1.6 system-ui,'Microsoft YaHei',sans-serif;padding:16px">`
+      + `<h3 style="margin:0 0 6px">CSS 预览（示例骨架）</h3>`
+      + `<p>这段样式已应用到下面的元素。</p>`
+      + `<button>按钮</button> <a href="#">链接</a>`
+      + `<div class="card" style="margin-top:10px;padding:8px;border:1px solid #ddd">卡片内容</div>`
+      + `</body></html>`;
+  }
+  // html / svg：已经是完整文档就直接用，否则包一层
+  return /<html|<!doctype/i.test(code)
+    ? code
+    : `<!doctype html><html><head><meta charset="utf-8"></head><body>${code}</body></html>`;
 }
 function md(src) {
   const fences = [], inlines = [];
@@ -302,25 +350,80 @@ function md(src) {
   t = t.replace(/`([^`\n]+)`/g, (m, c) => { inlines.push(c); return `\uE000I${inlines.length - 1}\uE000`; });
   t = esc(t);
   t = t.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  t = t.replace(/~~([^~\n]+)~~/g, "<del>$1</del>");
   t = t.replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,，。！？!?；;])/g, "$1<em>$2</em>");
   t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g,
     '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-  const out = []; let list = null;
-  const flush = () => { if (list) { out.push(
-    `<${list.tag}>${list.items.map((i) => `<li>${i}</li>`).join("")}</${list.tag}>`); list = null; } };
-  for (const line of t.split("\n")) {
-    const s = line.trim();
-    if (/^\uE000F\d+\uE000$/.test(s)) { flush(); out.push(s); continue; }
-    if (!s) { flush(); continue; }
-    let m = s.match(/^[-*•]\s+(.*)$/);
-    if (m) { if (!list || list.tag !== "ul") { flush(); list = { tag: "ul", items: [] }; }
+
+  const lines = t.split("\n");
+  const out = [];
+  let list = null, quote = null, para = null;
+  const flushList = () => { if (list) {
+    out.push(`<${list.tag}>${list.items.map((i) => `<li>${i}</li>`).join("")}</${list.tag}>`);
+    list = null; } };
+  const flushQuote = () => { if (quote) {
+    out.push(`<blockquote>${quote.join("<br>")}</blockquote>`); quote = null; } };
+  const flushPara = () => { if (para) {
+    out.push(`<p>${para.join("<br>")}</p>`); para = null; } };
+  const flushAll = () => { flushList(); flushQuote(); flushPara(); };
+
+  // 表格：表头行 + 分隔行（| --- | --- |），随后是数据行
+  const isSeparator = (s) => s.includes("|") && s.includes("-")
+    && /^\|?[\s:|-]+\|?$/.test(s);
+  const splitCells = (s) => s.replace(/^\s*\|/, "").replace(/\|\s*$/, "")
+    .split("|").map((c) => c.trim());
+  const alignOf = (c) => (/^:-+:$/.test(c) ? "center"
+    : /^:-+/.test(c) ? "left" : /-+:$/.test(c) ? "right" : "");
+
+  for (let i = 0; i < lines.length; i++) {
+    const s = lines[i].trim();
+    if (/^\uE000F\d+\uE000$/.test(s)) { flushAll(); out.push(s); continue; }
+    if (!s) { flushAll(); continue; }
+
+    // 表格
+    if (/^\|.*\|$/.test(s) && i + 1 < lines.length
+        && isSeparator(lines[i + 1].trim())) {
+      flushAll();
+      const head = splitCells(s);
+      const align = splitCells(lines[i + 1].trim()).map(alignOf);
+      const rows = [];
+      i += 2;
+      while (i < lines.length && /^\|.*\|$/.test(lines[i].trim())) {
+        rows.push(splitCells(lines[i].trim())); i++;
+      }
+      i--;
+      const style = (k) => (align[k] ? ` style="text-align:${align[k]}"` : "");
+      const th = head.map((c, k) => `<th${style(k)}>${c}</th>`).join("");
+      const tb = rows.map((r) =>
+        `<tr>${r.map((c, k) => `<td${style(k)}>${c}</td>`).join("")}</tr>`).join("");
+      out.push(`<div class="tablewrap"><table><thead><tr>${th}</tr></thead>`
+        + `<tbody>${tb}</tbody></table></div>`);
+      continue;
+    }
+    // 标题
+    let m = s.match(/^(#{1,6})\s+(.*)$/);
+    if (m) { flushAll(); const lv = Math.min(m[1].length, 4);
+      out.push(`<h${lv}>${m[2]}</h${lv}>`); continue; }
+    // 分隔线
+    if (/^([-*_])\1{2,}$/.test(s.replace(/\s/g, ""))) { flushAll(); out.push("<hr>"); continue; }
+    // 引用（> 已被转义成 &gt;）
+    m = s.match(/^&gt;\s?(.*)$/);
+    if (m) { flushList(); flushPara(); (quote || (quote = [])).push(m[1]); continue; }
+    // 无序列表
+    m = s.match(/^[-*•]\s+(.*)$/);
+    if (m) { flushQuote(); flushPara();
+      if (!list || list.tag !== "ul") { flushList(); list = { tag: "ul", items: [] }; }
       list.items.push(m[1]); continue; }
+    // 有序列表
     m = s.match(/^\d+[.)]\s+(.*)$/);
-    if (m) { if (!list || list.tag !== "ol") { flush(); list = { tag: "ol", items: [] }; }
+    if (m) { flushQuote(); flushPara();
+      if (!list || list.tag !== "ol") { flushList(); list = { tag: "ol", items: [] }; }
       list.items.push(m[1]); continue; }
-    flush(); out.push(`<p>${s}</p>`);
+    // 普通段落（连续行合并，软换行保留为 <br>）
+    flushList(); flushQuote();
+    (para || (para = [])).push(s);
   }
-  flush();
+  flushAll();
   let html = out.join("");
   html = html.replace(/\uE000I(\d+)\uE000/g, (m, i) => `<code>${esc(inlines[+i])}</code>`);
   html = html.replace(/\uE000F(\d+)\uE000/g, (m, i) => codeBlockHtml(fences[+i][0], fences[+i][1]));
@@ -610,6 +713,29 @@ chatEl.addEventListener("scroll", () => {
 chatEl.addEventListener("click", async (e) => {
   const hint = e.target.closest(".hint");
   if (hint) { ta.value = hint.dataset.q; autosize(); ta.focus(); return; }
+  const pv = e.target.closest(".preview-btn");
+  if (pv) {
+    const id = pv.dataset.pre;
+    const box = document.getElementById(`pv-${id}`);
+    const pre = document.getElementById(id);
+    if (!box || !pre) return;
+    if (box.hidden) {
+      if (!box.dataset.ready) {           // 惰性注入：第一次切换时才构造 iframe
+        const frame = document.createElement("iframe");
+        // 只给 allow-scripts（不给 allow-same-origin）：脚本能在里面跑，
+        // 但拿不到父页面的 DOM / cookie —— 渲染模型给的 HTML 的安全底线。
+        frame.setAttribute("sandbox", "allow-scripts");
+        frame.className = "preview-frame";
+        frame.srcdoc = previewSrc(id);
+        box.appendChild(frame);
+        box.dataset.ready = "1";
+      }
+      box.hidden = false; pre.hidden = true; pv.textContent = "源码";
+    } else {
+      box.hidden = true; pre.hidden = false; pv.textContent = "预览";
+    }
+    return;
+  }
   const btn = e.target.closest(".copy");
   if (btn) {
     const pre = document.getElementById(btn.dataset.pre);

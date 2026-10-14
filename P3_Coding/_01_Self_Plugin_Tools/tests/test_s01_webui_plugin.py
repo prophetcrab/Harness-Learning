@@ -274,3 +274,27 @@ def test_webui_restarts_when_upstream_plugin_swapped(tmp_path: Path):
     assert _port_open(new.port)  # 重新激活：服务回来了
     booted.ctx.unload_plugin("webui")
     booted.close()
+
+
+def test_index_page_includes_rich_renderer(tmp_path: Path):
+    """页面自带富渲染：Markdown 表格/标题/引用 + HTML/CSS 代码块沙箱预览。
+
+    回归背景：模型常用 Markdown 表格列能力清单，早期渲染器只认段落/列表/
+    代码块，表格会原样显示成 `| # | 工具 |` 一堆竖线——这里把渲染能力钉住。
+    """
+    booted = _boot(tmp_path, [text_reply("好")])
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    url = booted.ctx.require(WEBUI_SERVICE).url
+
+    _, html = _get_text(url)
+    # Markdown 富渲染：CSS 有表格/引用/标题样式，JS 有表格与标题的行级识别
+    assert "tablewrap" in html and "prose th" in html
+    assert "blockquote" in html
+    assert "isSeparator" in html                       # 表格识别逻辑
+    assert "match(/^(#{1,6})" in html                  # 标题识别
+    # HTML/CSS 代码块 → 沙箱预览
+    assert "preview-btn" in html and "previewbox" in html
+    assert 'setAttribute("sandbox", "allow-scripts")' in html  # 只给脚本权限
+    assert "allow-same-origin" not in html.split("setAttribute", 1)[1][:60]
+    booted.ctx.unload_plugin("webui")
+    booted.close()
