@@ -4,15 +4,21 @@
 而"命令怎么解析、结果怎么排版成给人看的一段字"是纯逻辑，与入口无关。
 两个入口各写一遍解析必然漂移（一个支持 `clear` 另一个忘了），所以收在这里。
 
-用法（`/goal` 后接子命令）：
+用法：
 
     /goal                     看一眼当前目标
-    /goal new <目标内容>        新建（可带 --rounds N 指定轮数上限）
+    /goal <目标内容>            直接新建（**最常用，不用打 new**）
+    /goal new <目标内容>        同上；可带 --rounds N 指定轮数上限
     /goal edit <新内容>         改目标内容
     /goal pause | resume      暂停 / 恢复
     /goal done                标记完成
     /goal block <原因>         标记被卡住
     /goal clear               清掉
+
+**一个逗号的区别**：`/goal 写个飞机大战` 会被当成"新建一个叫「写个飞机大战」的目标"，
+而 `/goal pause` 是执行暂停——先看第一个词是不是子命令，是就执行，不是就当目标内容。
+这样最符合直觉（想说目标就直接说），代价是要防"子命令打错一个字母"被静默当成
+目标内容，所以配了个拼写纠错：短英文词只差一点时提示"想用 pause 吗？"。
 
 返回值是**给人读的文本**（入口直接打印/显示），不抛异常——命令打错了
 应该回一句"怎么用"，而不是把界面搞出个 traceback。
@@ -27,9 +33,9 @@ from components.goal.domain import DEFAULT_MAX_GOAL_ROUNDS, GoalError, GoalProje
 from components.goal.store import GoalStore
 
 USAGE = (
-    "用法：/goal [new <目标内容> [--rounds N] | edit <新内容> | pause | resume | "
-    "done | block <原因> | clear]\n"
-    "  不带参数 = 看当前目标。"
+    "用法：/goal [<目标内容> | new <目标内容> [--rounds N] | edit <新内容> | "
+    "pause | resume | done | block <原因> | clear]\n"
+    "  不带参数 = 看当前目标；直接写内容 = 新建一个目标。"
 )
 
 #: 中文别名 → 规范子命令（人两种都爱打）。
@@ -42,6 +48,24 @@ _ALIASES = {
     "block": "block", "卡住": "block", "阻塞": "block",
     "clear": "clear", "清": "clear", "清掉": "clear", "删除": "clear",
 }
+
+
+def closest_subcommand(token: str) -> str | None:
+    """这个词像不像"打错的子命令"？像则返回最接近的那个。
+
+    只对**短英文词**判断：真实的目标内容多半是中英混排的长句（如
+    `写一个飞机大战html`），不会被误判成拼写错误。反过来，`/goal paus`
+    这种一个字母的笔误必须拦下——否则它会静默建一个叫 "paus" 的目标。
+    """
+    if not token.isascii() or not token.isalpha() or len(token) > 12:
+        return None
+    lowered = token.lower()
+    for name in _ALIASES:
+        if not name.isascii():
+            continue
+        if name.startswith(lowered) or lowered.startswith(name):
+            return name
+    return None
 
 
 @dataclass(frozen=True)
@@ -86,6 +110,32 @@ def _parse_rounds(args: list[str]) -> tuple[list[str], int | None, str | None]:
     return args[:index] + args[index + 2 :], value, None
 
 
+def _create_from_text(store: GoalStore, args: list[str]) -> GoalCommandResult:
+    """`/goal <内容>` 直接建目标（**不用先打 new**，这是最常用的一条路）。
+
+    先看第一个词像不像打错的子命令：像就提示纠正（`/goal paus` 不该静默建出
+    一个叫 "paus" 的目标）；不像就把整行当目标内容。
+    """
+    typo = closest_subcommand(args[0])
+    if typo is not None:
+        return GoalCommandResult(f"不认识子命令：{args[0]}——想用 {typo} 吗？\n{USAGE}")
+    words, rounds, error = _parse_rounds(args)
+    if error is not None:
+        return GoalCommandResult(error)
+    objective = " ".join(words).strip()
+    if not objective:
+        return GoalCommandResult(f"--rounds 还要配目标内容。\n{USAGE}")
+    try:
+        store.create(objective, max_goal_rounds=rounds)
+    except GoalError as exc:
+        return GoalCommandResult(f"操作被拒绝：{exc}")
+    return GoalCommandResult(
+        f"已建立目标（轮数上限 {rounds or DEFAULT_MAX_GOAL_ROUNDS}）：{objective}\n"
+        "接下来发一条消息就会开始动手；没做完之前它会自动续跑。",
+        changed=True,
+    )
+
+
 def run_goal_command(store: GoalStore, line: str) -> GoalCommandResult:
     """执行一条 `/goal ...`；`line` 是去掉 `/goal` 之后的剩余文本。
 
@@ -99,7 +149,8 @@ def run_goal_command(store: GoalStore, line: str) -> GoalCommandResult:
     raw_action, rest = args[0], args[1:]
     action = _ALIASES.get(raw_action.lower())
     if action is None:
-        return GoalCommandResult(f"不认识子命令：{raw_action}\n{USAGE}")
+        # 不是子命令 → 当成目标内容（`/goal 写个飞机大战` 直接建目标）
+        return _create_from_text(store, args)
 
     rest, rounds, error = _parse_rounds(rest)
     if error is not None:
@@ -112,7 +163,8 @@ def run_goal_command(store: GoalStore, line: str) -> GoalCommandResult:
                 return GoalCommandResult(f"new 需要目标内容。\n{USAGE}")
             store.create(objective, max_goal_rounds=rounds)
             return GoalCommandResult(
-                f"已建立目标（轮数上限 {rounds or DEFAULT_MAX_GOAL_ROUNDS}）：{objective}",
+                f"已建立目标（轮数上限 {rounds or DEFAULT_MAX_GOAL_ROUNDS}）：{objective}\n"
+                "接下来发一条消息就会开始动手；没做完之前它会自动续跑。",
                 changed=True,
             )
         if action == "edit":
@@ -144,4 +196,10 @@ def run_goal_command(store: GoalStore, line: str) -> GoalCommandResult:
     return GoalCommandResult(f"未实现的子命令：{action}\n{USAGE}")   # pragma: no cover
 
 
-__all__ = ["GoalCommandResult", "USAGE", "format_goal", "run_goal_command"]
+__all__ = [
+    "USAGE",
+    "GoalCommandResult",
+    "closest_subcommand",
+    "format_goal",
+    "run_goal_command",
+]

@@ -580,9 +580,10 @@ const COMMANDS = [
   },
   {
     name: "/goal",
-    desc: "看/管目标：new <内容> · edit · pause · resume · done · block <原因> · clear",
-    // 带子参数的人命令：菜单里选中它只补全到 "/goal "，然后由人接着打子命令
-    // （不猜他想干嘛）。执行走服务端的 `/goal ...` 路由，不花模型的钱。
+    // 第一条就是最常用的用法：直接写内容。子命令是"要管它的时候"才用。
+    desc: "直接写目标内容即可（如 /goal 写个飞机大战）；要管它时用：pause · resume · done · clear",
+    // 带参数的人命令：菜单选中只补全到 "/goal "，剩下由人写（不猜他想干嘛）。
+    // 执行走服务端的 `/goal ...` 路由，不花模型的钱。
     takesArgs: true,
     run: (line) => runGoal(line),
   },

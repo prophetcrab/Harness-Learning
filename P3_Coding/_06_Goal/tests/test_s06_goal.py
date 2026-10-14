@@ -313,10 +313,57 @@ def test_goal_command_accepts_chinese_aliases():
     assert run_goal_command(store, "清").changed
 
 
+def test_goal_command_accepts_bare_objective():
+    """`/goal <内容>` 直接建目标——**不用先打 new**（最常用的那条路）。
+
+    回归背景：用户真的这么打了（`/goal 写一个飞机大战html`），拿到的是
+    "不认识子命令" + 一长串用法。要求"建目标"先打 new 太啰嗦——想说目标就
+    直接说，子命令留给"要管它的时候"。
+    """
+    store, _ = _store()
+    result = run_goal_command(store, "写一个飞机大战html")
+    assert result.changed
+    assert "已建立目标" in result.text
+    assert store.current().objective == "写一个飞机大战html"
+
+
+def test_bare_objective_with_rounds():
+    store, _ = _store()
+    run_goal_command(store, "把文档修好 --rounds 3")
+    assert store.current().objective == "把文档修好"
+    assert store.current().max_goal_rounds == 3
+
+
+def test_misspelled_subcommand_is_caught_not_taken_as_objective():
+    """拼错的子命令要被拦下——**不能静默建一个叫 "paus" 的目标**。
+
+    这是"直接写内容"这个便利的代价：得防着"子命令打错一个字母"被当成目标。
+    """
+    store, _ = _store()
+    result = run_goal_command(store, "paus")
+    assert not result.changed
+    assert "想用 pause 吗" in result.text
+    assert store.current() is None, "不该建出目标"
+
+    # 中文长句/中英混排不会被误判为拼写错误
+    assert run_goal_command(store, "暂停一下所有的自动化任务").changed
+    store.clear()
+    assert run_goal_command(store, "donate to charity").changed
+
+
+def test_subcommand_still_wins_over_bare_content():
+    """有目标时打 `pause` 依然是执行暂停，而不是建一个叫 "pause" 的目标。"""
+    store, _ = _store()
+    run_goal_command(store, "目标甲")
+    result = run_goal_command(store, "pause")
+    assert result.changed and "已暂停" in result.text
+    assert store.current().objective == "目标甲"      # 没被覆盖
+
+
 def test_goal_command_never_raises_on_bad_input():
     """命令打错要回一句人话，而不是把界面搞出 traceback。"""
     store, _ = _store()
-    assert "不认识子命令" in run_goal_command(store, "乱写").text
+    assert "不认识子命令" in run_goal_command(store, "paus").text   # 拼错：拦下
     assert "用法" in run_goal_command(store, "new").text            # 少了内容
     assert "--rounds" in run_goal_command(store, "new x --rounds abc").text
     # 非法流转也变成人话
