@@ -43,7 +43,13 @@ def with_system_prompt(messages: list[Message], text: str) -> list[Message]:
 
 
 class RuntimePromptProvider:
-    """包装任意 provider：每 step 用最新上下文渲染系统提示词。"""
+    """包装任意 provider：每 step 用最新上下文渲染系统提示词。
+
+    **可选流式也透传**（`_02`）：内层支持 stream() 时，本类才挂上 stream
+    属性（实例级，见 `__init__` 末尾）；内层不支持就不挂——循环用
+    `hasattr(provider, "stream")` 探测，探测结果必须真实，否则"只有 complete
+    的 provider"会被误判为流式、一调用就炸。
+    """
 
     def __init__(
         self,
@@ -60,6 +66,9 @@ class RuntimePromptProvider:
         # resume = 日志里的当前生效文本（避免重开后第一步就重复记录）。
         self._last = initial
         self._last_trace: PromptTrace | None = None
+        if hasattr(inner, "stream"):
+            # 仅当内层真的流式时暴露 stream（诚实代理：探测接口不能撒谎）。
+            self.stream = self._stream  # type: ignore[method-assign]
 
     @property
     def inner(self) -> LLMProvider:
@@ -83,12 +92,25 @@ class RuntimePromptProvider:
             self._last = trace.text
             if self._on_render is not None:
                 self._on_render(trace)
-        return self._inner.complete(
-            LLMRequest(
-                messages=with_system_prompt(request.messages, trace.text),
-                tools=list(request.tools),
-                model=request.model,
-            )
+        return self._inner.complete(self._with_prompt(request, trace))
+
+    def _stream(self, request: LLMRequest):
+        """流式透传（`_02`）：同样每步重渲染，然后转发内层增量。"""
+        trace = self._renderer.render_traced()
+        self._last_trace = trace
+        if trace.text != self._last:
+            self._last = trace.text
+            if self._on_render is not None:
+                self._on_render(trace)
+        yield from self._inner.stream(self._with_prompt(request, trace))
+
+    @staticmethod
+    def _with_prompt(request: LLMRequest, trace: PromptTrace) -> LLMRequest:
+        """把最新渲染的系统提示词替换进请求（其它字段原样透传）。"""
+        return LLMRequest(
+            messages=with_system_prompt(request.messages, trace.text),
+            tools=list(request.tools),
+            model=request.model,
         )
 
 

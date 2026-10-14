@@ -48,10 +48,40 @@ class ToolSpec:
 
 @dataclass
 class Usage:
-    """一次调用的 token 用量（各家 API 都提供类似字段）。"""
+    """一次调用的 token 用量（各家 API 都提供类似字段）。
+
+    `_03` 起支持累加（`+`）：一个 turn 里多次模型调用的用量可以求和，
+    得到"这一轮总共花了多少"——预算检查与用量账本都靠它。
+    """
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    # `_04`：前缀缓存命中/未命中的输入 token 数（DeepSeek 等按"上下文缓存"计费，
+    # 命中部分便宜得多）。命中率 = hit / (hit + miss)。
+    prompt_cache_hit_tokens: int = 0
+    prompt_cache_miss_tokens: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        """输入 + 输出（预算按这个数算）。"""
+        return self.prompt_tokens + self.completion_tokens
+
+    @property
+    def cache_reported(self) -> bool:
+        """这次调用有没有报缓存数据（FakeLLM 之类不报，命中率显示"—"）。"""
+        return self.prompt_cache_hit_tokens + self.prompt_cache_miss_tokens > 0
+
+    def __add__(self, other: Usage) -> Usage:
+        return Usage(
+            prompt_tokens=self.prompt_tokens + other.prompt_tokens,
+            completion_tokens=self.completion_tokens + other.completion_tokens,
+            prompt_cache_hit_tokens=(
+                self.prompt_cache_hit_tokens + other.prompt_cache_hit_tokens
+            ),
+            prompt_cache_miss_tokens=(
+                self.prompt_cache_miss_tokens + other.prompt_cache_miss_tokens
+            ),
+        )
 
 
 @dataclass

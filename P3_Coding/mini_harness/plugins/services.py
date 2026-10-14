@@ -22,13 +22,31 @@ AGENT_SERVICE = "agent"
 WEBUI_SERVICE = "webui"
 #: JSON-RPC 服务端（stdio / TCP；initialize / session.prompt / session.follow）。
 RPC_SERVICE = "rpc"
+#: 自扩展工具的服务面（list / load / unload；三件工具是它的薄包装）。
+SELF_TOOLS_SERVICE = "self-tools"
+#: 示例插件 clock 提供的服务（演示"装载即扩展、卸载即回卷"）。
+CLOCK_SERVICE = "clock"
+#: 审批策略（浏览器手动审批；见 plugins/web_approval.py）。
+APPROVAL_SERVICE = "approval"
+#: Token 用量服务的只读地址（`_03`；页面据此挂载用量入口）。
+TOKEN_USAGE_SERVICE = "token-usage"
+#: 上下文仪表服务的只读地址（`_04`；页面据此挂载仪表入口）。
+CONTEXT_METER_SERVICE = "context-meter"
+#: 上下文压缩器（`_05`；agent 插件注入它，卸载 = 不再压缩）。
+COMPACTER_SERVICE = "compacter"
 
 __all__ = [
     "AGENT_SERVICE",
+    "APPROVAL_SERVICE",
+    "COMPACTER_SERVICE",
+    "CONTEXT_METER_SERVICE",
+    "TOKEN_USAGE_SERVICE",
+    "CLOCK_SERVICE",
     "FS_SERVICE",
     "LLM_SERVICE",
     "PROMPT_SERVICE",
     "RPC_SERVICE",
+    "SELF_TOOLS_SERVICE",
     "SESSIONS_SERVICE",
     "SUBPROCESS_SERVICE",
     "TOOLS_SERVICE",

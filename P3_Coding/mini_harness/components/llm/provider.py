@@ -12,10 +12,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from components.llm.vocabulary import Message, ToolSpec, Usage
+
+if TYPE_CHECKING:  # 避免与 streaming.py 形成运行时循环导入
+    from components.llm.streaming import StreamChunk
 
 
 @dataclass
@@ -55,5 +59,27 @@ class LLMProvider(Protocol):
         实现方职责：把中立请求翻译成自家方言、发起真实（或模拟）调用、
         再把结果翻译回 LLMResponse。失败处理策略（重试等）暂未定义，
         属于后续主题（dsh 里对应 llm-retry 插件）。
+        """
+        ...
+
+
+@runtime_checkable
+class StreamingLLMProvider(Protocol):
+    """**可选**的流式能力（`_02` 引入）：额外提供 stream() 的 provider。
+
+    这是"接缝上加能力"的示范做法：不是把 complete() 改签名（那会打断所有
+    已有实现与测试），而是加一个**可选协议**——循环用 `hasattr(provider, "stream")`
+    探测；支持就边到边发增量，不支持就退回一次性 complete()。
+
+    stream() 的产出是 `StreamChunk` 序列；消费方用 `aggregate_chunks()` 聚合成
+    与 complete() 等价的 LLMResponse（同一份聚合函数，见 components/llm/streaming.py）。
+    生成器被提前关闭（取消）时，实现方应停止上游读取——在 `finally` 里做清理。
+    """
+
+    def stream(self, request: LLMRequest) -> Iterator[StreamChunk]:
+        """流式执行一次调用：逐段产出增量，直到回复结束。
+
+        约定与 complete() 相同（方言收进实现内），差别只在"逐段到达"。
+        取消：调用方直接关闭生成器即可（`generator.close()`）。
         """
         ...

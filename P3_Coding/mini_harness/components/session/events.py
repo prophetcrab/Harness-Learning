@@ -24,6 +24,9 @@ from typing import Any
 #   assistant/message 模型回复（含工具申请）
 #   tool/result       工具执行结果
 #   system/message    系统提示词的运行时更新（后一条遮蔽前一条；P2 `_02` 引入）
+#   usage/step        一次模型调用的 token 用量（`_03`）
+#   budget/exceeded   用量超出预算上限（`_03`）
+#   compact/checkpoint 上下文压缩检查点（`_05`）：早前的一段已折叠成一条摘要
 EVENT_TYPES = frozenset(
     {
         "session/start",
@@ -35,6 +38,9 @@ EVENT_TYPES = frozenset(
         "assistant/message",
         "tool/result",
         "system/message",
+        "usage/step",
+        "budget/exceeded",
+        "compact/checkpoint",
     }
 )
 
@@ -49,6 +55,9 @@ _REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "assistant/message": (),
     "tool/result": ("call_id", "name", "result"),
     "system/message": ("content",),
+    "usage/step": ("turn", "step", "prompt_tokens", "completion_tokens", "turn_total"),
+    "budget/exceeded": ("turn", "used", "budget"),
+    "compact/checkpoint": ("summary", "folded"),
 }
 
 

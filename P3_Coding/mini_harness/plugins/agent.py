@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable, Sequence
+from typing import Any
 
 from components.agent import AgentLoop, TurnResult
 from components.llm import LLMProvider
@@ -39,6 +40,8 @@ from kernel import Context
 from plugins.events import LOOP_EVENT, TURN_END, TURN_START
 from plugins.services import (
     AGENT_SERVICE,
+    APPROVAL_SERVICE,
+    COMPACTER_SERVICE,
     LLM_SERVICE,
     PROMPT_SERVICE,
     SESSIONS_SERVICE,
@@ -61,6 +64,7 @@ class HarnessSession:
         *,
         resumed: bool,
         repaired: bool,
+        compactor: Any | None = None,
     ) -> None:
         self.session = session
         self.loop = loop
@@ -68,6 +72,9 @@ class HarnessSession:
         self.registry = registry
         self.resumed = resumed
         self.repaired = repaired
+        #: 本会话装配时的压缩器（None = 这个会话不压缩）。换压缩插件后新建
+        #: 会话立即用新组合；已打开的会话保持打开那一刻的装配（P2 的语义）。
+        self.compactor = compactor
 
     @property
     def messages(self):
@@ -99,6 +106,7 @@ class AgentService:
         approval: ApprovalPolicy | None = None,
         timeout: float = 30.0,
         max_steps: int | None = None,
+        token_budget: int | None = None,
         middlewares: Sequence[ToolMiddleware] = (),
     ) -> None:
         self._ctx = ctx
@@ -109,6 +117,7 @@ class AgentService:
         self._approval = approval
         self._timeout = timeout
         self._max_steps = max_steps
+        self._token_budget = token_budget
         self._middlewares = tuple(middlewares)
         self._open: dict[str, HarnessSession] = {}
         self._observers: dict[str, LoopObserver] = {}
@@ -170,22 +179,31 @@ class AgentService:
             self._ctx.emit(LOOP_EVENT, session=session_id, kind=kind, payload=payload)
 
         # 4) 工具管线 + 主循环（历史由日志投影——不存在单独的恢复分支）。
+        # 审批策略：显式传入的优先；否则用 ctx 里的 `approval` 服务
+        # （plugins/web_approval.py 提供——界面场景下就是"在浏览器里点批准"）；
+        # 两者都没有 → None = 管线按 fail-closed 拒绝一切需审批操作。
+        approval = self._approval if self._approval is not None else self._ctx.get(APPROVAL_SERVICE)
         pipeline = ToolPipeline(
             self._registry,
-            approval=self._approval,
+            approval=approval,
             timeout=self._timeout,
             middlewares=self._middlewares,
         )
+        # 压缩器（`_05`）：从 ctx 现取——没装 compact 插件就是 None（不压缩）。
+        compactor = self._ctx.get(COMPACTER_SERVICE)
         loop = AgentLoop(
             provider,
             pipeline.execute,
             max_steps=self._max_steps,
+            token_budget=self._token_budget,
             on_event=sink,
             initial_messages=session.derive_messages(),
             initial_turn=session.last_turn_number,
+            compactor=compactor,
         )
         opened = HarnessSession(
-            session, loop, pipeline, self._registry, resumed=resumed, repaired=report.repaired
+            session, loop, pipeline, self._registry,
+            resumed=resumed, repaired=report.repaired, compactor=compactor,
         )
         self._open[session_id] = opened
         return opened
@@ -233,11 +251,13 @@ class AgentPlugin:
         approval: ApprovalPolicy | None = None,
         timeout: float = 30.0,
         max_steps: int | None = None,
+        token_budget: int | None = None,
         middlewares: Sequence[ToolMiddleware] = (),
     ) -> None:
         self._approval = approval
         self._timeout = timeout
         self._max_steps = max_steps
+        self._token_budget = token_budget
         self._middlewares = tuple(middlewares)
 
     def setup(self, ctx: Context) -> None:
@@ -250,6 +270,7 @@ class AgentPlugin:
             approval=self._approval,
             timeout=self._timeout,
             max_steps=self._max_steps,
+            token_budget=self._token_budget,
             middlewares=self._middlewares,
         )
         ctx.provide(AGENT_SERVICE, service)

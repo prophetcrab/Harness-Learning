@@ -12,9 +12,13 @@
     tool_result   → tool/result
     step_end      → step/end
     turn_end      → turn/end
+    step_usage    → usage/step
+    budget_exceeded → budget/exceeded
+    compact_applied → compact/checkpoint（`_05`：折叠声明，不删不改任何旧事件）
 
 未识别的事件名直接报错（fail loud）：循环改了事件契约却忘了同步录制器，要立刻
-暴露，而不是静默漏记。
+暴露，而不是静默漏记。唯一的例外是 `_TRANSIENT_EVENTS`——那些是过程性的瞬态
+事件（流式增量、压缩失败），只给观察者，不进日志。
 """
 
 from __future__ import annotations
@@ -22,6 +26,11 @@ from __future__ import annotations
 from typing import Any
 
 from components.session.log import Session
+
+#: 瞬态事件：只给观察者，不进会话日志（`_02` 起；`_05` 加压缩失败）。
+#: 压缩失败不是事实——什么都没发生（日志未变、历史未变），不需要留档；
+#: 成功才是事实，落成 compact/checkpoint。
+_TRANSIENT_EVENTS = frozenset({"step_delta", "stream_cancelled", "compact_failed"})
 
 
 class SessionRecorder:
@@ -79,6 +88,49 @@ class SessionRecorder:
                     "status": payload["status"],
                     "steps": payload["steps"],
                     "final_text": payload["final_text"],
+                },
+            )
+        elif kind in _TRANSIENT_EVENTS:
+            # 瞬态事件（流式增量、取消通知）：只给观察者看，不进会话日志。
+            # 它们描述的是"过程"，而日志记的是"事实"——聚合后的 assistant/message
+            # 才是事实（`_02` 起）。这样日志体积不受流式影响，投影也无需变。
+            return
+        elif kind == "step_usage":
+            # 用量是**事实**（这次调用真花了多少），所以进日志——与 step_delta
+            # 那种"过程"不同。预算核算、事后对账、跨进程 resume 都靠它。
+            usage = payload["usage"]
+            self._session.append(
+                "usage/step",
+                {
+                    "turn": payload["turn"],
+                    "step": payload["step"],
+                    "prompt_tokens": usage.prompt_tokens,
+                    "completion_tokens": usage.completion_tokens,
+                    "turn_total": payload["turn_total"],
+                },
+            )
+        elif kind == "budget_exceeded":
+            self._session.append(
+                "budget/exceeded",
+                {
+                    "turn": payload["turn"],
+                    "used": payload["used"],
+                    "budget": payload["budget"],
+                },
+            )
+        elif kind == "compact_applied":
+            # 循环折叠了内存历史最前面的 folded 条对话消息；日志侧只要照抄这个
+            # 条数——投影会按**位置**丢掉同样多的条数（见 projection.py：为什么
+            # 不按 seq），两个视图由此逐条对齐，重放同构。
+            self._session.append(
+                "compact/checkpoint",
+                {
+                    "turn": payload["turn"],
+                    "step": payload["step"],
+                    "summary": payload["summary"],
+                    "folded": int(payload["folded"]),
+                    "before_tokens": payload.get("before_tokens"),
+                    "after_tokens": payload.get("after_tokens"),
                 },
             )
         else:

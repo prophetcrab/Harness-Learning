@@ -38,9 +38,15 @@ def test_boot_offline_activates_all_plugins_and_serves(tmp_path: Path):
         "sessions",
         "prompt",
         "tools",
+        "token-usage",          # `_03`：用量账本 + 用量页面
+        "context-meter",        # `_04`：上下文仪表
+        "compact",              # `_05`：上下文压缩（服务名 compacter）
         "agent",
     ]
-    assert booted.ctx.services == ["llm", "fs", "subprocess", "sessions", "prompt", "tools", "agent"]
+    assert booted.ctx.services == [
+        "llm", "fs", "subprocess", "sessions", "prompt", "tools",
+        "token-usage", "context-meter", "compacter", "agent",
+    ]
     tools = booted.ctx.require(TOOLS_SERVICE)
     assert "calculate" in tools.names and "shell" in tools.names
 

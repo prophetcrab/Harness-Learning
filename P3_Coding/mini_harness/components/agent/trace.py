@@ -15,14 +15,15 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from components.llm.provider import LLMRequest, LLMResponse
-from components.llm.vocabulary import Message
+from components.llm.vocabulary import Message, Usage
 
-# 一个 turn 的三种收尾方式：
-#   done       —— 模型给出最终回答
-#   max_steps  —— 显式设了步数上限且用尽（结构化终止，不是异常）
-#                 默认 None = 不限步数（长程任务不会被截断）
-#   cancelled  —— 被外部取消（cancel() 或 should_stop 回调）
-TurnStatus = Literal["done", "max_steps", "cancelled"]
+# 一个 turn 的四种收尾方式：
+#   done             —— 模型给出最终回答
+#   max_steps        —— 显式设了步数上限且用尽（结构化终止，不是异常）
+#                       默认 None = 不限步数（长程任务不会被截断）
+#   cancelled        —— 被外部取消（cancel() 或 should_stop 回调）
+#   budget_exceeded  —— 用量超出预算上限（`_03`：结构化终止，不是异常）
+TurnStatus = Literal["done", "max_steps", "cancelled", "budget_exceeded"]
 
 
 @dataclass
@@ -66,3 +67,4 @@ class TurnResult:
     steps: list[Step]
     messages: list[Message]
     final_text: str = ""  # status == "done" 时的回答文本
+    usage: Usage = field(default_factory=Usage)  # `_03`：本 turn 的 token 用量合计

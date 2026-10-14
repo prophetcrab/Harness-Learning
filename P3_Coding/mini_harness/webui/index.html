@@ -155,6 +155,16 @@
     font-family:var(--mono);font-size:12px;white-space:pre-wrap;margin:8px 0 0}
   .sysnote{font-size:11.5px;color:var(--faint);border-left:2px solid var(--line-2);
     padding:1px 10px}
+  /* 压缩标记（`_05`）：一个可展开的折叠徽标，摘要全文在 <pre> 里 */
+  .row.compact{justify-content:flex-start}
+  .cmpchip{font-size:11.5px;color:var(--muted)}
+  .cmpchip summary{cursor:pointer;list-style:none;display:inline-block;
+    background:#141b26;border:1px solid #24303f;border-radius:8px;padding:3px 10px}
+  .cmpchip summary::-webkit-details-marker{display:none}
+  .cmpchip summary:hover{color:var(--fg)}
+  .cmpchip pre{max-width:760px;max-height:280px;overflow:auto;background:#0d1015;
+    border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+    font-family:var(--mono);font-size:12px;white-space:pre-wrap;margin:8px 0 0}
 
   /* tool cards */
   .toolcard{border:1px solid var(--line);border-radius:10px;background:#10141b;
@@ -198,6 +208,40 @@
     border-radius:99px;padding:6px 14px;font-size:12.5px;cursor:pointer;
     transition:all .15s}
   .hint:hover{border-color:var(--accent);color:var(--fg)}
+
+  /* 流式光标 */
+  .cursor{display:inline-block;width:7px;height:14px;margin-left:2px;
+    vertical-align:-2px;background:var(--accent);animation:blink .9s step-end infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+  .streaming-live{min-height:22px}
+
+  /* 审批卡片 */
+  .approval{border:1px solid #4a3a20;border-left:3px solid var(--warn);
+    border-radius:10px;background:#181a14;margin:9px 0 12px;max-width:760px;
+    overflow:hidden;animation:apvin .2s ease-out}
+  @keyframes apvin{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .apv-head{display:flex;align-items:center;gap:9px;padding:8px 12px;font-size:13px}
+  .apv-ic{color:var(--warn);font-size:15px}
+  .apv-title{font-weight:600}
+  .apv-tool{font-family:var(--mono);color:var(--warn);font-size:12px}
+  .apv-reason{color:var(--muted);font-size:12px;padding:0 12px 6px}
+  .apv-code{margin:0 12px;border:1px solid var(--line);border-radius:8px;
+    background:#0d1015;max-height:320px;overflow:auto}
+  .apv-code pre{margin:0;padding:10px 12px;font-family:var(--mono);font-size:12px;
+    white-space:pre;line-height:1.5}
+  .apv-actions{display:flex;gap:9px;padding:10px 12px;align-items:center}
+  .apv-approve{background:var(--ok);color:#06210f;border:none;border-radius:8px;
+    padding:7px 16px;font-weight:600;font-size:13px;cursor:pointer}
+  .apv-approve:hover{filter:brightness(1.08)}
+  .apv-deny{background:transparent;color:var(--err);border:1px solid #5a2a2a;
+    border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer}
+  .apv-deny:hover{background:#241717}
+  .apv-done{font-size:12px;padding:9px 12px}
+  .apv-done.ok{color:var(--ok)} .apv-done.no{color:var(--err)}
+  .apv-wait{color:var(--muted);font-size:12px}
+  .plug-new{animation:flash 1.4s ease-out}
+  @keyframes flash{0%{background:#1e2c44}100%{background:transparent}}
+  .dot.new{background:var(--ok);box-shadow:0 0 9px var(--ok)}
 
   /* ---------- runline + composer ---------- */
   .runline{display:flex;align-items:center;gap:8px;padding:7px 22px;
@@ -247,6 +291,19 @@
     white-space:pre-wrap;color:#9fb0c8;max-height:300px;overflow:auto}
   .banner{margin:0 0 14px;padding:8px 12px;border-radius:9px;font-size:12px;
     background:#1c1f17;border:1px solid #3a4227;color:var(--warn)}
+  /* ---------- token 用量面板（token-usage 插件的挂载点） ---------- */
+  #token-panel,#ctx-panel{position:fixed;inset:0;z-index:60;display:flex;align-items:center;
+    justify-content:center;padding:26px;background:#05070ad9;backdrop-filter:blur(3px)}
+  #token-panel .tbox,#ctx-panel .tbox{width:min(1080px,100%);height:100%;display:flex;
+    flex-direction:column;background:var(--bg);border:1px solid var(--line-2);
+    border-radius:14px;overflow:hidden;box-shadow:0 24px 70px #0009}
+  #token-panel .tbar,#ctx-panel .tbar{display:flex;align-items:center;gap:10px;padding:8px 12px;
+    border-bottom:1px solid var(--line);background:var(--panel-2)}
+  #token-panel .tbar h3,#ctx-panel .tbar h3{margin:0;font-size:13px;font-weight:600}
+  #token-panel .turl,#ctx-panel .turl{font-family:var(--mono);font-size:11px;color:var(--faint);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #token-panel .tbar a,#ctx-panel .tbar a{text-decoration:none;display:inline-block}
+  #token-frame,#ctx-frame{flex:1;width:100%;border:0;background:#12141a}
   [hidden]{display:none!important}
 </style>
 </head>
@@ -259,6 +316,8 @@
   <div class="spacer"></div>
   <button class="tbtn on" id="toggle-left" title="折叠 / 展开左栏">会话</button>
   <button class="tbtn on" id="toggle-right" title="折叠 / 展开轨迹栏">轨迹</button>
+  <button class="tbtn" id="ctx-btn" title="上下文容量仪表（context-meter 插件）">📐 上下文</button>
+  <button class="tbtn" id="token-btn" title="Token 用量统计（token-usage 插件）">📊 Token 用量</button>
   <span class="dot-status" title="服务在线"></span>
 </header>
 
@@ -288,6 +347,31 @@
     <table id="events"><tbody></tbody></table>
   </section>
 </main>
+
+<div id="ctx-panel" hidden>
+  <div class="tbox">
+    <div class="tbar">
+      <h3>📐 上下文容量</h3>
+      <span class="turl" id="ctx-url"></span>
+      <a class="tbtn" id="ctx-open" target="_blank" rel="noopener">新标签打开</a>
+      <button class="tbtn" id="ctx-close">关闭</button>
+    </div>
+    <iframe id="ctx-frame" title="上下文容量仪表"></iframe>
+  </div>
+</div>
+
+<div id="token-panel" hidden>
+  <div class="tbox">
+    <div class="tbar">
+      <h3>📊 Token 用量</h3>
+      <span class="turl" id="token-url"></span>
+      <div class="spacer"></div>
+      <a class="tbtn" id="token-open" target="_blank" rel="noopener">新标签打开</a>
+      <button class="tbtn" id="token-close">关闭</button>
+    </div>
+    <iframe id="token-frame" title="Token 用量统计"></iframe>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -446,6 +530,19 @@ function systemChip(prompt) {
     + `<summary>系统提示词（点开查看）</summary><pre>${esc(prompt)}</pre></details></div>`);
 }
 function sysNoteNode() { return el(`<div class="row sys"><div class="sysnote">系统提示词已更新</div></div>`); }
+/* 压缩标记（`_05`）：日志里一条 compact/checkpoint，界面上一个折叠徽标。
+   点开能看到摘要全文——"模型眼前的历史被折成了什么"是可见的。 */
+function compactNode(d) {
+  const before = fmtTokens(d.before_tokens), after = fmtTokens(d.after_tokens);
+  const node = el(`<div class="row compact"><details class="cmpchip">`
+    + `<summary>⟳ 上下文已压缩：折叠 ${esc(d.folded ?? "?")} 条消息`
+    + (before && after ? `（约 ${before} → ${after} tokens）` : "")
+    + `</summary><pre>${esc(d.summary || "")}</pre></details></div>`);
+  return node;
+}
+function fmtTokens(n) {
+  return typeof n === "number" && n > 0 ? n.toLocaleString("en-US") : "";
+}
 
 function toolCard({ callId, name, args, result, isError }) {
   const argsText = args == null ? "" : (typeof args === "string" ? args : JSON.stringify(args));
@@ -489,6 +586,7 @@ function renderChatFromEvents(events) {
         break;
       }
       case "turn/end": wrapEl.appendChild(turnStatusNode(d.turn, d.status, d.steps ?? 0)); break;
+      case "compact/checkpoint": wrapEl.appendChild(compactNode(d)); break;
     }
   }
   chatEl.scrollTop = chatEl.scrollHeight;
@@ -502,6 +600,36 @@ function emptyStateHtml() {
       <button type="button" class="hint" data-q="帮我算 1234*56.78">帮我算 1234*56.78</button>
       <button type="button" class="hint" data-q="用 shell 看看当前目录">用 shell 看看当前目录</button>
     </div></div>`;
+}
+
+/* ---------------- approvals ---------------- */
+function approvalNode(req) {
+  const node = el(`<div class="approval" data-apv="${esc(req.id)}">
+    <div class="apv-head"><span class="apv-ic">⚠</span>
+      <span class="apv-title">需要你的批准</span>
+      <span class="apv-tool">${esc(req.tool)}</span></div>
+    <div class="apv-reason">${esc(req.reason || "该操作被标记为需要审批")}</div>
+    ${req.preview ? `<div class="apv-code"><pre>${esc(req.preview)}</pre></div>` : ""}
+    <div class="apv-actions">
+      <button type="button" class="apv-approve">批准并执行</button>
+      <button type="button" class="apv-deny">拒绝</button>
+      <span class="apv-wait">等待你的决定…</span></div></div>`);
+  return node;
+}
+async function answerApproval(node, approved) {
+  const id = node.dataset.apv;
+  node.querySelector(".apv-actions").remove();
+  try {
+    await fetch("/api/approvals/" + encodeURIComponent(id), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approved }),
+    });
+    const done = el(`<div class="apv-done ${approved ? "ok" : "no"}">`
+      + (approved ? "✓ 已批准，正在执行…" : "✗ 已拒绝（模型会收到拒绝原因）") + "</div>");
+    node.appendChild(done);
+  } catch (err) {
+    node.appendChild(el(`<div class="apv-done no">提交失败：${esc(err.message)}</div>`));
+  }
 }
 
 /* ---------------- live frames ---------------- */
@@ -528,8 +656,18 @@ function handleFrame(kind, payload) {
   switch (kind) {
     case "step_request": setRunning(`第 ${payload.step} 步 · 请求模型…`);
       ensureWorking(`第 ${payload.step} 步 · 请求模型（${payload.message_count} 条消息）`); break;
-    case "step_response":
-      if (payload.content) wrapEl.appendChild(assistantNode(payload.content));
+    case "step_response": {
+      // 流式模式下：把刚收满的气泡"定稿"（换成正式 Markdown 渲染）；否则新建。
+      const live = wrapEl.querySelector(".streaming-live");
+      if (live) {
+        const cursor = live.parentElement.querySelector(".cursor");
+        if (cursor) cursor.remove();
+        live.classList.remove("streaming-live");
+        live.dataset.raw = "";
+        live.innerHTML = payload.content ? md(payload.content) : "";
+      } else if (payload.content) {
+        wrapEl.appendChild(assistantNode(payload.content));
+      }
       for (const c of (payload.tool_calls || []))
         wrapEl.appendChild(toolCard({ callId: c.id, name: c.name, args: c.arguments }));
       if (payload.tool_calls?.length) {
@@ -537,6 +675,7 @@ function handleFrame(kind, payload) {
         ensureWorking(`执行 ${payload.tool_calls.map((c) => c.name).join("、")}…`);
       }
       scrollBottom(); break;
+    }
     case "tool_result": {
       const node = wrapEl.querySelector(`[data-call="${cssEsc(payload.call_id)}"]`);
       if (node) fillToolCard(node, payload.result, payload.is_error);
@@ -544,8 +683,57 @@ function handleFrame(kind, payload) {
     }
     case "turn_end":
       removeWorking();
+      wrapEl.querySelectorAll(".cursor").forEach((c) => c.remove());
+      wrapEl.querySelectorAll(".streaming-live").forEach((n) => n.classList.remove("streaming-live"));
       wrapEl.appendChild(turnStatusNode(payload.turn, payload.status, payload.steps));
       scrollBottom(); break;
+    case "step_delta": {
+      // 逐段到达：同一 step 内往同一个气泡追加（首个文本增量创建它）
+      if (!payload.text) break;
+      let live = wrapEl.querySelector(".streaming-live");
+      if (!live) {
+        removeWorking();
+        const node = el(`<div class="row assistant"><div class="prose streaming-live"></div></div>`);
+        wrapEl.appendChild(node);
+        live = node.querySelector(".streaming-live");
+      }
+      const cursor = live.parentElement.querySelector(".cursor");
+      live.dataset.raw = (live.dataset.raw || "") + payload.text;
+      live.textContent = live.dataset.raw;
+      if (!cursor) live.after(el(`<span class="cursor"></span>`));
+      setRunning(`第 ${payload.step} 步 · 流式接收中…`);
+      scrollBottom();
+      break;
+    }
+    case "stream_cancelled": {
+      removeWorking();
+      const live = wrapEl.querySelector(".streaming-live");
+      if (live) {
+        const cur = live.parentElement.querySelector(".cursor");
+        if (cur) cur.remove();
+        live.classList.remove("streaming-live");
+      }
+      setRunline("已取消（保留已收到的部分）", "err");
+      break;
+    }
+    case "compact_applied": {
+      // 压缩发生（`_05`）：聊天流里插一个折叠徽标，runline 说明一句。
+      wrapEl.appendChild(compactNode(payload));
+      setRunline(`上下文已压缩：折叠 ${payload.folded} 条 → 约 ${fmtTokens(payload.after_tokens) || "?"} tokens`);
+      scrollBottom();
+      break;
+    }
+    case "compact_failed": {
+      // 失败是瞬态的：只提示一句，对话照常继续（fail-soft）
+      showBanner("上下文压缩未成功（已跳过本次）：" + (payload.error || "未知原因"));
+      break;
+    }
+    case "__approval": {
+      removeWorking();
+      const node = approvalNode(payload);
+      wrapEl.appendChild(node); scrollBottom();
+      setRunline("等待你的审批…"); break;
+    }
     case "__repair": showBanner(payload.message || "上次会话被强杀，日志尾部已自动修复"); break;
     case "__error": removeWorking(); setRunline(`出错：${esc(payload.message)}`, "err"); break;
     default: break;
@@ -570,6 +758,7 @@ function evSummary(type, d) {
       : clip(String(d.content || "").replace(/\s+/g, " "), 70);
     case "tool/result": return `${d.name} ${d.is_error ? "✗" : "✓"} ${clip(JSON.stringify(d.result), 46)}`;
     case "turn/end": return `${d.status} · ${d.steps} 步`;
+    case "compact/checkpoint": return `折叠 ${d.folded ?? "?"} 条 → 摘要 ${clip(String(d.summary || "").replace(/\s+/g, " "), 46)}`;
     default: return clip(JSON.stringify(d), 70);
   }
 }
@@ -622,17 +811,26 @@ async function api(path, opts) {
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json();
 }
+let knownPlugins = null;
 async function loadLedger() {
   const data = await api("/api/ledger");
   const tools = data.tools || [], plugins = data.plugins || [];
+  // 插件集合变化 → 高亮新增的那一行（"装完立刻出现在左栏"的视觉反馈）
+  const names = plugins.map((p) => p.name);
+  const added = knownPlugins ? names.filter((n) => !knownPlugins.includes(n)) : [];
+  const removed = knownPlugins ? knownPlugins.filter((n) => !names.includes(n)) : [];
+  knownPlugins = names;
   $("tools-badge").innerHTML = `工具 <b>${tools.length}</b>`;
   $("tools-badge").title = tools.join(" · ");
   pluginsEl.innerHTML = plugins.map((p) => `
-    <div class="plug" title="依赖：${p.inject.length ? esc(p.inject.join(", ")) : "无"}">
-      <span class="dot ${esc(p.status)}"></span>
+    <div class="plug ${added.includes(p.name) ? "plug-new" : ""}"
+         title="依赖：${p.inject.length ? esc(p.inject.join(", ")) : "无"}">
+      <span class="dot ${esc(p.status)}${added.includes(p.name) ? " new" : ""}"></span>
       <span class="plug-n">${esc(p.name)}</span>
       ${p.inject.length ? `<span class="plug-i mono">← ${esc(p.inject.join(","))}</span>` : ""}
     </div>`).join("") || `<div class="side-empty">（无）</div>`;
+  if (added.length) setIdle(`插件台账更新：新增 ${added.join("、")}`
+    + (removed.length ? `；移除 ${removed.join("、")}` : ""));
   $("plugin-count").textContent =
     `${plugins.filter((p) => p.status === "active").length}/${plugins.length} 活跃`;
 }
@@ -666,6 +864,7 @@ $("composer").addEventListener("submit", async (e) => {
   ta.value = ""; autosize();
   if (wrapEl.querySelector(".empty")) wrapEl.innerHTML = "";
   wrapEl.appendChild(userNode(text)); scrollBottom();      // 即时反馈（完成后会用日志重渲染）
+  wrapEl.querySelectorAll(".cursor").forEach((c) => c.remove());
   setRunning("运行中…");
   ensureWorking("思考中…");
   let done = null;
@@ -713,6 +912,10 @@ chatEl.addEventListener("scroll", () => {
 chatEl.addEventListener("click", async (e) => {
   const hint = e.target.closest(".hint");
   if (hint) { ta.value = hint.dataset.q; autosize(); ta.focus(); return; }
+  const apvOk = e.target.closest(".apv-approve");
+  if (apvOk) { answerApproval(apvOk.closest(".approval"), true); return; }
+  const apvNo = e.target.closest(".apv-deny");
+  if (apvNo) { answerApproval(apvNo.closest(".approval"), false); return; }
   const pv = e.target.closest(".preview-btn");
   if (pv) {
     const id = pv.dataset.pre;
@@ -761,6 +964,72 @@ $("toggle-right").addEventListener("click", () => {
   $("toggle-right").classList.toggle("on", !document.body.classList.contains("no-right"));
 });
 
+/* ---------------- 上下文仪表：context-meter 插件的挂载点 ----------------
+   与 token 面板同一套契约（URL 参数 → 全局变量 → endpoints 自报 → 默认端口）。
+   按钮上的数字 = 用量占比（读 /api/context，跨源靠服务端 CORS）。        */
+(function () {
+  const btn = document.getElementById("ctx-btn");
+  const panel = document.getElementById("ctx-panel");
+  const frame = document.getElementById("ctx-frame");
+  const urlEl = document.getElementById("ctx-url");
+  const openEl = document.getElementById("ctx-open");
+  const closeEl = document.getElementById("ctx-close");
+  if (!btn || !panel || !frame) return;
+
+  const fromQuery = new URLSearchParams(location.search).get("context_meter");
+  let base = String(fromQuery || window.CONTEXT_METER_URL || "http://127.0.0.1:8768/");
+  if (!/^https?:\/\//i.test(base)) base = "http://" + base;
+  if (!base.endsWith("/")) base += "/";
+
+  function setUrl(url) {
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return;
+    base = url.endsWith("/") ? url : url + "/";
+    urlEl.textContent = base;
+    urlEl.title = base;
+    openEl.href = base;
+    frame.dataset.ready = "";
+    if (!panel.hidden) { frame.src = base; frame.dataset.ready = "1"; }
+  }
+
+  async function discover() {
+    try {
+      const res = await fetch("/api/ledger", { cache: "no-store" });
+      const data = await res.json();
+      setUrl(data && data.endpoints && data.endpoints["context-meter"]);
+    } catch (err) { /* 保留当前 base */ }
+  }
+
+  async function refreshBadge() {
+    try {
+      const res = await fetch(base + "api/context", { cache: "no-store" });
+      const data = await res.json();
+      btn.textContent = "📐 上下文 " + (data.percent ?? 0).toFixed(0) + "%";
+      btn.title = "context-meter 插件：已用 " + (data.used ?? 0).toLocaleString("zh-CN")
+        + " / " + (data.capacity ?? 0).toLocaleString("zh-CN") + " tokens · " + base;
+    } catch (err) {
+      btn.textContent = "📐 上下文";
+      btn.title = "读不到 " + base + "api/context（插件未装载？点击仍可打开页面）";
+    }
+  }
+
+  btn.addEventListener("click", async () => {
+    panel.hidden = false;
+    if (frame.dataset.ready !== "1") {
+      await discover();
+      frame.src = base;
+      frame.dataset.ready = "1";
+    }
+    refreshBadge();
+  });
+  closeEl.addEventListener("click", () => { panel.hidden = true; });
+  panel.addEventListener("click", (e) => { if (e.target === panel) panel.hidden = true; });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") panel.hidden = true; });
+
+  setUrl(base);
+  discover().then(refreshBadge);
+  setInterval(refreshBadge, 5000);
+})();
+
 /* ---------------- init ---------------- */
 (async function init() {
   $("host-badge").textContent = location.host;
@@ -774,7 +1043,81 @@ $("toggle-right").addEventListener("click", () => {
     setRunline(`初始化失败：${esc(err.message)}`, "err");
   }
   setInterval(loadSessions, 5000);
-  setInterval(loadLedger, 15000);
+  setInterval(loadLedger, 2500);
+})();
+</script>
+<script>
+"use strict";
+/* ---------------- token 用量：token-usage 插件的挂载点 ----------------
+   页面不需要认识任何插件：地址按这个顺序解析——
+     ① URL 参数 ?token_usage=http://host:port/（手工指定，最优先）
+     ② window.TOKEN_USAGE_URL（部署时注入）
+     ③ /api/ledger 的 endpoints["token-usage"]（服务自报地址，通用发现）
+     ④ 默认 http://127.0.0.1:8767/（token-usage 插件的默认端口）
+   按钮上的数字 = 该服务 /api/usage 的合计 tokens（跨源读，靠服务端 CORS 头）；
+   点开 = 同页 iframe 面板，不打断对话（Esc / 点空白 / 「关闭」收起）。      */
+(function () {
+  const btn = document.getElementById("token-btn");
+  const panel = document.getElementById("token-panel");
+  const frame = document.getElementById("token-frame");
+  const urlEl = document.getElementById("token-url");
+  const openEl = document.getElementById("token-open");
+  const closeEl = document.getElementById("token-close");
+  if (!btn || !panel || !frame) return;
+
+  const fromQuery = new URLSearchParams(location.search).get("token_usage");
+  let base = String(fromQuery || window.TOKEN_USAGE_URL || "http://127.0.0.1:8767/");
+  if (!/^https?:\/\//i.test(base)) base = "http://" + base;
+  if (!base.endsWith("/")) base += "/";
+
+  function setUrl(url) {   // 只接受 http(s)：不给 javascript: 之类留任何口子
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return;
+    base = url.endsWith("/") ? url : url + "/";
+    urlEl.textContent = base;
+    urlEl.title = base;
+    openEl.href = base;
+    frame.dataset.ready = "";
+    if (!panel.hidden) { frame.src = base; frame.dataset.ready = "1"; }
+  }
+
+  async function discover() {   // ③ 服务自报地址（需要 webui 的 /api/ledger 带 endpoints）
+    try {
+      const res = await fetch("/api/ledger", { cache: "no-store" });
+      const data = await res.json();
+      setUrl(data && data.endpoints && data.endpoints["token-usage"]);
+    } catch (err) { /* 老版本 ledger 没有该字段：用当前 base */ }
+  }
+
+  async function refreshBadge() {   // 服务在不在 / 合计多少 tokens
+    try {
+      const res = await fetch(base + "api/usage", { cache: "no-store" });
+      const data = await res.json();
+      const total = Number(data.totals.total_tokens || 0).toLocaleString("zh-CN");
+      btn.textContent = "📊 Token " + total;
+      btn.title = "token-usage 插件：" + data.calls + " 次调用 · 合计 "
+        + total + " tokens · " + base;
+    } catch (err) {
+      btn.textContent = "📊 Token 用量";
+      btn.title = "读不到 " + base + "api/usage（插件未装载？点击仍可打开页面）";
+    }
+  }
+
+  btn.addEventListener("click", async () => {
+    panel.hidden = false;
+    if (frame.dataset.ready !== "1") {
+      await discover();
+      frame.src = base;
+      frame.dataset.ready = "1";
+    }
+    refreshBadge();
+  });
+  closeEl.addEventListener("click", () => { panel.hidden = true; });
+  panel.addEventListener("click", (e) => { if (e.target === panel) panel.hidden = true; });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") panel.hidden = true; });
+
+  setUrl(base);
+  discover().then(refreshBadge);
+  setInterval(refreshBadge, 5000);
 })();
 </script>
 </body>

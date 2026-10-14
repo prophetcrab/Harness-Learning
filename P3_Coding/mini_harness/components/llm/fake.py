@@ -12,9 +12,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import json
+from collections.abc import Iterable, Iterator
 
 from components.llm.provider import LLMRequest, LLMResponse
+from components.llm.streaming import (
+    ScriptedStream,
+    StreamChunk,
+    aggregate_chunks,
+    chunks_from_response,
+)
 from components.llm.vocabulary import ToolCall, assistant
 
 
@@ -31,7 +38,10 @@ class FakeLLM:
     # ---- 协议实现 ----
 
     def complete(self, request: LLMRequest) -> LLMResponse:
-        """按剧本回复一次；剧本用完还继续调用则直接报错。"""
+        """按剧本回复一次；剧本用完还继续调用则直接报错。
+
+        剧本条目可以是 LLMResponse（直接返回）或 ScriptedStream（先聚合再返回）。
+        """
         self.requests.append(request)
         if not self._script:
             raise AssertionError(
@@ -39,7 +49,29 @@ class FakeLLM:
                 f"但剧本只准备了 {len(self.requests) - 1} 条回复。"
                 "说明被测代码调用模型的次数比预期多了一次。"
             )
-        return self._script.pop(0)
+        item = self._script.pop(0)
+        if _is_scripted_stream(item):
+            return aggregate_chunks(item.chunks)
+        return item
+
+    def stream(self, request: LLMRequest) -> Iterator[StreamChunk]:
+        """流式回复：剧本条目按类型播放（ScriptedStream 原样、LLMResponse 播放）。
+
+        与 complete() 共享剧本队列与请求记录——同一份剧本，两种模式都能跑；
+        这是"流式与非流式语义一致"的测试基础。
+        """
+        self.requests.append(request)
+        if not self._script:
+            raise AssertionError(
+                f"FakeLLM 剧本已用完：这是第 {len(self.requests)} 次调用，"
+                f"但剧本只准备了 {len(self.requests) - 1} 条回复。"
+                "说明被测代码调用模型的次数比预期多了一次。"
+            )
+        item = self._script.pop(0)
+        if _is_scripted_stream(item):
+            yield from item.chunks
+        else:
+            yield from chunks_from_response(item)
 
     # ---- 测试辅助 ----
 
@@ -67,6 +99,18 @@ class FakeLLM:
 # ---------------------------------------------------------------------------
 
 
+def _is_scripted_stream(item: object) -> bool:
+    """判断剧本条目是不是流式剧本。
+
+    **刻意不用 isinstance**：本项目各目录带同名包副本，全量跑测试时 conftest
+    会驱逐模块缓存，于是"实现里的 ScriptedStream 类"与"测试里那个"可能是两个
+    不同的类对象，isinstance 会假阴性（实测踩到：聚合分支没进，把 ScriptedStream
+    当 LLMResponse 用，报 has no attribute 'message'）。鸭子类型按结构判断，
+    跨模块身份也稳。
+    """
+    return hasattr(item, "chunks") and not hasattr(item, "message")
+
+
 def text_reply(text: str, finish_reason: str = "stop") -> LLMResponse:
     """一条纯文本回复（没有工具申请）—— 通常是对话的最后一轮。"""
     return LLMResponse(message=assistant(text), finish_reason=finish_reason)
@@ -85,6 +129,30 @@ def tool_call_reply(
     """
     call = ToolCall(id=call_id, name=name, arguments=dict(arguments))
     return LLMResponse(message=assistant(content, [call]), finish_reason="tool_calls")
+
+
+def streamed_text(text: str, *, piece: int = 4) -> ScriptedStream:
+    """一条"逐段到达"的文本回复（测试流式路径用）。
+
+    `piece` 是每片字符数——默认 4，让镜头里能看到明显的逐字效果。
+    """
+    chunks = [StreamChunk(text=text[i : i + piece]) for i in range(0, len(text), piece)]
+    chunks.append(StreamChunk(finish_reason="stop"))
+    return ScriptedStream(tuple(chunks))
+
+
+def streamed_tool_call(
+    name: str, arguments: dict, *, call_id: str = "call_1", piece: int = 5
+) -> ScriptedStream:
+    """一条"工具调用分片到达"的流式回复（参数是 JSON 字符串被切成几片）。"""
+    raw = json.dumps(arguments, ensure_ascii=False)
+    chunks: list[StreamChunk] = [
+        StreamChunk(tool_index=0, tool_id=call_id, tool_name=name)
+    ]
+    for i in range(0, len(raw), piece):
+        chunks.append(StreamChunk(tool_index=0, tool_arguments=raw[i : i + piece]))
+    chunks.append(StreamChunk(finish_reason="tool_calls"))
+    return ScriptedStream(tuple(chunks))
 
 
 def tool_calls_reply(calls: list[tuple[str, dict]], content: str = "") -> LLMResponse:

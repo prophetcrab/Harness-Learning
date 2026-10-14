@@ -41,7 +41,16 @@ from urllib.parse import unquote, urlparse
 
 from components.session import derive_messages
 from kernel import Context
-from plugins.services import AGENT_SERVICE, SESSIONS_SERVICE, TOOLS_SERVICE, WEBUI_SERVICE
+from plugins.services import (
+    AGENT_SERVICE,
+    APPROVAL_SERVICE,
+    SESSIONS_SERVICE,
+    TOOLS_SERVICE,
+    WEBUI_SERVICE,
+)
+
+#: chunked 传输的行分隔符（HTTP 规范硬性要求 \r\n，不能是 \n）。
+_CRLF = chr(13).encode("ascii") + chr(10).encode("ascii")
 
 #: 静态页面路径（与本插件同包目录结构：mini_harness/webui/index.html）。
 PAGE_PATH = Path(__file__).resolve().parents[1] / "webui" / "index.html"
@@ -68,6 +77,21 @@ class WebUiService:
 # ---------------------------------------------------------------------------
 
 
+def _endpoint_of(service: Any) -> str | None:
+    """服务的"地址"（有就一并交给页面）：webui 有 .url，rpc 有 .address。
+
+    这是"挂载点"的通用发现规则——页面不必认识任何插件：服务自己暴露地址，
+    页面就能把它挂成入口（如 token-usage 的用量页面挂在顶栏按钮上）。
+    """
+    url = getattr(service, "url", None)
+    if isinstance(url, str):
+        return url
+    address = getattr(service, "address", None)
+    if isinstance(address, tuple) and len(address) == 2:
+        return f"{address[0]}:{address[1]}"
+    return None
+
+
 def _ledger(ctx: Context) -> dict[str, Any]:
     """插件台账 / 服务 / 工具面——把"完全插件化"变成页面上一眼可见的事实。"""
     tools_service = ctx.get(TOOLS_SERVICE)
@@ -82,6 +106,13 @@ def _ledger(ctx: Context) -> dict[str, Any]:
             for info in ctx.plugins
         ],
         "services": ctx.services,
+        # 有地址的服务（.url / .address）顺手带给页面：主页面据此挂载入口
+        # （token-usage 的用量页面就是这么挂上去的——通用规则，非特例）。
+        "endpoints": {
+            name: url
+            for name in ctx.services
+            if (url := _endpoint_of(ctx.get(name))) is not None
+        },
         "tools": [spec.name for spec in tools_service.specs()] if tools_service is not None else [],
     }
 
@@ -132,6 +163,10 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "p3-mini-harness-webui/0.1"
+        #: HTTP/1.1 才能用 chunked 传输——**流式响应的前提**。
+        #: 默认（HTTP/1.0）下没有 Content-Length 也没有 chunked，客户端只能
+        #: 等连接关闭才认账，于是"逐字到达"变成"一次全到"（实测踩到）。
+        protocol_version = "HTTP/1.1"
 
         def log_message(self, fmt: str, *args: Any) -> None:
             # 静音默认访问日志（写 stderr 会刷屏）；需要排查时再打开。
@@ -176,6 +211,10 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
             elif route.startswith("/api/sessions/") and route.endswith("/events"):
                 session_id = unquote(route[len("/api/sessions/") : -len("/events")])
                 self._send_json(200, _session_detail(sessions, session_id))
+            elif route == "/api/approvals":
+                policy = ctx.get(APPROVAL_SERVICE)
+                pending = policy.pending_list() if policy is not None else []
+                self._send_json(200, {"pending": pending})
             else:
                 self._send_json(404, {"error": f"未知路由：{route}"})
 
@@ -184,6 +223,17 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
             if route.startswith("/api/sessions/") and route.endswith("/send"):
                 session_id = unquote(route[len("/api/sessions/") : -len("/send")])
                 self._stream_turn(session_id)
+            elif route.startswith("/api/approvals/"):
+                request_id = unquote(route[len("/api/approvals/") :])
+                body = self._read_json()
+                policy = ctx.get(APPROVAL_SERVICE)
+                if policy is None:
+                    self._send_json(404, {"error": "当前没有审批策略"})
+                elif policy.resolve(request_id, bool(body.get("approved")), str(body.get("note") or "")):
+                    self._send_json(200, {"ok": True, "id": request_id,
+                                          "approved": bool(body.get("approved"))})
+                else:
+                    self._send_json(404, {"error": f"没有等待中的审批：{request_id}"})
             else:
                 self._send_json(404, {"error": f"未知路由：{route}"})
 
@@ -199,39 +249,78 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
             self.send_response(200)
             self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
+            # 逐段推送的三个要点：
+            # 1) HTTP/1.1（见 Handler.protocol_version）——HTTP/1.0 不带
+            #    Content-Length 时客户端只能等连接关闭才认账，"逐字到达"会退化成
+            #    "一次全到"（实测踩到）；
+            # 2) 显式 chunked 传输——否则同样要等连接关闭；
+            # 3) 每帧写完 flush（见 _write_event），否则攒在缓冲区里一起发。
+            self.send_header("Transfer-Encoding", "chunked")
+            self.send_header("X-Accel-Buffering", "no")   # 中间层别缓冲（nginx 惯例）
             self.end_headers()
             self._alive = True
+            self._chunked = True
 
             def emit(kind: str, payload: dict[str, Any]) -> None:
                 self._write_event(kind, payload)
 
-            # 会话缓存与剧本 provider 都不是线程安全的：turn 在这里串行执行。
-            with lock:
-                opened = agent.open(session_id, on_event=emit)
-                if opened.repaired and session_id not in state["repaired_reported"]:
-                    state["repaired_reported"].add(session_id)
-                    emit("__repair", {"message": "上次会话被强杀，日志尾部已自动修复"})
+            # 整个推送过程包在 try/finally 里：**任何**退出路径（正常、异常、
+            # 提前 return）都必须写终止块，否则客户端会一直等下一帧。
+            try:
+                # 会话缓存与剧本 provider 都不是线程安全的：turn 在这里串行执行。
+                # 审批通道也在这把锁**之内**挂/摘：保证"问人"永远问当前真正在跑的
+                # 那个 turn 的连接（锁外挂会让等待中的 turn 互相抢通道）。
+                policy = ctx.get(APPROVAL_SERVICE)
+                with lock:
+                    handle = None
+                    if policy is not None and hasattr(policy, "attach_stream"):
+                        handle = policy.attach_stream(emit)
+                    opened = agent.open(session_id, on_event=emit)
+                    if opened.repaired and session_id not in state["repaired_reported"]:
+                        state["repaired_reported"].add(session_id)
+                        emit("__repair", {"message": "上次会话被强杀，日志尾部已自动修复"})
+                    try:
+                        result = agent.ask(text, session_id=session_id)
+                    except Exception as exc:  # 兜底：异常也以帧的形式告知前端，不炸服务
+                        emit("__error", {"message": f"turn 执行失败：{exc}"})
+                        return
+                    finally:
+                        if handle is not None and hasattr(policy, "detach_stream"):
+                            policy.detach_stream(handle)  # 只摘自己挂的那个（身份校验）
+                emit(
+                    "__done",
+                    {
+                        "turn": result.turn,
+                        "status": result.status,
+                        "steps": len(result.steps),
+                        "final_text": result.final_text,
+                    },
+                )
+            finally:
+                self._close_stream()
+
+        def _close_stream(self) -> None:
+            """流式响应收尾：写零长度 chunk 结束分块传输（客户端才停止等待）。"""
+            if getattr(self, "_chunked", False):
                 try:
-                    result = agent.ask(text, session_id=session_id)
-                except Exception as exc:  # 兜底：异常也以帧的形式告知前端，不炸服务
-                    emit("__error", {"message": f"turn 执行失败：{exc}"})
-                    return
-            emit(
-                "__done",
-                {
-                    "turn": result.turn,
-                    "status": result.status,
-                    "steps": len(result.steps),
-                    "final_text": result.final_text,
-                },
-            )
+                    self.wfile.write(b"0" + _CRLF + _CRLF)
+                    self.wfile.flush()
+                except (OSError, ValueError):
+                    pass
+                self._chunked = False
+            self._alive = False
 
         def _write_event(self, kind: str, payload: dict[str, Any]) -> None:
             if not self._alive:
                 return
             line = json.dumps({"kind": kind, "payload": payload}, ensure_ascii=False, default=str)
+            data = line.encode("utf-8") + b"\n"
             try:
-                self.wfile.write(line.encode("utf-8") + b"\n")
+                if getattr(self, "_chunked", False):
+                    # chunked 分帧：<十六进制长度> CRLF <正文> CRLF
+                    self.wfile.write(format(len(data), "X").encode("ascii") + _CRLF + data + _CRLF)
+                else:
+                    self.wfile.write(data)
                 self.wfile.flush()
             except (OSError, ValueError):
                 # 客户端走了/连接已收尾：不再写，但让 turn 跑完。

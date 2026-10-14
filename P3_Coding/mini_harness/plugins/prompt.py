@@ -45,6 +45,7 @@ class PromptService(PromptRenderer):
             cwd=str(variables.get("cwd", base.cwd)),
             platform=str(variables.get("platform", base.platform)),
             time=str(variables.get("time", base.time)),
+            date=str(variables.get("date", base.date)),
         )
 
     # 显式覆写只为把返回类型说清楚（行为与基类一致：capture_trace + 瀑布变量）。

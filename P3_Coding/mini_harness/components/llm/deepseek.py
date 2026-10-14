@@ -15,9 +15,12 @@ test_provider_protocol.py 里的翻译测试）；类本身只做"接线"。
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from dataclasses import replace
 from typing import Any
 
 from components.llm.provider import LLMRequest, LLMResponse
+from components.llm.streaming import StreamChunk
 from components.llm.vocabulary import Message, ToolCall, ToolSpec, Usage
 
 DEFAULT_BASE_URL = "https://api.deepseek.com"
@@ -102,6 +105,13 @@ def response_from_api(api_response: Any) -> LLMResponse:
         usage = Usage(
             prompt_tokens=api_response.usage.prompt_tokens,
             completion_tokens=api_response.usage.completion_tokens,
+            # 上下文缓存：命中部分比未命中便宜得多（DeepSeek 计费口径）
+            prompt_cache_hit_tokens=int(
+                getattr(api_response.usage, "prompt_cache_hit_tokens", 0) or 0
+            ),
+            prompt_cache_miss_tokens=int(
+                getattr(api_response.usage, "prompt_cache_miss_tokens", 0) or 0
+            ),
         )
 
     return LLMResponse(
@@ -112,6 +122,51 @@ def response_from_api(api_response: Any) -> LLMResponse:
         ),
         finish_reason=choice.finish_reason or "stop",
         usage=usage,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 流式增量：线上 SSE 帧 → 中立 StreamChunk（纯函数，可离线测）
+# ---------------------------------------------------------------------------
+
+
+def chunk_from_delta(delta: Any, *, finish_reason: str | None = None) -> StreamChunk:
+    """把一个 SSE `delta` 翻译成中立增量（方言细节全在这个函数里）。
+
+    - 文本：`delta.content` 原样带走；
+    - 工具调用：`delta.tool_calls` 是**分片**的——`index` 指明第几个申请，
+      `id`/`function.name` 通常只在首片出现，`function.arguments` 是 JSON
+      字符串的碎片（要拼完才能解析，聚合交给 aggregate_chunks）。
+    """
+    text = getattr(delta, "content", None) or ""
+    chunks: list[StreamChunk] = []
+    if text:
+        chunks.append(StreamChunk(text=text))
+    for raw_call in getattr(delta, "tool_calls", None) or []:
+        function = getattr(raw_call, "function", None)
+        chunks.append(
+            StreamChunk(
+                tool_index=int(getattr(raw_call, "index", 0) or 0),
+                tool_id=getattr(raw_call, "id", None) or "",
+                tool_name=(getattr(function, "name", None) or "") if function else "",
+                tool_arguments=(getattr(function, "arguments", None) or "") if function else "",
+            )
+        )
+    if finish_reason:
+        chunks.append(StreamChunk(finish_reason=finish_reason))
+    return chunks
+
+
+def chunk_usage_from_frame(frame: Any) -> Usage | None:
+    """从一帧里取用量（OpenAI 兼容：`frame.usage`，通常只在末帧非空）。"""
+    usage = getattr(frame, "usage", None)
+    if usage is None:
+        return None
+    return Usage(
+        prompt_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
+        completion_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
+        prompt_cache_hit_tokens=int(getattr(usage, "prompt_cache_hit_tokens", 0) or 0),
+        prompt_cache_miss_tokens=int(getattr(usage, "prompt_cache_miss_tokens", 0) or 0),
     )
 
 
@@ -147,3 +202,48 @@ class DeepSeekProvider:
 
         api_response = self._client.chat.completions.create(**kwargs)
         return response_from_api(api_response)
+
+    def stream(self, request: LLMRequest) -> Iterator[StreamChunk]:
+        """流式实现：SSE 帧 → 中立增量（逐帧 yield）。
+
+        取消：调用方关闭生成器时，`stream` 的 `finally` 会关掉上游响应——
+        这是"中途取消"在 provider 侧的全部职责。
+        """
+        kwargs: dict[str, Any] = {
+            "model": request.model or self._model,
+            "messages": [message_to_wire(m) for m in request.messages],
+            "stream": True,
+            # 关键：OpenAI 兼容协议的流式默认**不报用量**，要显式要求
+            # （末帧会带 usage）。不开这个，用量账本永远是 0（实测踩到）。
+            "stream_options": {"include_usage": True},
+        }
+        if request.tools:
+            kwargs["tools"] = [tool_to_wire(spec) for spec in request.tools]
+
+        upstream = self._client.chat.completions.create(**kwargs)
+        try:
+            for frame in upstream:
+                # 用量在**帧**上（不是 delta 上）：带 usage 的帧通常 choices 为空，
+                # 所以要在这里先取出来，再处理 choices（顺序不能反）。
+                usage = chunk_usage_from_frame(frame)
+                choices = getattr(frame, "choices", None) or []
+                if not choices:
+                    if usage is not None:
+                        yield StreamChunk(usage=usage)
+                    continue
+                choice = choices[0]
+                delta = getattr(choice, "delta", None)
+                if delta is None:
+                    if usage is not None:
+                        yield StreamChunk(usage=usage)
+                    continue
+                chunks = list(
+                    chunk_from_delta(delta, finish_reason=getattr(choice, "finish_reason", None))
+                )
+                if usage is not None and chunks:
+                    chunks[-1] = replace(chunks[-1], usage=usage)
+                yield from chunks
+        finally:
+            close = getattr(upstream, "close", None)
+            if callable(close):
+                close()
