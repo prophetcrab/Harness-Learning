@@ -1,11 +1,25 @@
-"""Plugin —— 插件协议与声明（name / inject / setup）。
+"""Plugin —— 插件协议与声明（name / inject / optional / setup）。
 
 一个插件就是"有 `setup(ctx)` 方法的对象"，或（更轻）一个普通函数/可调用对象
-——沿用 P2 `_07` 的鸭子类型协议。P3 新增两样**声明**：
+——沿用 P2 `_07` 的鸭子类型协议。P3 新增两样**声明**（`_05` 补了第三样）：
 
 - `name`：插件身份（缺失时用函数名 / 类限定名兜底）；
-- `inject`：依赖的服务名列表（缺失则插件保持 pending，等服务就绪自动激活；
-  依赖消失则自动停用）——**装载顺序无关**，依赖关系驱动生命周期。
+- `inject`：**必需**依赖的服务名列表（缺失则插件保持 pending，等服务就绪自动
+  激活；依赖消失则自动停用）——**装载顺序无关**，依赖关系驱动生命周期；
+- `optional`：**可选**依赖的服务名列表。语义与 inject 相对：
+
+  | | 缺依赖时 | 依赖来了 | 依赖走了 | require 取值 |
+  |---|---|---|---|---|
+  | `inject` | pending，不激活 | 自动激活 | 自动停用 | 一定成功 |
+  | `optional` | **照常激活** | **不重装**（靠自己 `ctx.get` 容错） | **不停用** | 可能失败 |
+
+  `optional` 的典型用途是"有则用、没有则降级"，且**不希望因它抖一下就被重启**：
+  界面插件就是这样——它想在换模型、装卸插件时**一直开着**，所以对 `agent`
+  只能声明成可选，取不到时给用户一个人话错误页，而不是让整个服务消失。
+
+  为什么"不重装"：`optional` 里的服务来来去去不该重启一个正在对外服务的插件
+  （重启 = 端口换掉 = 用户眼前的页面失联）。代价是插件要在**用的时候**现取
+  （见 plugins/webui.py 的 `_agent_or_none`），而不能在 setup 里抓一份存着。
 
 协议只需要"有个 setup"，插件作者不必 import 任何基类（与 LLMProvider /
 FileSystem / SubprocessService 同款：结构满足即成立）。
@@ -27,7 +41,8 @@ SetupFn = Callable[[Any], "Callable[[], None] | None"]
 class Plugin(Protocol):
     """插件协议：任何有 setup(ctx) 方法的对象都满足它。
 
-    `name` / `inject` 是可选声明——运行时用 getattr 读取，缺失即默认值。
+    `name` / `inject` / `optional` 是可选声明——运行时用 getattr 读取，
+    缺失即默认值。
     """
 
     def setup(self, ctx: Any) -> Callable[[], None] | None:
@@ -54,25 +69,56 @@ def plugin_setup(plugin: object) -> SetupFn:
     raise TypeError(f"不是合法插件（既没有 setup(ctx) 也不能调用）：{plugin!r}")
 
 
-def plugin_injects(plugin: object) -> tuple[str, ...]:
-    """读取插件的依赖声明（inject）；缺失或非法一律 fail loud。
-
-    接受两种写法：`inject = ("a", "b")`（对象属性）与函数属性 `inject`。
-    """
-    raw: Any = getattr(plugin, "inject", ())
+def _names(plugin: object, attr: str, *, allow_none: bool = True) -> tuple[str, ...]:
+    """读取一个"服务名序列"声明（inject / optional 共用同一套校验）。"""
+    raw: Any = getattr(plugin, attr, ())
     if raw is None:
-        return ()
+        if allow_none:
+            return ()
+        raise TypeError(f"插件 {plugin_name(plugin)} 的 {attr} 不能是 None")
     if isinstance(raw, str):
         # 单个字符串是最常见的笔误（会被逐字符迭代）——直接报错。
         raise TypeError(
-            f"插件 {plugin_name(plugin)} 的 inject 必须是序列（如 ('fs',)），收到字符串：{raw!r}"
+            f"插件 {plugin_name(plugin)} 的 {attr} 必须是序列（如 ('fs',)），"
+            f"收到字符串：{raw!r}"
         )
     if not isinstance(raw, Iterable):
-        raise TypeError(f"插件 {plugin_name(plugin)} 的 inject 不可迭代：{raw!r}")
+        raise TypeError(f"插件 {plugin_name(plugin)} 的 {attr} 不可迭代：{raw!r}")
     names = tuple(str(item) for item in raw)
     if len(set(names)) != len(names):
-        raise ValueError(f"插件 {plugin_name(plugin)} 的 inject 有重复项：{names}")
+        raise ValueError(f"插件 {plugin_name(plugin)} 的 {attr} 有重复项：{names}")
     return names
 
 
-__all__ = ["Plugin", "SetupFn", "plugin_injects", "plugin_name", "plugin_setup"]
+def plugin_injects(plugin: object) -> tuple[str, ...]:
+    """读取插件的**必需**依赖声明（inject）；缺失或非法一律 fail loud。
+
+    接受两种写法：`inject = ("a", "b")`（对象属性）与函数属性 `inject`。
+    """
+    return _names(plugin, "inject")
+
+
+def plugin_optionals(plugin: object) -> tuple[str, ...]:
+    """读取插件的**可选**依赖声明（optional）：缺了照常激活，不做生命周期管理。
+
+    与 inject 同名冲突直接报错——同一个服务不可能既必需又可选，声明矛盾
+    说明作者还没想清楚。
+    """
+    optionals = _names(plugin, "optional")
+    overlap = sorted(set(optionals) & set(plugin_injects(plugin)))
+    if overlap:
+        raise ValueError(
+            f"插件 {plugin_name(plugin)} 的 optional 与 inject 重复：{overlap}"
+            f"（一个服务要么必需要么可选）"
+        )
+    return optionals
+
+
+__all__ = [
+    "Plugin",
+    "SetupFn",
+    "plugin_injects",
+    "plugin_name",
+    "plugin_optionals",
+    "plugin_setup",
+]

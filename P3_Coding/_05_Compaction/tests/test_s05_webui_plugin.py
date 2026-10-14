@@ -77,14 +77,38 @@ def test_load_starts_server_and_unload_releases_port(tmp_path: Path):
     booted.close()
 
 
-def test_webui_missing_dependency_keeps_plugin_pending(tmp_path: Path):
-    """缺 agent 服务时界面插件不应激活（fail loud 的装载语义）。"""
+def test_webui_starts_without_dependencies_and_degrades(tmp_path: Path):
+    """`_05` 起：agent / sessions 是**可选**依赖 —— 缺了照样起服务，只是降级。
+
+    旧行为（本用例的前身）是"缺 agent 就 pending、界面根本不出现"。那让
+    换模型这一幕很糟：agent 依赖 llm，模型一装卸 llm，界面就跟着消失
+    （端口关闭、当前页面失联）。现在界面永不因别人的来去被重启，缺服务时
+    由各路由给出 503 + 人话原因。
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+
     from kernel import Context
 
     ctx = Context()
     ctx.load_plugin(webui_plugin(port=0))
-    assert ctx.pending_plugins == ["webui"]
-    assert ctx.missing_dependencies("webui") == ["agent", "sessions"]
+    assert ctx.pending_plugins == []                      # 不再 pending
+    info = [p for p in ctx.plugins if p.name == "webui"][0]
+    assert info.status == "active"
+    assert info.inject == ()                              # 没有必需依赖
+    assert set(info.optional) == {"agent", "sessions"}
+    assert set(info.missing_optionals) == {"agent", "sessions"}   # 当前都缺
+
+    url = ctx.require(WEBUI_SERVICE).url
+    with urllib.request.urlopen(url, timeout=8) as response:
+        assert response.status == 200                     # 主页照常
+    try:
+        urllib.request.urlopen(url + "api/sessions", timeout=5)
+        raise AssertionError("缺 sessions 时本该 503")
+    except urllib.error.HTTPError as exc:
+        assert exc.code == 503
+        assert "未就绪" in _json.loads(exc.read().decode("utf-8"))["error"]
 
 
 def test_booted_close_also_stops_webui(tmp_path: Path):
@@ -258,23 +282,74 @@ def test_web_send_uses_current_plugin_combination(tmp_path: Path):
     booted.close()
 
 
-def test_webui_restarts_when_upstream_plugin_swapped(tmp_path: Path):
-    """级联语义的显式验收：换 fs → 界面插件被迫退位/重启，端口随之更换。
+def test_webui_survives_upstream_plugin_swap(tmp_path: Path):
+    """`_05` 的核心验收：**换底层插件时界面不中断、端口不变**。
 
-    这是"严格依赖 + 依赖者先退位"的直接后果——记录在案（README 的边界一节），
-    需要"换底层而不中断界面"时应走后续的稳定门面（RPC 服务）而不是硬依赖。
+    旧行为（本用例的前身）是"换 fs → webui 被迫退位/重启、端口更换"，当时
+    当作已知边界记录在案。但它其实是选错了声明方式：界面对 agent 的依赖
+    写成 inject 之后，模型装卸 llm（agent 的上游）会把整个界面连带停掉——
+    用户眼前的页面当场失联。改成 optional 后，这一串级联不再发生。
+
+    这里用 fs 做触发器（与 llm 同理：fs 是 agent 链条之外但被 tools 依赖的
+    上游），断言"服务在、端口没变、任务照跑"。
     """
     booted = _boot(tmp_path, [text_reply("好")])
     booted.ctx.load_plugin(webui_plugin(port=0))
     old = booted.ctx.require(WEBUI_SERVICE)
+    assert _port_open(old.port)
 
     booted.ctx.unload_plugin("fs:MemoryFS")
-    assert "webui" in booted.ctx.pending_plugins  # 依赖链断开：一并退位
-    assert not _port_open(old.port)
+    assert "webui" in booted.ctx.active_plugins        # 界面不再被连带停用
+    assert _port_open(old.port)                        # 端口没变、服务还在
 
     booted.ctx.load_plugin(local_fs_plugin(tmp_path / "ws2"))
-    new = booted.ctx.require(WEBUI_SERVICE)
-    assert _port_open(new.port)  # 重新激活：服务回来了
+    same = booted.ctx.require(WEBUI_SERVICE)
+    assert same.port == old.port                       # 地址不变（标签页不用刷新）
+    assert _port_open(same.port)
+
+    # 而且界面仍能正常干活：换完 fs 之后跑一个 turn
+    frames = _post_ndjson(old.url + "api/sessions/swap/send", {"text": "换完底层再来一句"})
+    assert any(f["kind"] == "__done" for f in frames), "换完 fs 后界面应仍能跑 turn"
+    booted.ctx.unload_plugin("webui")
+    booted.close()
+
+
+def test_static_assets_served_with_correct_types(tmp_path: Path):
+    """三件套各按自己的 Content-Type 发出（拆文件后新增的路由）。"""
+    booted = _boot(tmp_path, [text_reply("好")])
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    url = booted.ctx.require(WEBUI_SERVICE).url
+
+    for path, marker, expected_type in (
+        ("", "<!DOCTYPE html>", "text/html"),
+        ("index.html", "ctx-panel", "text/html"),
+        ("app.css", ":root{", "text/css"),
+        ("app.js", "use strict", "text/javascript"),
+    ):
+        request = urllib.request.Request(url + path)
+        with urllib.request.urlopen(request, timeout=8) as response:
+            body = response.read().decode("utf-8")
+            assert response.headers["Content-Type"].startswith(expected_type), path
+        assert marker in body, f"{path} 内容不对：找不到 {marker}"
+    booted.ctx.unload_plugin("webui")
+    booted.close()
+
+
+def test_static_route_refuses_path_traversal(tmp_path: Path):
+    """静态资源是**白名单**：任何白名单外的名字一律 404，绝不做路径拼接。
+
+    这是一台 HTTP 服务（虽只绑本机），路径穿越必须挡在门口——白名单里的
+    名字全是常量，请求给不出新路径，攻击面直接不存在。
+    """
+    booted = _boot(tmp_path, [text_reply("好")])
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    url = booted.ctx.require(WEBUI_SERVICE).url
+
+    for bad in ("../plugins/webui.py", "..%2f..%2fsecret", "app.js/../../plugins",
+                "/app.js/../index.html", "plugins/webui.py", "secret.txt"):
+        with pytest.raises(urllib.error.HTTPError) as excinfo:
+            urllib.request.urlopen(url + bad, timeout=8)
+        assert excinfo.value.code == 404, f"{bad} 没被拒绝"
     booted.ctx.unload_plugin("webui")
     booted.close()
 
@@ -289,15 +364,19 @@ def test_index_page_includes_rich_renderer(tmp_path: Path):
     booted.ctx.load_plugin(webui_plugin(port=0))
     url = booted.ctx.require(WEBUI_SERVICE).url
 
+    # `_05` 起页面拆成三件套（index.html + app.css + app.js）：各读其源文件
     _, html = _get_text(url)
+    _, css = _get_text(url + "app.css")
+    _, js = _get_text(url + "app.js")
+    assert 'href="app.css"' in html and 'src="app.js"' in html
     # Markdown 富渲染：CSS 有表格/引用/标题样式，JS 有表格与标题的行级识别
-    assert "tablewrap" in html and "prose th" in html
-    assert "blockquote" in html
-    assert "isSeparator" in html                       # 表格识别逻辑
-    assert "match(/^(#{1,6})" in html                  # 标题识别
+    assert "tablewrap" in css and "prose th" in css
+    assert "blockquote" in css
+    assert "isSeparator" in js                         # 表格识别逻辑
+    assert "match(/^(#{1,6})" in js                    # 标题识别
     # HTML/CSS 代码块 → 沙箱预览
-    assert "preview-btn" in html and "previewbox" in html
-    assert 'setAttribute("sandbox", "allow-scripts")' in html  # 只给脚本权限
-    assert "allow-same-origin" not in html.split("setAttribute", 1)[1][:60]
+    assert "preview-btn" in js and "previewbox" in css
+    assert 'setAttribute("sandbox", "allow-scripts")' in js     # 只给脚本权限
+    assert "allow-same-origin" not in js.split("setAttribute", 1)[1][:60]
     booted.ctx.unload_plugin("webui")
     booted.close()

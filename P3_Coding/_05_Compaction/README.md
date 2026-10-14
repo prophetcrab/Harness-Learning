@@ -49,8 +49,11 @@ P3 第 5 阶段（对应 [PLAN.md](../PLAN.md)）。**本阶段只加一个机�
 | `plugins/compact.py` | 插件 | 提供 `compacter` 服务（inject llm）；订阅循环事件 → 内核事件 `context/compacted` |
 | `plugins/agent.py` | 接线 | 从 ctx 现取 `compacter` 交给每条会话的 loop；卸载 = 不再压缩 |
 | `plugins/boot.py` / `chat.py` | 接线 | 默认装 compact；`--context-window` 默认 **1M**（`DEFAULT_CONTEXT_WINDOW`，用户指定） |
-| `webui/index.html` | 界面 | 聊天流里的「⟳ 上下文已压缩」折叠徽标（可展开摘要全文）+ 事件流摘要行 + 失败横幅；输入框旁「⟳ 压缩」按钮 + 输入 `/compact` |
-| `plugins/webui.py` | 界面 | `POST /api/sessions/<id>/compact` → NDJSON 帧（`compact_applied` / `__compact_done` / `__compact_noop` / `__error`） |
+| `webui/index.html` | 界面 | 页面骨架（`_05` 拆成三件套：index.html + app.css + app.js） |
+| `webui/app.js` | 界面 | 聊天流「⟳ 上下文已压缩」折叠徽标 + 事件流摘要行 + 失败横幅 + 输入框旁「⟳ 压缩」按钮 + `/compact` 命令 |
+| `webui/app.css` | 界面 | 全部样式（从 index.html 切出） |
+| `plugins/webui.py` | 界面 | `POST /api/sessions/<id>/compact` → NDJSON 帧；静态资源**白名单**路由 |
+| `kernel/plugin.py` + `kernel/context.py` | 内核 | **`optional` 可选依赖声明**（`_05` 新增；见下文「界面重构」） |
 | `plugins/agent.py` | 接线 | `HarnessSession.compact()` / `AgentService.compact()`（与 `ask` 同一把锁） |
 | `chat.py` | 入口 | REPL `/compact` 命令 |
 | `plugins/context_meter.py` | 复用 | 估算/拆分改为引用构件（对外 API 不变，测试逐字兼容） |
@@ -137,6 +140,27 @@ user/message 条数（应=8，日志未删）: 8
 2. **"没有可压缩的历史"**：只有当前一轮时同样返回 None，界面回一句
    「没有可压缩的历史（只有当前一轮）」，而不是假装压缩成功。
 
+## 界面重构（`_05` 收尾时补做）
+
+**① 页面拆成三件套**：`index.html`（骨架）+ `app.css` + `app.js`，由后端加两条静态路由提供（白名单，不做路径拼接——见 `STATIC_FILES`）。
+
+收益有三条：1182 行的单文件变成各司其职的三份；**JS 能单独做语法检查**（`node --check app.js`——以前内联在 HTML 里查不了，一个括号写错整页白屏，而测试只断言子串照样绿）；改一处不再有"字符串不唯一、Edit 失败"的麻烦。
+
+顺带去掉一份重复：两个仪表面板（📐 上下文 / 📊 Token）原本各写一遍"解析地址 → 发现 endpoint → iframe 打开 → 轮询徽标"，136 行几乎逐字重复；现在抽成 `mountPanel(config)` 一个工厂，两处各给一份配置。
+
+**② 界面依赖从 `inject` 改成 `optional`——修掉一个真 bug。**
+
+原声明 `inject = ("agent", "sessions")` 看着自然，但 `agent` 依赖 `llm`：**模型一用自扩展工具装卸 `llm`（或换模型），整条依赖链连锁停用，界面服务当场停掉、端口关闭、你眼前的页面失联。** 实测：卸载 llm 后 `webui` 从 active 列表消失、端口不再监听；重装 llm 虽然插件回来了，但端口已经换了一个，旧标签页再也连不上。
+
+修法是在内核加 `optional` 声明（`kernel/plugin.py` 有完整语义表）：
+
+| | 缺依赖时 | 依赖来了 | 依赖走了 | 取值 |
+|---|---|---|---|---|
+| `inject` | pending，不激活 | 自动激活 | 自动停用 | `ctx.require` 一定成功 |
+| `optional` | **照常激活** | **不重装** | **不停用** | `ctx.get` 可能拿到 None |
+
+`optional` 的取舍很清楚：换来"永不因别人来去而被重启"（端口稳定、页面不掉线），代价是必须**现取服务**——`plugins/webui.py` 里 `agent` / `sessions` 一律 `ctx.get` 现拿，拿不到就给 503 + 人话（"agent 服务未就绪"），而不是在 setup 里抓一份存着（那会指向已停用的旧服务）。台账里也会标出"降级"（左栏插件名旁的黄标）。
+
 ## 验收（对照 PLAN.md）
 
 - [x] **压缩后投影变化**：折叠区变成一条摘要消息（`【早前对话摘要】`）
@@ -153,17 +177,27 @@ user/message 条数（应=8，日志未删）: 8
 - [x] **手动触发**（`/compact`）：1M 窗口下自动永不触发、手动按下就折；折到
       最后一轮之前（`folded == floor - 1`）；最后一轮与日志原样；重放同构；
       连按两次被空折守卫拦住；失败回 `__error` 帧而不是静默
-- [x] 门禁绿（ruff + pytest，246 用例）
+- [x] **`optional` 依赖语义**：缺了照常激活、来了不重装、走了不停用；
+      与 `inject` 重叠或写成字符串都 fail loud（内核新增 4 个用例）
+- [x] **界面不因上游换插件而中断**：换 fs（llm 同理）后 webui 仍在 active、
+      端口不变、turn 照跑（`test_webui_survives_upstream_plugin_swap`）
+- [x] **静态资源白名单**：三件套各按正确 Content-Type 发出；6 种路径穿越写法全 404
+- [x] 门禁绿（ruff + pytest）
 
 ## 已知边界（诚实记录）
 
-1. **单个 turn 内疯长压不动**：几百次工具往返把上下文撑爆时，压缩区够不到
+1. **界面依赖是可选的**：这意味着"忘了装 sessions"不会在装载期报错，而是打开
+   页面才看到 503。这是刻意的取舍（界面要能在换插件时活着）；`boot.py` 的组合里
+   两者总是一起出现，实际影响为零。
+2. **静态白名单要手工维护**：新增页面资源（图片、字体）得往 `STATIC_FILES` 加一行。
+   这是"绝不路径拼接"付的小代价。
+3. **单个 turn 内疯长压不动**：几百次工具往返把上下文撑爆时，压缩区够不到
    当前 turn（折掉正在干的事会让模型当场失忆）。这类"单个巨大工具结果"是
    `_07`（大结果搬运）的题目。
-2. **压缩必然打断一次前缀缓存**：摘要进请求意味着前缀变了，下一次调用全 miss。
+4. **压缩必然打断一次前缀缓存**：摘要进请求意味着前缀变了，下一次调用全 miss。
    这正是"90% 才压、压完落在 15%~20%"的价值——把打断次数压到最低。
-3. **摘要有损**：所以尾巴留 10% 原版；且摘要被要求保留"目标/决定/路径/待办"四类。
-4. **估算不是 tokenizer**：中文/其他按 0.6/0.3 估算，触发判断有误差；
+5. **摘要有损**：所以尾巴留 10% 原版；且摘要被要求保留"目标/决定/路径/待办"四类。
+6. **估算不是 tokenizer**：中文/其他按 0.6/0.3 估算，触发判断有误差；
    实测一侧（`prompt_tokens`）在真实 provider 下会持续纠正它。
 
 ## 完成后的去向

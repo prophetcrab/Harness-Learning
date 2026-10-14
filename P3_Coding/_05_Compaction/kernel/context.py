@@ -42,7 +42,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from kernel.plugin import plugin_injects, plugin_name, plugin_setup
+from kernel.plugin import plugin_injects, plugin_name, plugin_optionals, plugin_setup
 
 # 装载函数：执行副作用，返回撤销函数（或 None 表示"副作用都走 ctx 自动管理"）。
 Install = Callable[[], "Callable[[], None] | None"]
@@ -85,7 +85,11 @@ class PluginInfo:
     name: str
     status: PluginStatus
     inject: tuple[str, ...]
-    missing: tuple[str, ...]  # 当前未满足的依赖（status=pending 时有意义）
+    missing: tuple[str, ...]  # 当前未满足的**必需**依赖（status=pending 时有意义）
+    #: 可选依赖声明（`_05`）：表里列出、缺了不禁用——missing_optionals 是当前
+    #: 取不到的那些（界面/台账据此显示"降级中"，而不是假装一切正常）。
+    optional: tuple[str, ...] = ()
+    missing_optionals: tuple[str, ...] = ()
     error: BaseException | None = None
 
 
@@ -96,6 +100,9 @@ class _PluginRecord:
     name: str
     setup: Callable[[Context], Disposer | None]
     inject: tuple[str, ...]
+    #: 可选依赖：**不参与 `_deps_ok`**——缺了照常激活、来了不重装（见
+    #: kernel/plugin.py 的语义表）。这里存着主要是为了可见性（PluginInfo）。
+    optional: tuple[str, ...] = ()
     status: PluginStatus = "pending"
     disposer: Disposer | None = None  # 激活时拿到的 effect 卸载句柄
     error: BaseException | None = None
@@ -306,6 +313,7 @@ class Context:
             name=name,
             setup=plugin_setup(plugin),
             inject=plugin_injects(plugin),
+            optional=plugin_optionals(plugin),
         )
         self._plugins[name] = record
         try:
@@ -368,6 +376,10 @@ class Context:
                 status=record.status,
                 inject=record.inject,
                 missing=tuple(dep for dep in record.inject if dep not in self._slots),
+                optional=record.optional,
+                missing_optionals=tuple(
+                    dep for dep in record.optional if dep not in self._slots
+                ),
                 error=record.error,
             )
             for record in self._plugins.values()

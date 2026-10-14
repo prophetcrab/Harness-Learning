@@ -10,6 +10,7 @@ from kernel import (
     UnknownPluginError,
     plugin_injects,
     plugin_name,
+    plugin_optionals,
 )
 
 
@@ -139,6 +140,87 @@ def test_plugin_declaration_helpers():
 
     with pytest.raises(TypeError):
         plugin_injects(BadInject())
+
+
+def test_optional_dependency_does_not_block_activation():
+    """`optional` 与 `inject` 的分工：可选依赖缺了照常激活、来了不重装、走了不停用。
+
+    这是 `_05` 为界面插件引入的机制（见 kernel/plugin.py 的语义表）：
+    "有则用、没有则降级，且不因它抖一下就被重启"。
+    """
+    log: list[str] = []
+
+    class Ui:
+        name = "ui"
+        optional = ("thing",)
+
+        def setup(self, ctx: Context):
+            log.append("ui-setup")
+            return lambda: log.append("ui-dispose")
+
+    ctx = Context()
+    ctx.load_plugin(Ui())
+    assert ctx.active_plugins == ["ui"]          # 可选依赖缺失**不**阻塞激活
+    info = ctx.plugins[0]
+    assert info.inject == ()
+    assert info.optional == ("thing",)
+    assert info.missing_optionals == ("thing",)  # 但如实报告"缺哪些"
+
+    ctx.provide("thing", object())               # 依赖来了
+    assert log == ["ui-setup"], "可选依赖就绪**不该**重装插件"
+    assert ctx.plugins[0].missing_optionals == ()
+
+    ctx.retract("thing")                         # 依赖走了
+    assert ctx.active_plugins == ["ui"], "可选依赖消失**不该**停用插件"
+    assert log == ["ui-setup"]
+
+    ctx.unload_plugin("ui")                      # 只有显式卸载才回卷
+    assert log == ["ui-setup", "ui-dispose"]
+
+
+def test_required_dependency_still_blocks_activation():
+    """对照组：`inject` 的语义一点没变（缺了 pending、来了激活、走了停用）。"""
+    log: list[str] = []
+
+    class Worker:
+        name = "worker"
+        inject = ("thing",)
+
+        def setup(self, ctx: Context):
+            log.append("setup")
+            return lambda: log.append("dispose")
+
+    ctx = Context()
+    ctx.load_plugin(Worker())
+    assert ctx.pending_plugins == ["worker"]
+    ctx.provide("thing", object())
+    assert ctx.active_plugins == ["worker"] and log == ["setup"]
+    ctx.retract("thing")
+    assert ctx.active_plugins == [] and log == ["setup", "dispose"]
+
+
+def test_optional_and_inject_cannot_overlap():
+    """同一个服务要么必需要么可选——声明矛盾直接报错（fail loud）。"""
+
+    class Confused:
+        name = "confused"
+        inject = ("thing",)
+        optional = ("thing", "other")
+
+        def setup(self, ctx: Context) -> None: ...
+
+    with pytest.raises(ValueError, match="optional 与 inject 重复"):
+        plugin_optionals(Confused())
+
+
+def test_optional_must_be_sequence_not_string():
+    class BadOptional:
+        optional = "fs"  # 与 inject 同款笔误：字符串会被逐字符迭代
+
+        def setup(self, ctx: Context) -> None: ...
+
+    with pytest.raises(TypeError):
+        plugin_optionals(BadOptional())
 
 
 def test_plugin_info_snapshot_reports_status():

@@ -296,11 +296,14 @@ def test_index_page_renders_streaming_ui(tmp_path: Path):
     booted.ctx.load_plugin(webui_plugin(port=0))
     url = booted.ctx.require(WEBUI_SERVICE).url
     import urllib.request
-    with urllib.request.urlopen(url, timeout=8) as response:
-        html = response.read().decode("utf-8")
-    assert 'case "step_delta":' in html          # 增量帧处理
-    assert "streaming-live" in html and ".cursor{" in html   # 流式气泡与光标
-    assert "stream_cancelled" in html            # 取消收尾
+    # `_05` 起页面拆成三件套：流式逻辑在 app.js，样式在 app.css
+    with urllib.request.urlopen(url + "app.js", timeout=8) as response:
+        js = response.read().decode("utf-8")
+    with urllib.request.urlopen(url + "app.css", timeout=8) as response:
+        css = response.read().decode("utf-8")
+    assert 'case "step_delta":' in js            # 增量帧处理
+    assert "streaming-live" in js and ".cursor{" in css      # 流式气泡与光标
+    assert "stream_cancelled" in js              # 取消收尾
     booted.ctx.unload_plugin("webui")
     booted.close()
 

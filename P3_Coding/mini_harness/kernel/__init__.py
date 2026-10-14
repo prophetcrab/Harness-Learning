@@ -22,7 +22,14 @@ from kernel.context import (
     UnknownEffectError,
     UnknownPluginError,
 )
-from kernel.plugin import Plugin, SetupFn, plugin_injects, plugin_name, plugin_setup
+from kernel.plugin import (
+    Plugin,
+    SetupFn,
+    plugin_injects,
+    plugin_name,
+    plugin_optionals,
+    plugin_setup,
+)
 
 __all__ = [
     "Context",
@@ -39,5 +46,6 @@ __all__ = [
     "UnknownPluginError",
     "plugin_injects",
     "plugin_name",
+    "plugin_optionals",
     "plugin_setup",
 ]

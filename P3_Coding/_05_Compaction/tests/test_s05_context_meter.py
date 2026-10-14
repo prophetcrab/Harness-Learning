@@ -243,7 +243,11 @@ def test_endpoint_discoverable_and_webui_has_panel(tmp_path: Path):
 
     with urllib.request.urlopen(webui_url, timeout=8) as response:
         html = response.read().decode("utf-8")
-    assert "ctx-btn" in html and "ctx-panel" in html and "api/context" in html
+    # 标记在 index.html，挂载逻辑在 app.js（`_05` 起拆成三件套）
+    assert "ctx-btn" in html and "ctx-panel" in html
+    with urllib.request.urlopen(webui_url + "app.js", timeout=8) as response:
+        js = response.read().decode("utf-8")
+    assert "api/context" in js and "context-meter" in js
     booted.close()
 
 

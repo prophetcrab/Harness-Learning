@@ -8,18 +8,32 @@ effect/disposer 的用武之地。P2 时代的页面服务是手工起的（`cre
     setup   → 建 ThreadingHTTPServer + 起步线程 + provide `webui` 服务（含 URL）
     dispose → shutdown + join + server_close（端口释放，无残留）
 
+**依赖声明：为什么是 optional 而不是 inject**（`_05` 重构）
+
+最初写的是 `inject = ("agent", "sessions")`，看着很自然，但有个要命的后果：
+`agent` 依赖 `llm`，模型一旦用自扩展工具装卸 `llm`（或用 `load_plugin` 换模型），
+整条链会连锁停用——**界面服务当场停掉、端口关闭、你眼前的页面失联**。
+实测：卸载 llm 后 `webui` 从 active 列表里消失、端口不再监听；重装 llm 后
+虽然插件回来了，但**端口已经换了一个**，旧标签页再也连不上。
+
+这正是 `optional` 要解决的（见 kernel/plugin.py 的语义表）：声明成可选依赖后，
+`webui` 的生命周期只由"装载它/卸载它"决定，**不受其他插件来去的影响**。
+代价是必须在**用的时候**现取服务、取不到时给出人话错误，而不是在 setup 里
+抓一份存着。这里用 `_require_or_none` 落实这条纪律（每次现取，拿不到就给 503 人话）。
+
 依赖与边界：
 
-- `inject = ("agent", "sessions")`：缺了装载期就报错（fail loud），而不是
-  打开页面才 500；
+- `optional = ("agent", "sessions")`：缺了照常起服务（页面会显示"服务未就绪"，
+  而不是让整个界面消失）；`webui` 插件本身永不因依赖变动被重启；
 - **线程边界**：HTTP 服务在自己的线程里跑，但只**调用**服务、不改 ctx 状态；
   ctx 的装载/卸载只在主线程做（内核是同步的，没有锁）；
 - **会话串行化**：agent 服务的会话缓存不是线程安全的（多个标签页同时提问会
   踩到它），本插件用一把锁把"跑 turn"串起来——同一时刻只有一个 turn 在执行。
 
-API（静态页面在 `webui/index.html`，纯原生 JS、零依赖）：
+API（静态页面在 `webui/`：index.html + app.css + app.js，纯原生 JS、零依赖）：
 
-    GET  /                          页面
+    GET  /                          页面（index.html）
+    GET  /app.css  /app.js          静态资源（白名单，见 STATIC_FILES）
     GET  /api/ledger                插件台账 / 服务 / 工具面（"完全插件化"的可见性）
     GET  /api/sessions              会话列表（turns / last_seq / 最近状态）
     GET  /api/sessions/<id>/events  某会话的事件流 + 投影出的消息（历史由日志投影）
@@ -54,8 +68,18 @@ from plugins.services import (
 #: chunked 传输的行分隔符（HTTP 规范硬性要求 \r\n，不能是 \n）。
 _CRLF = chr(13).encode("ascii") + chr(10).encode("ascii")
 
-#: 静态页面路径（与本插件同包目录结构：mini_harness/webui/index.html）。
-PAGE_PATH = Path(__file__).resolve().parents[1] / "webui" / "index.html"
+#: 界面静态目录（与本插件同包目录结构：mini_harness/webui/）。
+WEB_DIR = Path(__file__).resolve().parents[1] / "webui"
+
+#: 静态资源白名单：文件名 → Content-Type。
+#: **刻意是白名单而不是"按路径读文件"**——这是一台对外（虽然只绑本机）的 HTTP
+#: 服务，任何形式的路径拼接都可能被 `../` 走出目录。白名单里的名字全是常量，
+#: 请求给不出新路径，目录穿越这条攻击面直接不存在。
+STATIC_FILES = {
+    "index.html": "text/html; charset=utf-8",
+    "app.css": "text/css; charset=utf-8",
+    "app.js": "text/javascript; charset=utf-8",
+}
 
 
 @dataclass(frozen=True)
@@ -104,6 +128,10 @@ def _ledger(ctx: Context) -> dict[str, Any]:
                 "status": info.status,
                 "inject": list(info.inject),
                 "missing": list(info.missing),
+                # 可选依赖（`_05`）：页面据此标"降级运行"——缺了不禁用，但要说清楚
+                # 哪几样现在是缺的（如换模型途中 agent 短暂不在）。
+                "optional": list(info.optional),
+                "missing_optionals": list(info.missing_optionals),
             }
             for info in ctx.plugins
         ],
@@ -160,8 +188,17 @@ def _session_detail(sessions, session_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: dict[str, Any]):
-    """构造处理器类：路由 + 流式 turn + 会话串行化。"""
+def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
+    """构造处理器类：路由 + 流式 turn + 会话串行化。
+
+    **服务一律现取，不在这里抓一份存着**（`_05` 查出的纪律）：`agent` /
+    `sessions` 是可选依赖，它们可能被卸下又装回（换模型、自扩展工具装卸），
+    抓存的旧引用会指向一个已经停用的服务。`ctx.get()` 每次问当前值——
+    服务不在时返回 None，由各路由给出人话响应。
+    """
+
+    def _require_or_none(name: str) -> Any | None:
+        return ctx.get(name)
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "p3-mini-harness-webui/0.1"
@@ -184,12 +221,43 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
             self.end_headers()
             self.wfile.write(body)
 
+        def _send_static(self, name: str) -> None:
+            """发一个静态文件（只认 STATIC_FILES 白名单里的名字）。
+
+            404 而不是回 index.html：这些是资源不是路由，缺了就是缺了——
+            浏览器控制台里给个明确的 404，比悄悄拿到一份 HTML 好排查。
+            """
+            content_type = STATIC_FILES.get(name)
+            if content_type is None:
+                self._send_json(404, {"error": f"未知静态资源：{name}"})
+                return
+            path = WEB_DIR / name
+            if not path.is_file():
+                self._send_json(404, {"error": f"静态资源缺失：{name}"})
+                return
+            self._send_bytes(200, content_type, path.read_bytes())
+
         def _send_json(self, status: int, payload: Any) -> None:
             self._send_bytes(
                 status,
                 "application/json; charset=utf-8",
                 json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             )
+
+        def _sessions_or_503(self, build) -> None:
+            """需要 `sessions` 服务的只读路由：服务不在时给 503 与人话原因。
+
+            这不是异常路径的兜底，而是**可选依赖的正常分支**——界面插件声明
+            sessions 为 optional 之后，"服务暂时不在"必须是一种正常的、说得清
+            的响应（见模块 docstring 的语义表）。
+            """
+            service = _require_or_none(SESSIONS_SERVICE)
+            if service is None:
+                self._send_json(
+                    503, {"error": "会话服务未就绪（sessions 插件未激活）"}
+                )
+                return
+            self._send_json(200, build(service))
 
         def _read_json(self) -> dict[str, Any]:
             length = int(self.headers.get("Content-Length") or 0)
@@ -205,14 +273,18 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
         def do_GET(self) -> None:
             route = urlparse(self.path).path
             if route in ("/", "/index.html"):
-                self._send_bytes(200, "text/html; charset=utf-8", PAGE_PATH.read_bytes())
+                self._send_static("index.html")
+            elif route in ("/app.css", "/app.js"):
+                self._send_static(route.lstrip("/"))
             elif route == "/api/ledger":
                 self._send_json(200, _ledger(ctx))
             elif route == "/api/sessions":
-                self._send_json(200, _sessions_overview(sessions))
+                self._sessions_or_503(lambda service: _sessions_overview(service))
             elif route.startswith("/api/sessions/") and route.endswith("/events"):
                 session_id = unquote(route[len("/api/sessions/") : -len("/events")])
-                self._send_json(200, _session_detail(sessions, session_id))
+                self._sessions_or_503(
+                    lambda service: _session_detail(service, session_id)
+                )
             elif route == "/api/approvals":
                 policy = ctx.get(APPROVAL_SERVICE)
                 pending = policy.pending_list() if policy is not None else []
@@ -250,6 +322,10 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
             不跑 turn——只折叠历史；但压缩本身要调一次模型（摘要），所以也走
             流式响应：摘要期间的失败/成功都以帧到达，前端不必干等。
             """
+            agent = _require_or_none(AGENT_SERVICE)
+            if agent is None:
+                self._send_json(503, {"error": "agent 服务未就绪（agent 插件未激活）"})
+                return
             self.send_response(200)
             self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
@@ -288,6 +364,10 @@ def _make_handler(ctx: Context, agent, sessions, lock: threading.Lock, state: di
         # ---- 流式 turn ----
 
         def _stream_turn(self, session_id: str) -> None:
+            agent = _require_or_none(AGENT_SERVICE)
+            if agent is None:
+                self._send_json(503, {"error": "agent 服务未就绪（agent 插件未激活）"})
+                return
             body = self._read_json()
             text = str(body.get("text") or "").strip()
             if not text:
@@ -388,19 +468,22 @@ class WebUiPlugin:
     """提供 `webui` 服务：本机 HTTP 界面（装载即起，卸载即停）。"""
 
     name = "webui"
-    inject = (AGENT_SERVICE, SESSIONS_SERVICE)
+    #: 可选依赖（不是 inject！）：界面要在"换模型 / 装卸插件"时**一直开着**，
+    #: 而 agent 依赖 llm——声明成必需的话，模型一装卸 llm 就会连锁停用整个
+    #: 界面服务、端口关闭（实测踩到）。见模块 docstring 的完整说明。
+    optional = (AGENT_SERVICE, SESSIONS_SERVICE)
 
     def __init__(self, *, host: str = "127.0.0.1", port: int = 8766) -> None:
         self._host = host
         self._port = port
 
     def setup(self, ctx: Context):
-        agent = ctx.require(AGENT_SERVICE)
-        sessions = ctx.require(SESSIONS_SERVICE)
         lock = threading.Lock()
         state: dict[str, Any] = {"repaired_reported": set()}
 
-        handler = _make_handler(ctx, agent, sessions, lock, state)
+        # 依赖**不在这里取**：agent / sessions 是可选依赖，可能被卸下再装回，
+        # 抓一份存着就会指向停用的旧服务（见 _make_handler 的说明）。
+        handler = _make_handler(ctx, lock, state)
         server = ThreadingHTTPServer((self._host, self._port), handler)
         server.daemon_threads = True
         thread = threading.Thread(target=server.serve_forever, name="p3-webui", daemon=True)

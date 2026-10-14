@@ -51,8 +51,8 @@ plugins/       能力插件（把构件装成 ctx 服务）
   compact.py     ★ 上下文压缩（`_05`）：提供 compacter 服务
   clock.py       ★ 示例可装卸插件（不在默认装配里）
   boot.py        boot / boot_offline / boot_realtime
-webui/         界面插件的静态页面（index.html，原生 JS 零依赖）
-tests/         206 个用例（14 个文件；文件名统一 test_p3_*）
+webui/         界面插件的静态资源（index.html + app.css + app.js；原生 JS 零依赖）
+tests/         227 个用例（14 个文件；文件名统一 test_p3_*）
 chat.py demo.py run.bat run.sh conftest.py
 ```
 
@@ -68,6 +68,12 @@ chat.py demo.py run.bat run.sh conftest.py
 
 **inject 驱动**：依赖齐备即激活，缺失即 pending；提供者退位时依赖者先停用，
 提供者回来时自动重新激活。**装载顺序无关**。
+
+**optional（可选依赖，`_05` 新增）**：`inject` 是"必须有"，`optional` 是"有则用"。
+可选依赖缺了**照常激活**、来了**不重装**、走了**不停用**——代价是必须现取
+（`ctx.get` 可能拿到 None），换来的是"永不因别人来去而被重启"。界面插件就靠它
+在换模型 / 装卸插件时一直开着（详见 `_05_Compaction/README.md` 的「界面重构」）。
+同一个服务既 inject 又 optional → 装载期报错（声明矛盾 fail loud）。
 
 **事件**：`emit` 广播；`waterfall` 瀑布（可改写值）——`prompt/variables`
 与 `llm/request` 是仅有的两个瀑布。
