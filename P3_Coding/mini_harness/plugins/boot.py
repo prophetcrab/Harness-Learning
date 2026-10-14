@@ -82,7 +82,7 @@ def boot_offline(
     root: str | Path,
     workspace: str | Path,
     approval: ApprovalPolicy | None = None,
-    max_steps: int = 8,
+    max_steps: int | None = None,
     script: list | None = None,
 ) -> Booted:
     """全离线装配：离线模型 + 内存文件系统 + 剧本命令。
@@ -94,18 +94,16 @@ def boot_offline(
     """
     Path(workspace).mkdir(parents=True, exist_ok=True)
     llm = fake_llm_plugin(script) if script is not None else offline_llm_plugin()
-    return boot(
-        plugins=[
-            llm,
-            memory_fs_plugin(),
-            scripted_proc_plugin(),
-            SessionsPlugin(root),
-            PromptPlugin(workspace=workspace),
-            ToolsPlugin(workspace=workspace),
-            AgentPlugin(approval=approval, max_steps=max_steps),
-        ],
-        workspace=workspace,
-    )
+    plugins: list[Any] = [
+        llm,
+        memory_fs_plugin(),
+        scripted_proc_plugin(),
+        SessionsPlugin(root),
+        PromptPlugin(workspace=workspace),
+        ToolsPlugin(workspace=workspace),
+        AgentPlugin(approval=approval, max_steps=max_steps),
+    ]
+    return boot(plugins=plugins, workspace=workspace)
 
 
 def boot_realtime(
@@ -116,7 +114,7 @@ def boot_realtime(
     approval: ApprovalPolicy | None = None,
     fs: str = "local",
     shell: str = "local",
-    max_steps: int = 8,
+    max_steps: int | None = None,
 ) -> Booted:
     """真实组合：DeepSeek + 真实磁盘（local/jail）+ 真实进程（local/无）。
 

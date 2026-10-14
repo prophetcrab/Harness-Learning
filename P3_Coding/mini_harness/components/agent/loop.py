@@ -16,6 +16,7 @@ run(user_text) 顶替，inbox 留到后续主题（理由见 decisions/0002）�
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Callable, Sequence
 from copy import deepcopy
 from typing import Any
@@ -32,20 +33,25 @@ ExecuteTool = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 
 class AgentLoop:
-    """一次会话的主循环：维护历史、按 turn 排空用户输入。"""
+    """一次会话的主循环：维护历史、按 turn 排空用户输入。
+
+    `max_steps=None`（默认）= **不限步数**：长程任务（多轮工具往返）不会被
+    中途截断。要设上限也可以显式传数字——那是给"必须限住"的场景（如测试里
+    验证触顶行为）用的，触顶时以结构化状态 `max_steps` 收尾而非抛异常。
+    """
 
     def __init__(
         self,
         provider: LLMProvider,
         execute_tool: ExecuteTool,
-        max_steps: int = 8,
+        max_steps: int | None = None,
         system_prompt: str = "",
         on_event: EventHook | None = None,
         initial_messages: Sequence[Message] | None = None,
         initial_turn: int = 0,
     ) -> None:
-        if max_steps < 1:
-            raise ValueError(f"max_steps 必须 >= 1，收到 {max_steps}")
+        if max_steps is not None and max_steps < 1:
+            raise ValueError(f"max_steps 必须是 None（不限）或 >= 1，收到 {max_steps}")
         if initial_messages is not None and system_prompt:
             raise ValueError("initial_messages 与 system_prompt 互斥：system 提示应已在历史里")
         self._provider = provider
@@ -103,7 +109,13 @@ class AgentLoop:
 
         steps: list[Step] = []
 
-        for step_index in range(1, self._max_steps + 1):
+        # 不限步数（max_steps=None）时用无限计数：循环只在"得出最终回答"或
+        # "被取消"时退出；设了上限时才可能出现下面的 max_steps 收尾。
+        step_indices = (
+            itertools.count(1) if self._max_steps is None
+            else range(1, self._max_steps + 1)
+        )
+        for step_index in step_indices:
             if self._stopped(should_stop):
                 return self._finish(turn, "cancelled", steps)
 
@@ -174,7 +186,7 @@ class AgentLoop:
             if not response.message.tool_calls:
                 return self._finish(turn, "done", steps, response.message.content)
 
-        # 预算用尽：结构化终止，由调用方决定怎么处理。
+        # 仅在显式设了 max_steps 时可达：结构化终止，由调用方决定怎么处理。
         return self._finish(turn, "max_steps", steps)
 
     # ------------------------------------------------------------------

@@ -206,6 +206,11 @@ def main(argv: list[str] | None = None) -> int:
         "--self-tools", action="store_true",
         help="★ 装上自扩展工具（_01 机制）：模型可装卸白名单插件（需审批）",
     )
+    parser.add_argument(
+        "--max-steps", type=int, default=None,
+        help="单个 turn 的步数上限（默认不限——长程任务不会被截断；"
+             "给了数字则超限时以 max_steps 状态收尾）",
+    )
     args = parser.parse_args(argv)
 
     approval = build_approval(args)
@@ -218,16 +223,18 @@ def main(argv: list[str] | None = None) -> int:
             fs=args.fs,
             shell=args.shell,
             self_tools=args.self_tools,
+            max_steps=args.max_steps,
         )
         mode = f"真实组合（DeepSeek + {args.fs} + shell={args.shell}）"
     else:
         booted = boot_offline(
             root=args.root, workspace=args.workspace, approval=approval,
-            self_tools=args.self_tools,
+            self_tools=args.self_tools, max_steps=args.max_steps,
         )
         mode = "离线组合（离线模型 + MemoryFS + 剧本命令）"
     if args.self_tools:
         mode += " + 自扩展工具"
+    mode += (f"｜步数上限 {args.max_steps}" if args.max_steps else "｜步数不限")
     # RPC 模式：所有人类可读输出走 stderr（stdout 只出协议帧）。
     banner_stream = sys.stderr if args.rpc else sys.stdout
     print(f"装配完成：{mode}", file=banner_stream)

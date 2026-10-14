@@ -83,7 +83,7 @@ def boot_offline(
     root: str | Path,
     workspace: str | Path,
     approval: ApprovalPolicy | None = None,
-    max_steps: int = 8,
+    max_steps: int | None = None,
     script: list | None = None,
     self_tools: bool = False,
 ) -> Booted:
@@ -119,7 +119,7 @@ def boot_realtime(
     approval: ApprovalPolicy | None = None,
     fs: str = "local",
     shell: str = "local",
-    max_steps: int = 8,
+    max_steps: int | None = None,
     self_tools: bool = False,
 ) -> Booted:
     """真实组合：DeepSeek + 真实磁盘（local/jail）+ 真实进程（local/无）。

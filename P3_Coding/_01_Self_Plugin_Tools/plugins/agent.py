@@ -98,7 +98,7 @@ class AgentService:
         registry: ToolRegistry,
         approval: ApprovalPolicy | None = None,
         timeout: float = 30.0,
-        max_steps: int = 8,
+        max_steps: int | None = None,
         middlewares: Sequence[ToolMiddleware] = (),
     ) -> None:
         self._ctx = ctx
@@ -232,7 +232,7 @@ class AgentPlugin:
         *,
         approval: ApprovalPolicy | None = None,
         timeout: float = 30.0,
-        max_steps: int = 8,
+        max_steps: int | None = None,
         middlewares: Sequence[ToolMiddleware] = (),
     ) -> None:
         self._approval = approval

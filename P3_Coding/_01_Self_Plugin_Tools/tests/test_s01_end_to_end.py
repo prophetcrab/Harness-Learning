@@ -241,3 +241,32 @@ def test_memory_fs_leaves_no_trace_on_disk(tmp_path: Path):
     booted.agent.ask("写 a.txt", session_id="s1")
     assert not any((tmp_path / "ws").rglob("a.txt"))
     booted.close()
+
+
+def test_default_is_unlimited_steps(tmp_path: Path):
+    """默认不限步数：长程任务不会被截断（回归：曾默认 8 步）。
+
+    用剧本让模型连调 12 次工具再收尾——若仍有默认上限，turn 会以
+    `max_steps` 结束；现在应一路跑完到 `done`。
+    """
+    calls = [
+        tool_call_reply("calculate", {"expression": f"{i}+{i}"}) for i in range(1, 13)
+    ]
+    booted = _offline(tmp_path, calls + [text_reply("十二步都算完了。")])
+    result = booted.agent.ask("连算十二次", session_id="long")
+    assert result.status == "done"
+    assert len(result.steps) == 13          # 12 次工具 + 1 次收尾
+    assert result.final_text == "十二步都算完了。"
+    booted.close()
+
+
+def test_explicit_max_steps_still_caps(tmp_path: Path):
+    """显式设限时仍能触顶（能力保留，只是不再是默认）。"""
+    booted = boot_offline(
+        root=tmp_path / "s", workspace=tmp_path / "ws",
+        script=[tool_call_reply("calculate", {"expression": "1+1"})] * 5,
+        max_steps=3,
+    )
+    result = booted.agent.ask("会触顶", session_id="capped")
+    assert result.status == "max_steps" and len(result.steps) == 3
+    booted.close()

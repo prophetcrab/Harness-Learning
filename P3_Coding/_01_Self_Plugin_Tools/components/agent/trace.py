@@ -19,7 +19,8 @@ from components.llm.vocabulary import Message
 
 # 一个 turn 的三种收尾方式：
 #   done       —— 模型给出最终回答
-#   max_steps  —— 步数预算用尽仍未收尾（结构化终止，不是异常）
+#   max_steps  —— 显式设了步数上限且用尽（结构化终止，不是异常）
+#                 默认 None = 不限步数（长程任务不会被截断）
 #   cancelled  —— 被外部取消（cancel() 或 should_stop 回调）
 TurnStatus = Literal["done", "max_steps", "cancelled"]
 
