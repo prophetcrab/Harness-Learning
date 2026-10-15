@@ -7,12 +7,17 @@ P3 的**地基**：一个把"能力"全部表达为插件的 mini harness。三�
 > 本目录是**整合包/基线快照**（在 `_05_Compaction` 完成时重生成；见 PLAN.md
 > 的"整合包重生成时机"）。日常开发在各阶段目录里做，基线在里程碑处同步。
 > 阶段定位与路线见 [../README.md](../README.md) 与 [../PLAN.md](../PLAN.md)。
+>
+> **口径**：基线 = `_05` 完成态，**不含 `_06` 的工具插件化**（那在
+> [`_06_Tool_Plugins/`](../_06_Tool_Plugins/README.md)里，按纪律下一个里程碑
+> 才重生成）。但**收官时的三处跨版本修复已回填**（决策 0039：端口让路 /
+> 管理面板指纹 / 被截断日志的投影修剪）——它们的现场同样存在于基线的页面里。
 
 ## 快速开始
 
 ```bash
 cd P3_Coding/mini_harness
-python -m pytest -q                    # 344 用例，全离线
+python -m pytest -q                    # 351 用例，全离线
 python demo.py                         # 八节演示（装配 / 台账 / 对话 / resume / 热插拔 / 回卷 / 界面插件 / RPC）
 python chat.py --ask "帮我算 2+3"       # 离线一个 turn
 python chat.py                         # 离线交互（/web 现场装卸界面插件）
@@ -38,6 +43,7 @@ components/    纯构件（P1/P2/P3 沉淀；不 import kernel）
   agent/         主循环（turn/step + 轨迹 + 取消 + 每步上下文压缩）
                  runner.py：turn 执行器（后台线程 + 多订阅者；并行 / 接回 / 中断）
   context/       token 估算与请求构成拆分（仪表与压缩共用）
+  net.py         端口选择：有主就让路（多 harness 并存时账本不互相串）
   shell/         界面契约：PanelSpec / DisplaySpec / RouteSpec + 统一发现
                  （插件自述"我有个页面 / 我的事件怎么画 / 我的端点"，壳零知识）
   rpc/           换行 JSON-RPC 帧词汇 + 传输（协议线纪律）

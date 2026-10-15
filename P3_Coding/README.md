@@ -20,6 +20,12 @@ P3 阶段的编码工作区。**组织方式沿用 P2：阶段式工作区**—�
 按 [PLAN.md](PLAN.md) 的纪律，整合包**只在 `_05` 与 `_11` 两个里程碑重生成**——
 `_06` 不触发；所以基线目前不含工具插件化（要看它请进 `_06_Tool_Plugins/`）。
 
+> **P3 到此收尾（2026-10-16，用户决定）**：`_01`–`_06` + 四轮 `_05` 收尾全部完成，
+> `_07` 及以后**暂停**（原计划是"按垂类裁剪"，垂类未定）。收官时做了一次
+> **与参考项目 dsh 的同形度核对**，查出三处"还不够插件化"的偏差——**记录在案、
+> 暂不补**（见下节第 9 条）：它们不是缺陷，而是当前形态与 dsh 的差距清单，将来
+> 若要继续推进"完全插件化"，从这里接着做。
+
 > P3 的路线定位见根 [README.md](../README.md) 的"未来路线图"。按计划，P3 的
 > 能力范围应由"垂类"裁剪；先交付**地基**，后续能力（自扩展、流式、预算计量、
 > 压缩、任务管理……）在这个底座上以插件形式增量补。决策记录见
@@ -110,9 +116,10 @@ fail loud）；`Booted.close()` 逆序卸载全部插件。
 
 ## 4. 插件清单
 
-下表的 15 个能力插件 + 1 个示例，是 P3 现有的全部插件。**默认装配装其中 11 个**
-（`boot_offline` / `boot_realtime`：`llm` `fs` `proc` `sessions` `prompt` `tools`
-`token-usage` `plugin-admin` `context-meter` `compact` `agent`）；其余按需装：
+下表的 **20 个插件**（19 个能力插件 + 1 个示例）是 P3 现有的全部插件。**默认装配装
+其中 15 个**（`boot_offline` / `boot_realtime`：`llm` `fs` `proc` `sessions` `prompt`
+`tools` `token-usage` `plugin-admin` `context-meter` `compact` + 四个工具插件
+`tool-calc` `tool-fs` `tool-search` `tool-shell` `agent`）；其余按需装：
 `--self-tools` 加 `self-tools` + `web-approval`，`--web` 加 `webui`，`--rpc` 加 `rpc`，
 `clock` 只在演示里。装哪些都能在页面的插件台账面板里一键改。
 
@@ -121,7 +128,11 @@ fail loud）；`Booted.close()` 逆序卸载全部插件。
 | `llm` | `llm` | — | FakeLLM（严格剧本，测试）/ RepeatingLLM（固定回复，交互）/ DeepSeek；调用前过 `llm/request` 瀑布，调用后广播 `llm/response` |
 | `fs` | `fs` | — | LocalFS / MemoryFS / WorkspaceJailFS（插件名带实现后缀） |
 | `proc` | `subprocess` | — | LocalSubprocess / ScriptedSubprocess（**可选**能力） |
-| `tools` | `tools` | `fs` | 组装工具面（8 件：calculate + read/write/list/edit + search/find + 可选 shell）；卸载时注销注册表 |
+| `tools` | `tools` + `tool-admin` | （可选）`approval` `fs` | `_06`：**工具面底座**——只提供**空的**注册表 + 工具管理（按 owner 的台账 + 停用/启用/卸载）+ 两件自我管理工具（`list_tools` / `install_tool`）；工具内容由下面四个插件各自登记 |
+| `tool-calc` | 工具 `calculate` | `tools` | `_06`：计算器（不依赖任何服务） |
+| `tool-fs` | 工具 4 件 | `fs` `tools` | `_06`：read / write / list / edit（危险件标审批） |
+| `tool-search` | 工具 2 件 | `fs` `tools` | `_06`：search_text / find_files（与 tool-fs **平级**，互不依赖） |
+| `tool-shell` | 工具 `shell` | `subprocess` `tools` | `_06`：命令执行（`cwd` 装配时定死；需审批） |
 | `sessions` | `sessions` | — | 打开即恢复 + 崩溃尾行修复 + 列举 + 分叉 |
 | `prompt` | `prompt` | — | section 装配 + `prompt/variables` 瀑布 + 装配单 |
 | `agent` | `agent` | `llm` `tools` `sessions` `prompt` | 会话管理：`ask(text, session_id)` 跑一个 turn；**每条会话一把锁**（同会话串行、跨会话并行） |
@@ -177,6 +188,12 @@ stdio 模式有一条硬纪律：**stdout 只出帧**（banner/台账全走 stde
 ```bash
 cd P3_Coding/mini_harness
 python -m pytest -q                       # 351 个用例（全离线；基线 = _05 完成态）
+
+# 最新阶段（工具插件化，含工具管理面板与 install_tool）：
+cd P3_Coding/_06_Tool_Plugins
+python -m pytest -q                       # 423 个用例
+python chat.py --web --realtime --self-tools --port 8795   # 起界面（左栏「管理面板」→「工具」页）
+python chat.py                            # 交互；进去后敲 /tools 看工具面（按 owner 分组）
 
 # 离线组合（默认）：离线模型 + MemoryFS + 剧本命令
 python chat.py
@@ -245,7 +262,34 @@ bash run.sh chat --realtime
   服务；P3 里 `webui` / `rpc` 两个插件都有完整的装载/卸载语义（含 TCP 端口释放、
   订阅随连接注销）。
 
-## 8. 已知边界（诚实记录）
+## 8. 与参考项目 dsh 的同形度（收官核对，三处已知偏差）
+
+dsh 的自我描述是"**Every part of the product is a plugin**，including the model
+adapter, the tool registry, the session log, **and the agent loop itself**, so each is
+**replaceable from configuration**；**There is no privileged core to patch**"。
+
+按这条尺子量，本包**大部分同形**：`kernel/` 是框架本身（dsh 里它是 `vendor/` 下的
+库，不是插件）；`components/` 是纯库（dsh 明确允许，如 `core/scope` 标注
+"library, no key"）；`chat.py`/`run.bat` 是启动器（对应 dsh 的 CLI）；`webui/` 三件套
+是 webui 插件的资源。**四处不是插件，四处都与 dsh 一致**。
+
+但有三处确实偏了（2026-10-16 核对，用户决定**暂不补**）：
+
+| 偏差 | 我们的现状 | dsh 的样子 |
+|---|---|---|
+| **主循环不是插件** | `components/agent/loop.py`，由 `plugins/agent.py` 直接 new（全仓唯一调用点） | `core/agent-loop` 是"The default driver"，槽位 `ctx.agentLoop`，可整体替换 |
+| **工具管线不属于 tools 插件** | 管线由 **agent 插件**构造（`plugins/agent.py` 的 `ToolPipeline(...)`）；tools 插件只提供注册表 | `core/tools` 同时拥有"The scoped tool registry **and guarded execution pipeline**" |
+| **管线策略层没有插座** | `middlewares=` 只是 agent 插件的构造参数，**没有任何装配会传**；`DenyTools`/`RequireApproval`/`TruncateOutput` 在测试之外无人使用；预算检查硬写在循环里 | `guard/timeout-policy`、`guard/repeat-tool-reminder` 各是一个插件，"a composition can tune or remove them" |
+
+还有一处**配套差距**（PLAN 里早已记录）：dsh 的可替换是 "replaceable **from
+configuration**"（profile / bundle / `cordis.yml` + patch 都是数据）；我们的组合写在
+`boot.py` / `chat.py` 的参数里，是代码。配置分层 P2 做过，P3 刻意推迟。
+
+**将来若继续**，一个阶段三件事：循环独立成插件 → 管线搬进 tools → 两个 guard 插件
+（把 `_03` 预算检查搬出来，顺手给中间件接上插座或删掉）。完整清单见
+[决策 0040](../docs/decisions/0040-p3-wrap-up-vs-dsh.md)。
+
+## 9. 已知边界（诚实记录）
 
 - **没有重试与错误分类**：provider 调用失败直接抛给循环，没有退避重试；
 - **没有 spill**（超大工具结果转存）与 **guard**（重复调用/空转检测）——PLAN 的
@@ -275,7 +319,7 @@ bash run.sh chat --realtime
 - 插件依赖是"服务名存在性"检查，没有版本约束、没有环形依赖检测
   （环形会成组退位，不会死循环，但语义未定义——见决策记录"后果"）。
 
-## 9. 进度说明：`_06` 的两次回退
+## 10. 进度说明：`_06` 两次回退与方案改向
 
 `_06` 在 PLAN 里写的是**任务管理**（todo）。实际做过两轮，都按用户要求撤掉了：
 
