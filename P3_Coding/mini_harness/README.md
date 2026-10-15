@@ -37,6 +37,7 @@ components/    纯构件（P1/P2/P3 沉淀；不 import kernel）
   fs/ proc/      FileSystem 与 Subprocess 接缝的实现
   agent/         主循环（turn/step + 轨迹 + 取消 + 每步上下文压缩）
   context/       token 估算与请求构成拆分（仪表与压缩共用）
+  todo/          任务清单：条目类型 / 三条约束 / 整表折叠 / 服务面 / `/todo` 命令
   rpc/           换行 JSON-RPC 帧词汇 + 传输（协议线纪律）
   env.py         .env 与真实 provider 构造
 plugins/       能力插件（把构件装成 ctx 服务）
@@ -49,10 +50,11 @@ plugins/       能力插件（把构件装成 ctx 服务）
   token_usage.py ★ 用量账本 + 页面（`_03`，8767）
   context_meter.py ★ 上下文仪表 + 页面（`_04`，8768）
   compact.py     ★ 上下文压缩（`_05`）：提供 compacter 服务
+  todo.py        ★ 任务清单（`_06`）：todos 服务 + todo_write 工具
   clock.py       ★ 示例可装卸插件（不在默认装配里）
   boot.py        boot / boot_offline / boot_realtime
 webui/         界面插件的静态资源（index.html + app.css + app.js；原生 JS 零依赖）
-tests/         227 个用例（14 个文件；文件名统一 test_p3_*）
+tests/         261 个用例（16 个文件；文件名统一 test_p3_*）
 chat.py demo.py run.bat run.sh conftest.py
 ```
 
@@ -131,6 +133,7 @@ llm  fs  proc  sessions  prompt  tools
 token-usage（`_03` 用量账本 + 页面 8767）
 context-meter（`_04` 上下文仪表 + 页面 8768）
 compact（`_05` 上下文压缩；服务名 compacter）
+todo（`_06` 任务清单；服务名 todos）
 agent（对外入口：ask 一个 turn）
 ```
 
@@ -143,4 +146,11 @@ agent（对外入口：ask 一个 turn）
 - 到窗口 90% 触发，尾巴留 10%，摘要 ≤5%；压完落在 15%~20%，触发很稀；
 - 日志只追加一条 `compact/checkpoint`（折叠声明），**绝不改写历史**；
 - 当前 turn 永不折叠；摘要调用失败只是跳过（fail-soft），对话照常继续。
+
+任务清单的行为要点（`_06`；细节见 `_06_Tasks/README.md`）：
+
+- 一个会话一张清单，状态由日志（`todo/write` 整表快照）折出——跨 turn / 重启 / fork 都在；
+- 模型工具 `todo_write` 发**完整清单**（整表替换）；人命令 `/todo` 支持序号勾选（不花模型的钱）；
+- 三条约束：内容非空不重复、**同时最多一条 in_progress**、最多 50 条；
+- 清单**不驱动续跑**——它是"我想怎么干"，不是"你要求我干到什么时候"。
 

@@ -40,6 +40,8 @@ API（静态页面在 `webui/`：index.html + app.css + app.js，纯原生 JS、
     POST /api/sessions/<id>/send    {text} → NDJSON 流：主循环事件逐条推，末行 __done
     POST /api/sessions/<id>/compact 手动压缩（`/compact`）→ NDJSON 流：
                                     成功末行 __compact_done / 无可压 __compact_noop
+    GET  /api/sessions/<id>/todo     当前任务清单（`_06`；未写过时 todos=null）
+    POST /api/sessions/<id>/todo     {line} 执行一条 `/todo ...` 子命令（不花模型的钱）
 
 已知边界（刻意的）：只绑本机、无鉴权、事件流只推给发起请求的那个客户端
 （多客户端广播属于 RPC / 事件流跟随的题目）。
@@ -56,11 +58,13 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from components.session import derive_messages
+from components.todo import run_todo_command
 from kernel import Context
 from plugins.services import (
     AGENT_SERVICE,
     APPROVAL_SERVICE,
     SESSIONS_SERVICE,
+    TODOS_SERVICE,
     TOOLS_SERVICE,
     WEBUI_SERVICE,
 )
@@ -285,6 +289,9 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
                 self._sessions_or_503(
                     lambda service: _session_detail(service, session_id)
                 )
+            elif route.startswith("/api/sessions/") and route.endswith("/todo"):
+                session_id = unquote(route[len("/api/sessions/") : -len("/todo")])
+                self._todo_view(session_id)
             elif route == "/api/approvals":
                 policy = ctx.get(APPROVAL_SERVICE)
                 pending = policy.pending_list() if policy is not None else []
@@ -300,6 +307,9 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
             elif route.startswith("/api/sessions/") and route.endswith("/compact"):
                 session_id = unquote(route[len("/api/sessions/") : -len("/compact")])
                 self._compact(session_id)
+            elif route.startswith("/api/sessions/") and route.endswith("/todo"):
+                session_id = unquote(route[len("/api/sessions/") : -len("/todo")])
+                self._todo_command(session_id)
             elif route.startswith("/api/approvals/"):
                 request_id = unquote(route[len("/api/approvals/") :])
                 body = self._read_json()
@@ -313,6 +323,34 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
                     self._send_json(404, {"error": f"没有等待中的审批：{request_id}"})
             else:
                 self._send_json(404, {"error": f"未知路由：{route}"})
+
+        # ---- 任务清单（/todo）----
+        #
+        # 与 `/goal` 同一个套路（`_06`）：两条路由都不跑 turn——`/todo` 是
+        # **人直接操作服务**，一分模型的钱都不花。命令的解析与排版在构件层
+        # （components/todo/command.py），网页与 REPL 共用同一份。
+
+        def _todo_view(self, session_id: str) -> None:
+            todos = _require_or_none(TODOS_SERVICE)
+            if todos is None:
+                self._send_json(503, {"error": "todo 插件未装载（清单服务不可用）"})
+                return
+            self._send_json(200, todos.view(session_id))
+
+        def _todo_command(self, session_id: str) -> None:
+            todos = _require_or_none(TODOS_SERVICE)
+            if todos is None:
+                self._send_json(503, {"error": "todo 插件未装载（清单服务不可用）"})
+                return
+            body = self._read_json()
+            line = str(body.get("line") or "")
+            result = run_todo_command(todos.store(session_id), line)
+            self._send_json(200, {
+                "ok": True,
+                "changed": result.changed,
+                "text": result.text,
+                **todos.view(session_id),
+            })
 
         # ---- 手动压缩（/compact） ----
 

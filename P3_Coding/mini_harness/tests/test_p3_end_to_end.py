@@ -41,11 +41,12 @@ def test_boot_offline_activates_all_plugins_and_serves(tmp_path: Path):
         "token-usage",          # `_03`：用量账本 + 用量页面
         "context-meter",        # `_04`：上下文仪表
         "compact",              # `_05`：上下文压缩（服务名 compacter）
+        "todo",                 # `_06`：任务清单（服务名 todos）
         "agent",
     ]
     assert booted.ctx.services == [
         "llm", "fs", "subprocess", "sessions", "prompt", "tools",
-        "token-usage", "context-meter", "compacter", "agent",
+        "token-usage", "context-meter", "compacter", "todos", "agent",
     ]
     tools = booted.ctx.require(TOOLS_SERVICE)
     assert "calculate" in tools.names and "shell" in tools.names
@@ -181,7 +182,8 @@ def test_swapping_fs_plugin_deactivates_and_reactivates_dependents(tmp_path: Pat
 
     booted.ctx.unload_plugin("fs:MemoryFS")
     # tools / agent 依赖 fs：随提供者退位；窗口内没有服务可用。
-    assert set(booted.ctx.pending_plugins) == {"tools", "agent"}
+    # todo（`_06`）也 inject tools：tools 停用 → 它同样退位
+    assert set(booted.ctx.pending_plugins) == {"tools", "todo", "agent"}
     assert TOOLS_SERVICE not in booted.ctx.services
 
     disk_ws = tmp_path / "disk_ws"

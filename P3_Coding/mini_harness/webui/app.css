@@ -277,6 +277,18 @@
   #cmdmenu .cmd-hint{color:var(--faint);font-size:11px;margin-left:auto;flex:none}
   #cmdmenu .cmd-empty{padding:9px 11px;color:var(--faint);font-size:12px}
 
+  /* ---------- 任务清单面板（右上角常驻） ---------- */
+  #todo-box{border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:4px;
+    flex:none;max-height:38%;overflow:auto}
+  .todo-row{display:flex;gap:7px;align-items:flex-start;padding:3px 12px;
+    font-size:12px;line-height:1.45}
+  .todo-mark{flex:none;width:13px;text-align:center;color:var(--faint)}
+  .todo-text{color:var(--muted);word-break:break-word}
+  .todo-row.completed .todo-text{color:#4b5566;text-decoration:line-through}
+  .todo-row.completed .todo-mark{color:var(--ok)}
+  .todo-row.in_progress .todo-text{color:var(--fg)}
+  .todo-row.in_progress .todo-mark{color:var(--accent)}
+
   /* ---------- trace panel ---------- */
   .evse{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--faint);
     margin:9px 0 3px;text-transform:none}

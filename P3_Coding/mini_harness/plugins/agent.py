@@ -45,6 +45,7 @@ from plugins.services import (
     LLM_SERVICE,
     PROMPT_SERVICE,
     SESSIONS_SERVICE,
+    TODOS_SERVICE,
     TOOLS_SERVICE,
 )
 
@@ -224,6 +225,7 @@ class AgentService:
         """跑一个 turn：打开（或恢复）会话 → 排空输入 → 返回结果（全程持锁）。"""
         with self._lock:
             opened = self._open_locked(session_id)
+            self._tell_todo_service(session_id)
             self._ctx.emit(
                 TURN_START,
                 session=session_id,
@@ -240,6 +242,14 @@ class AgentService:
                 final_text=result.final_text,
             )
             return result
+
+    def _tell_todo_service(self, session_id: str) -> None:
+        """告诉清单服务"现在跑的是哪个会话"——模型工具是全局注册的，
+        清单要落到这次对话的日志里（与 `_03` 用量账本记 session 同理）。
+        可选依赖：没装 todo 插件时静默跳过。"""
+        todos = self._ctx.get(TODOS_SERVICE)
+        if todos is not None and hasattr(todos, "set_current_session"):
+            todos.set_current_session(session_id)
 
     def compact(self, session_id: str = "default") -> Any | None:
         """手动压缩一次（`/compact`）：打开（或恢复）会话 → 立即折叠历史。

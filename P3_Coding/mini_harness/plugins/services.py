@@ -34,12 +34,15 @@ TOKEN_USAGE_SERVICE = "token-usage"
 CONTEXT_METER_SERVICE = "context-meter"
 #: 上下文压缩器（`_05`；agent 插件注入它，卸载 = 不再压缩）。
 COMPACTER_SERVICE = "compacter"
+#: 任务清单服务（`_06`；会话级 todo 清单，整表快照存日志）。
+TODOS_SERVICE = "todos"
 
 __all__ = [
     "AGENT_SERVICE",
     "APPROVAL_SERVICE",
     "COMPACTER_SERVICE",
     "CONTEXT_METER_SERVICE",
+    "TODOS_SERVICE",
     "TOKEN_USAGE_SERVICE",
     "CLOCK_SERVICE",
     "FS_SERVICE",

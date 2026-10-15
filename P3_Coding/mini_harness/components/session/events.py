@@ -27,6 +27,7 @@ from typing import Any
 #   usage/step        一次模型调用的 token 用量（`_03`）
 #   budget/exceeded   用量超出预算上限（`_03`）
 #   compact/checkpoint 上下文压缩检查点（`_05`）：早前的一段已折叠成一条摘要
+#   todo/write        任务清单整表快照（`_06`）：每次写入携带完整列表，最后一条赢
 EVENT_TYPES = frozenset(
     {
         "session/start",
@@ -41,6 +42,7 @@ EVENT_TYPES = frozenset(
         "usage/step",
         "budget/exceeded",
         "compact/checkpoint",
+        "todo/write",
     }
 )
 
@@ -58,6 +60,7 @@ _REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "usage/step": ("turn", "step", "prompt_tokens", "completion_tokens", "turn_total"),
     "budget/exceeded": ("turn", "used", "budget"),
     "compact/checkpoint": ("summary", "folded"),
+    "todo/write": ("todos",),
 }
 
 

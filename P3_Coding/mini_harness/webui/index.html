@@ -31,6 +31,7 @@
   </section>
 
   <section id="center">
+    <div class="banner" id="banner" hidden></div>
     <div id="chat"><div class="wrap"></div></div>
     <div class="runline" id="runline"><span>就绪</span></div>
     <form id="composer" autocomplete="off">
@@ -42,6 +43,11 @@
   </section>
 
   <section id="right">
+    <div id="todo-box" hidden>
+      <div class="side-head"><h2>任务清单</h2>
+        <span class="count" id="todo-count"></span></div>
+      <div id="todo-list"></div>
+    </div>
     <div class="side-head"><h2>事件轨迹</h2>
       <span class="count mono" id="seq-tag"></span></div>
     <table id="events"><tbody></tbody></table>
