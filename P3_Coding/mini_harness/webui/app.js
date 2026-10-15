@@ -841,6 +841,10 @@ async function loadSessions() {
 }
 
 async function openSession(id, opts = {}) {
+  // **切会话先断开上一条流的视图**（服务端的 turn 不受影响，仍在跑）。
+  // 不断开的话，上一条会话的帧会继续画进这条会话的聊天区与事件流——
+  // 这正是"多个会话同步进行时展示内容混乱"的根因。
+  if (activeWatch && activeWatch.session !== id) abortWatch();
   state.current = id;
   if (!opts.silent) setIdle("加载中…");
   const data = await api(`/api/sessions/${encodeURIComponent(id)}/events`);
@@ -850,8 +854,8 @@ async function openSession(id, opts = {}) {
   if (!opts.silent) setIdle(`会话 ${id} · ${(data.events || []).length} 条事件`);
   // **接回正在跑的 turn**（`_05` 收尾）：刷新页面/切会话时，服务端那个 turn
   // 从没停过——这里只是重新订阅它，帧继续往页面上流。没有在跑的就 404，静默跳过。
-  // `state.sending` 为真说明**已经在跟随某条流**（自己刚发的 / 正在接回的），
-  // 再挂一个订阅会让同一帧渲染两遍。
+  // `activeWatch` 为真说明已经在跟随（自己刚发的 / 正在接回的），再挂会让同一帧
+  // 渲染两遍；而上面已经保证"要跟随的一定是当前这条会话"。
   if (!opts.noWatch && !activeWatch && !state.sending
       && (state.runningIds || new Set()).has(id)) {
     watchTurn(id, { silent: true });
@@ -880,7 +884,10 @@ function terminalFrames() {
 /** 逐行解析一条 NDJSON 响应：每帧交给 onFrame，返回**末帧**。
  *
  *  收尾帧（`__done` / `__error` / 插件自述的 terminal）只记不发——它们是协议，
- *  不是内容；其余一律当事件显示（包括 `__approval` 这类"要人看见"的帧）。 */
+ *  不是内容；其余一律交给 onFrame（包括 `__approval` 这类"要人看见"的帧）。
+ *
+ *  **本函数不碰界面**：画到哪里由 onFrame（即 `frameSinkFor` 造的那个 sink）决定，
+ *  因为它才知道"这些帧属于哪条会话、当前显示的是不是它"。 */
 async function readNDJSON(res, onFrame) {
   const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
   let last = null;
@@ -898,9 +905,7 @@ async function readNDJSON(res, onFrame) {
         if (frame.kind === "__error") onFrame(frame.kind, frame.payload);  // 错误要显示
         continue;
       }
-      // 其余一律当事件显示——包括 `__approval` / `__repair` 这类"要人看见"的帧。
       onFrame(frame.kind, frame.payload);
-      if (!String(frame.kind).startsWith("__")) appendLiveEvent(frame.kind, frame.payload);
     }
   }
   return last;
@@ -924,13 +929,19 @@ async function streamFrames(url, body, onFrame, signal) {
 async function runCompact() {
   if (state.sending) return;
   if (!state.current) state.current = "default";
+  const sid = state.current;                 // 同上：切走之后不再画
+  const ctl = new AbortController();
+  activeWatch = { session: sid, ctl };
   state.sending = true;
   setBusy(true);
   removeWorking(); setRunning("正在压缩上下文…");
   ensureWorking("压缩中（会调用一次模型做摘要）…");
   let last = null;
   try {
-    last = await streamFrames(`/api/sessions/${encodeURIComponent(state.current)}/compact`, {}, handleFrame);
+    last = await streamFrames(
+      `/api/sessions/${encodeURIComponent(sid)}/compact`, {}, frameSinkFor(sid), ctl.signal,
+    );
+    if (state.current !== sid) return;       // 已经切走：什么都不画
     removeWorking();
     if (last && last.kind === "__error") {
       setRunline(last.payload.message || "压缩失败", "err");
@@ -942,12 +953,15 @@ async function runCompact() {
       else if (!(state.display || []).some((d) => d.kind === last.kind)) setIdle("完成");
     } else setIdle("完成");
   } catch (err) {
-    removeWorking();
-    setRunline(`出错：${esc(err.message)}`, "err");
+    if (err.name !== "AbortError" && state.current === sid) {
+      removeWorking();
+      setRunline(`出错：${esc(err.message)}`, "err");
+    }
   } finally {
+    if (activeWatch && activeWatch.ctl === ctl) activeWatch = null;
     state.sending = false;
     setBusy(false);
-    await openSession(state.current, { silent: true });
+    if (state.current === sid) await openSession(sid, { silent: true, noWatch: true });
   }
 }
 
@@ -1023,10 +1037,51 @@ async function runCommand(index) {
    "运行中"的可视化有三处：左栏会话列表的标记、状态栏的转圈文案、
    运行中的 turn 自己那张"进行中"卡片。 */
 
-/** 当前正在订阅的 turn（null = 没在订阅任何 turn）。 */
+/** 当前正在跟随的流：`{ session, ctl }`（null = 没在跟随）。
+ *
+ *  **必须带 session**：带上了才知道"这些帧该不该画"。多会话并行时，A 的流在
+ *  后台继续跑（服务端不受影响），但用户可能已经切到 B——那时把 A 的帧画进 B 的
+ *  聊天区与事件流，就是"展示内容混乱"（真实报告：多个会话同步进行时内容串台）。 */
 let activeWatch = null;
 /** 发送代次：见 sendMessage 里"中断后重发"的竞态说明。 */
 let sendGeneration = 0;
+
+/** 造一个"属于某条会话"的写帧端。
+ *
+ *  两道闸门都在这里：
+ *    1. **只有当前显示的会话是它时**才画（否则整帧丢弃，服务端照常跑）；
+ *    2. 事件流（右栏）与聊天区（中栏）**一起**受这个判断管——它们都是"这条会话
+ *       的视图"，漏掉一个就会出现"聊天区是 B、右栏却在长 A 的事件"。
+ *
+ *  被丢弃的帧不会丢内容：所有事件都已经落在会话日志里，切回去时
+ *  `openSession` 会按日志重渲染出完整历史。
+ */
+function frameSinkFor(sessionId) {
+  return (kind, payload) => {
+    if (state.current !== sessionId) return;      // 不是当前会话：只丢渲染
+    handleFrame(kind, payload);
+    if (!String(kind).startsWith("__")) appendLiveEvent(kind, payload);
+  };
+}
+
+/** 断开当前跟随的流（**只断"看"，不断服务端的 turn**）。
+ *
+ *  切会话时必须调：否则上一条会话的帧会继续往新会话的界面上画。
+ *  `activeWatch` 先清空再 abort —— abort 会让那条流的 finally 跑起来，
+ *  里面靠 `activeWatch` 判身份，先清掉它就不会去动新会话的界面状态。
+ *
+ *  同时把 `state.sending` 与忙碌态一并放开：那条流的 finally 因为身份不匹配
+ *  不会再碰这些标志，不放的话界面会卡在"发送中"（按钮永远禁用）。
+ */
+function abortWatch() {
+  const watch = activeWatch;
+  if (!watch) return;
+  activeWatch = null;
+  state.sending = false;
+  setBusy(false);
+  removeWorking();
+  try { watch.ctl.abort(); } catch (e) { /* 已结束 */ }
+}
 
 /** 中断请求 + 收尾（409 分支与"中断"按钮共用）。 */
 async function interruptTurn(sessionId) {
@@ -1046,9 +1101,9 @@ async function interruptTurn(sessionId) {
 /** 订阅某会话正在跑的 turn（GET /turn）：帧照常走 handleFrame。
  *  `silent` = 接回时不刷状态栏（页面刚打开，别和"加载中"抢）。 */
 async function watchTurn(sessionId, opts = {}) {
-  if (activeWatch) { try { activeWatch.abort(); } catch (e) { /* 已结束 */ } }
+  if (activeWatch) { try { activeWatch.ctl.abort(); } catch (e) { /* 已结束 */ } }
   const ctl = new AbortController();
-  activeWatch = ctl;
+  activeWatch = { session: sessionId, ctl };
   state.sending = true;
   setBusy(true);
   let last = null;
@@ -1059,9 +1114,6 @@ async function watchTurn(sessionId, opts = {}) {
       { method: "GET", signal: ctl.signal },
     );
     if (res.status === 404) {                // 没有在跑的 turn：正常情形，不是错误
-      activeWatch = null;
-      state.sending = false;
-      setBusy(false);
       return;
     }
     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
@@ -1071,7 +1123,7 @@ async function watchTurn(sessionId, opts = {}) {
     // 刷新之后卡片不会自己回来，而 turn 还在服务端阻塞等它（到点 fail-closed）。
     // 放在订阅**已挂上之后**：这样补看与实时之间没有空窗。
     recoverApprovals();
-    last = await readNDJSON(res, handleFrame);
+    last = await readNDJSON(res, frameSinkFor(sessionId));
     if (last && last.kind === "__error") {
       setRunline(last.payload.message || "turn 失败", "err");
       wroteTerminal = true;
@@ -1090,15 +1142,18 @@ async function watchTurn(sessionId, opts = {}) {
   } catch (err) {
     if (err.name !== "AbortError") setRunline(`接回失败：${esc(err.message)}`, "err");
   } finally {
-    if (activeWatch === ctl) {
+    // **身份判定用 ctl**（而不是"activeWatch 还在不在"）：被 abortWatch 换掉的
+    // 那条流不该再动界面——它属于上一条会话，用户已经不在看它了。
+    if (activeWatch && activeWatch.ctl === ctl) {
       activeWatch = null;
       state.sending = false;
       setBusy(false);
       removeWorking();
-      await openSession(sessionId, { silent: true });
-      // 收尾文案已经在上面按终帧写过（`__done` → "turn N · done · …"），
-      // 这里只在"没有终帧"时兜一句，别把有用的信息盖掉。
-      if (!wroteTerminal && !$("runline").classList.contains("err")) setIdle("就绪");
+      // 只在"还在看这条会话"时才重渲染与写状态栏（否则会盖掉新会话的界面）
+      if (state.current === sessionId) {
+        await openSession(sessionId, { silent: true, noWatch: true });
+        if (!wroteTerminal && !$("runline").classList.contains("err")) setIdle("就绪");
+      }
     }
   }
 }
@@ -1115,10 +1170,16 @@ async function watchTurn(sessionId, opts = {}) {
  */
 async function sendMessage(text, { retryBusy = false } = {}) {
   if (!state.current) state.current = "default";
+  // **这条流属于哪条会话**：下面所有的渲染与状态栏更新都要拿它对照。
+  // 用户切走之后，这条流仍在后台读（服务端 turn 不受影响），但**一个像素都不许
+  // 再画**——否则 A 的流式文本会长进 B 的聊天区（真实报告的多会话串台）。
+  const sid = state.current;
   // 「第几次发送」：中断后重发时，旧那条流的收尾 finally 可能还没跑完。
   // 它如果照常去 setIdle / 重渲染，就会盖掉新 turn 的状态（踩过：
   // 重发成功但状态栏停在"已中断"）。所以收尾前先核对代次。
   const gen = ++sendGeneration;
+  const ctl = new AbortController();
+  activeWatch = { session: sid, ctl };
   state.sending = true;
   setBusy(true);
   ta.value = ""; autosize();
@@ -1133,11 +1194,13 @@ async function sendMessage(text, { retryBusy = false } = {}) {
     for (let attempt = 0; attempt < attempts; attempt++) {
       try {
         const last = await streamFrames(
-          `/api/sessions/${encodeURIComponent(state.current)}/send`, { text }, handleFrame,
+          `/api/sessions/${encodeURIComponent(sid)}/send`, { text },
+          frameSinkFor(sid), ctl.signal,
         );
         if (last && last.kind === "__done") done = last.payload;
         break;
       } catch (err) {
+        if (err.name === "AbortError") break;      // 切走断流：正常收尾，不报错
         const busy = String(err.message || "").includes("409");
         if (busy && attempt + 1 < attempts) {
           // 上一个 turn 还在收尾（协作式取消要等工具返回）：等一会儿再试
@@ -1161,10 +1224,14 @@ async function sendMessage(text, { retryBusy = false } = {}) {
       state.sending = false;
       setBusy(false);
     }
-    await openSession(state.current, { silent: true, noWatch: true });
-    if (gen === sendGeneration) {
-      if (done) setIdle(`turn ${done.turn} · ${done.status} · ${done.steps} 步 · 最终回答已渲染`);
-      else if (!$("runline").classList.contains("err")) setIdle("就绪");
+    if (activeWatch && activeWatch.ctl === ctl) activeWatch = null;
+    // **只在还看着这条会话时才重渲染与写状态栏**（切走了就别动新会话的界面）
+    if (state.current === sid) {
+      await openSession(sid, { silent: true, noWatch: true });
+      if (gen === sendGeneration) {
+        if (done) setIdle(`turn ${done.turn} · ${done.status} · ${done.steps} 步 · 最终回答已渲染`);
+        else if (!$("runline").classList.contains("err")) setIdle("就绪");
+      }
     }
   }
 }

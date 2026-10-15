@@ -450,3 +450,112 @@ def test_every_dom_id_app_js_reaches_for_exists_in_index_html():
         f"app.js 用到的这些 id 在 index.html 里不存在：{missing}"
         f"（典型症状：点按钮时控制台报 null，界面无反应）"
     )
+
+
+# ---------------------------------------------------------------------------
+# 多会话并行时不串台（前端行为，用 Node 真跑那段逻辑）
+# ---------------------------------------------------------------------------
+
+_SINK_PROBE = r"""
+import { readFileSync } from "node:fs";
+const js = readFileSync(process.argv[2], "utf8");
+const m = js.match(/function frameSinkFor\(sessionId\) \{[\s\S]*?\n\}/);
+if (!m) { console.error("NO_MATCH"); process.exit(2); }
+
+// 用桩件把这段函数真跑起来（不是读源码断言字符串）：
+//   state.current = 当前显示的会话；handleFrame = 画聊天区；appendLiveEvent = 画事件流
+const state = { current: "A" };
+const rendered = [], events = [];
+const handleFrame = (kind, payload) => rendered.push(payload.text ?? "(control)");
+const appendLiveEvent = (kind, payload) => events.push(payload.text ?? "(control)");
+const frameSinkFor = eval("(" + m[0] + ")");
+
+const sinkA = frameSinkFor("A"), sinkB = frameSinkFor("B");
+sinkA("step_delta", { text: "甲的流" });        // 看着 A，A 的帧 → 显示
+sinkB("step_delta", { text: "乙的流" });        // 看着 A，B 的帧 → **必须丢弃**
+sinkA("__progress", {});                        // 控制帧：显示但**不进**事件流
+state.current = "B";                            // 用户切到 B
+sinkA("step_delta", { text: "甲还在跑" });      // A 的帧 → **必须丢弃**
+sinkB("step_delta", { text: "乙的流2" });       // B 的帧 → 显示
+console.log(JSON.stringify({ rendered, events }));
+"""
+
+
+def _run_node_sink_probe(js_path) -> dict:
+    """在 Node 里真跑 app.js 的 frameSinkFor（前端逻辑的行为测试）。
+
+    静态断言（"字符串在不在文件里"）抓不住"判断写错了"这类 bug——而这次报告的
+    "多会话串台"正是判断缺失。所以这里把那段函数**执行**起来看结果。
+    """
+    import json as _json
+    import shutil
+    import subprocess
+    import tempfile
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("未安装 node，跳过前端行为测试")
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = Path(tmp) / "probe.mjs"
+        probe.write_text(_SINK_PROBE, encoding="utf-8")
+        result = subprocess.run(
+            [node, str(probe), str(js_path)],
+            capture_output=True, text=True, timeout=60,
+        )
+    assert result.returncode == 0, f"Node 跑失败：{result.stderr[:400]}"
+    return _json.loads(result.stdout)
+
+
+def test_frames_are_dropped_when_viewing_another_session():
+    """**多会话并行时不串台**：只渲染"当前显示的那条会话"的帧（真实报告）。
+
+    症状：多个会话同时进行时，展示内容混乱——A 还在跑，用户切到 B，
+    A 的流式文本继续长进 B 的聊天区（右栏事件流也一样）。
+
+    根因：所有推流都用同一个 `handleFrame` 直接渲染，**帧里不带会话信息**，
+    渲染函数也不问"我该不该画"。切会话只是换了显示，订阅照旧在推。
+
+    修法：`frameSinkFor(sessionId)` 造出"属于某条会话"的写帧端，两道闸门——
+    不是当前会话的帧整帧丢弃（服务端照常跑完，内容都在日志里，切回去重渲染）；
+    事件流与聊天区一起受同一判断管。
+
+    本用例**执行**那段逻辑（Node），而不是读源码字符串。
+    """
+    root = Path(__file__).resolve().parent.parent / "webui"
+    out = _run_node_sink_probe(root / "app.js")
+    assert out["rendered"] == ["甲的流", "(control)", "乙的流2"], (
+        f"渲染的帧不对：{out['rendered']}"
+        "（预期：A 的帧 → 控制帧 → 切到 B 后 B 的帧；别的都该被丢弃）"
+    )
+    assert out["events"] == ["甲的流", "乙的流2"], (
+        f"事件流收到的帧不对：{out['events']}（控制帧 `__` 开头不该进事件流）"
+    )
+
+
+def test_every_stream_call_site_binds_a_session():
+    """所有推流入口都必须用**带会话的 sink**，不能再把裸 `handleFrame` 传进去。
+
+    这条是上面那条的"覆盖面"补充：`frameSinkFor` 写对了，但如果某个入口
+    （send / turn 接回 / compact…）漏用它，那条路径照样串台。
+    """
+    root = Path(__file__).resolve().parent.parent / "webui"
+    js = (root / "app.js").read_text(encoding="utf-8")
+    # 调用可能跨多行（`streamFrames(` 后面换行写参数），所以按**语句**扫：
+    # 先把 `await <call>(...)` 整段抠出来（用括号配平找到收尾括号）。
+    offenders: list[str] = []
+    for match in re.finditer(r"await\s+(streamFrames|readNDJSON)\s*\(", js):
+        start = match.end()                       # 开括号之后
+        depth, i = 1, start
+        while i < len(js) and depth:
+            if js[i] == "(":
+                depth += 1
+            elif js[i] == ")":
+                depth -= 1
+            i += 1
+        args = js[start : i - 1]
+        if "frameSinkFor(" not in args:
+            offenders.append(f"{match.group(1)}({args.strip()[:80]})")
+    assert not offenders, (
+        "这些推流调用点没把帧绑定到会话（多会话并行时会串台）：\n  "
+        + "\n  ".join(offenders)
+    )
