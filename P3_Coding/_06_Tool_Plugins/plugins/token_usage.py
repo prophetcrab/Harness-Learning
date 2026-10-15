@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from components.net import pick_port
 from components.shell import PanelSpec
 from components.tools import define_tool
 from kernel import Context
@@ -338,7 +339,11 @@ class TokenUsagePlugin:
 
         if self._serve:
             handler = type("Handler", (_UsageHandler,), {"ledger": ledger})
-            server = ThreadingHTTPServer((self._host, self._port), handler)
+            # 端口被别的 harness 占着就换系统分配（见 components/net.py：
+            # Windows 上第二个 bind 同一个端口**不报错**，两个进程都以为
+            # "我的账本在 8767"，页面徽标就会读到另一个进程的数字）
+            port = pick_port(self._host, self._port)
+            server = ThreadingHTTPServer((self._host, port), handler)
             server.daemon_threads = True
             thread = threading.Thread(
                 target=lambda: server.serve_forever(poll_interval=POLL_INTERVAL),

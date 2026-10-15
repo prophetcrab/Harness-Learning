@@ -41,6 +41,7 @@ from components.context.tokens import (
     measure_parts,
 )
 from components.llm.provider import LLMRequest
+from components.net import pick_port
 from components.shell import PanelSpec
 from kernel import Context
 from plugins.events import LLM_REQUEST, LLM_RESPONSE
@@ -348,7 +349,9 @@ class ContextMeterPlugin:
             return None
 
         handler = type("Handler", (_MeterHandler,), {"meter": meter})
-        server = ThreadingHTTPServer((self._host, self._port), handler)
+        # 端口被占就换系统分配（理由见 components/net.py 与 token_usage 的同一处）
+        port = pick_port(self._host, self._port)
+        server = ThreadingHTTPServer((self._host, port), handler)
         server.daemon_threads = True
         thread = threading.Thread(
             target=lambda: server.serve_forever(poll_interval=POLL_INTERVAL),

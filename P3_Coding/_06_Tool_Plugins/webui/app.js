@@ -545,6 +545,24 @@ const ledger = { plugins: [], added: [] };
 /** 面板状态：标签页列表、当前标签、每页的快照（各自缓存，切回来不闪）。 */
 const adminPanel = { specs: [], current: null, snapshots: {}, stamp: "" };
 
+/** 面板内容的指纹：**渲染与"要不要重画"用同一个来源**。
+ *
+ *  踩过的坑：原先 renderAdminPanel 里写 `{tab, s, a}`、loadLedger 里比较的是
+ *  `{tab, p, s, a}`——两个字符串**永远不会相等**，于是"内容没变就不重画"的
+ *  判断永远失效：每 2.5 秒重写一次 innerHTML，卡片反复播入场动画
+ *  （`.pm-card` 带 animation），用户看到的就是**面板一直闪**。
+ *
+ *  一条纪律：指纹只由**一处**计算；要加字段就改这里（两边自动一致）。 */
+function adminStamp() {
+  return JSON.stringify({
+    tab: adminPanel.current,
+    specs: adminPanel.specs,
+    p: ledger.plugins,
+    s: adminPanel.snapshots[adminPanel.current] || null,
+    a: ledger.added,
+  });
+}
+
 function ledgerOpen() {
   return !$("plugin-modal").hidden;
 }
@@ -563,9 +581,9 @@ function adminTabs() {
 
 function openLedger(tab) {
   $("plugin-modal").hidden = false;
-  adminPanel.stamp = "";                     // 重新打开：允许走一次入场动画
   if (tab) adminPanel.current = tab;
   renderTabs();
+  adminPanel.stamp = "";                     // 重新打开：允许走一次入场动画
   renderAdminPanel();
   const box = $("pm-search");
   if (box) box.focus();
@@ -732,7 +750,7 @@ function renderAdminPanel() {
     foot.innerHTML = "只读视图：管理插件未装载";
     applyLedgerFilter();
     body.scrollTop = keepScroll;
-    adminPanel.stamp = JSON.stringify({ tab: spec.key, p: ledger.plugins });
+    adminPanel.stamp = adminStamp();
     return;
   }
 
@@ -780,9 +798,7 @@ function renderAdminPanel() {
   foot.innerHTML = spec.foot || "人点按钮不需要审批——审批拦的是模型发起的那条路径。";
   applyLedgerFilter();
   body.scrollTop = keepScroll;
-  adminPanel.stamp = JSON.stringify({
-    tab: spec.key, s: snapshot, a: ledger.added,
-  });
+  adminPanel.stamp = adminStamp();
 }
 
 /** 只读降级的分组渲染（没装任何管理插件时用；同样只按通用字段画）。 */
@@ -888,11 +904,7 @@ async function loadLedger() {
   // 每 2.5 秒无脑重写 innerHTML 会让卡片反复播入场动画、并把滚动位置顶回顶部。
   if (ledgerOpen()) {
     renderTabs();
-    const stamp = JSON.stringify({
-      tab: adminPanel.current, p: ledger.plugins,
-      s: adminPanel.snapshots[adminPanel.current], a: ledger.added,
-    });
-    if (stamp !== adminPanel.stamp) renderAdminPanel();
+    if (adminStamp() !== adminPanel.stamp) renderAdminPanel();
   }
 }
 
@@ -1592,10 +1604,20 @@ async function refreshPanelBadges() {
   }
 }
 
-/** 按面板自述建/更新顶栏按钮（ledger 每次刷新都会调）。 */
+/** 按面板自述建/更新顶栏按钮（ledger 每次刷新都会调）。
+ *
+ *  **自述没变就不重建**：这个函数每 2.5 秒被调一次，无脑 `innerHTML = ""`
+ *  会让按钮先消失再出现（连它的 hover 态一起丢），看起来就是"顶栏在闪"。
+ *  与面板同一取向：变了才动 DOM。 */
 function renderPanelButtons() {
   const host = document.getElementById("panel-btns");
   if (!host) return;
+  const signature = JSON.stringify(panelBar.panels.map((p) => [p.service, p.label, p.url]));
+  if (signature === host.dataset.sig && host.childElementCount) {
+    refreshPanelBadges();
+    return;
+  }
+  host.dataset.sig = signature;
   host.innerHTML = "";
   for (const panel of panelBar.panels) {
     const btn = document.createElement("button");

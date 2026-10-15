@@ -80,3 +80,4 @@
 - [0036 工具插件化：底座与内容分开（一件事一个插件）](0036-tool-plugins.md)（P3 `_06`）
 - [0037 管理弹层由自述驱动：壳内置一页只读，插件声明即可顶替](0037-self-described-admin-panel.md)（P3 `_06`）
 - [0038 源码即插件：入口判据、署名与审批预览的三处实测教训](0038-loader-owner-approval-lessons.md)（P3 `_06`）
+- [0039 用户报告的三处修复：端口争抢、面板闪烁、被截断的日志](0039-port-panel-and-log-robustness.md)（P3 `_06`）

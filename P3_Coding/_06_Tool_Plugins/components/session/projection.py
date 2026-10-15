@@ -15,6 +15,18 @@
 - `effective_system_prompt` / `latest_prompt_trace` 回答"当前生效的文本 /
   装配单是什么"：最近一条 `system/message`，否则 `session/start` 的初始值。
 
+**日志被截断时的补齐（只删不造）**：日志可能被外部破坏——最典型的是**头部被截**
+（文件被删掉一段、或人工清理过），于是投影出的第一条消息可能是某个工具结果，
+它对应的 `assistant(tool_calls)` 已经不在了；进程在"模型刚要调工具"与"工具结果
+落盘"之间被杀，也会留下"调用了但没有结果"。这两种形状**都会被 API 拒绝**：
+
+    Messages with role 'tool' must be a response to a preceding message with 'tool_calls'
+
+于是那条会话**再也发不出任何请求**（每次 400），而用户只看到"出错"。`sanitize_pairs`
+按"只删不造"的原则修：孤儿工具结果丢掉、没人应答的调用从 assistant 消息里摘掉
+（摘空了就整条丢）。**绝不凭空编一条结果**——那会违反"模型可见即已记录"。
+日志本身一个字节都不动，重放仍同构（每次重放都做同样的修剪）。
+
 映射关系（只有这几类事件参与消息投影）：
     session/start     → system 消息（若有 system_prompt）
     system/message    → 遮蔽 system 文本（最近的生效）
@@ -42,7 +54,14 @@ from collections.abc import Iterable
 from copy import deepcopy
 from typing import Any
 
-from components.llm.vocabulary import Message, ToolCall, assistant, system, tool_result, user
+from components.llm.vocabulary import (
+    Message,
+    ToolCall,
+    assistant,
+    system,
+    tool_result,
+    user,
+)
 from components.session.events import Event
 
 
@@ -127,15 +146,81 @@ def conversation_pairs(events: Iterable[Event]) -> list[tuple[int, Message]]:
     return pairs
 
 
+def sanitize_pairs(pairs: list[tuple[int, Message]]) -> list[tuple[int, Message]]:
+    """修剪"配对不上"的消息（只删不造）——日志被截断时的兜底。
+
+    规则（按顺序扫一遍）：
+
+    - `tool` 消息：其 `tool_call_id` 必须在**前一条 assistant 消息声明过**的调用里
+      （多条结果跟在同一条 assistant 后面是正常形态：assistant 一次申请多个调用）；
+      配对不上 → 丢掉（孤儿结果）；
+    - `assistant` 带 `tool_calls`：若其中某个调用**始终没有结果**（日志在结果落盘前
+      断了），把那些调用从这条消息里摘掉；摘空且没有正文 → 整条丢掉。
+
+    为什么是"删"而不是"补一条结果"：补 = 往模型的历史里塞进**日志里没有的内容**，
+    违反"模型可见即已记录"（铁律 #1）。删只影响投影（日志原样留着），而且
+    "发生过什么"仍能从日志里查（`assistant/message` 的 tool_calls 还在日志里）。
+    """
+    cleaned: list[tuple[int, Message]] = []
+    #: 最近一条带 tool_calls 的 assistant 消息：下标 + 还在等结果的调用 id
+    pending: dict[str, Any] | None = None
+    for seq, message in pairs:
+        if message.role == "assistant":
+            if pending is not None:
+                cleaned = _drop_unanswered(cleaned, pending)     # 上一条：收尾
+            ids = [call.id for call in message.tool_calls]
+            pending = {"index": len(cleaned), "ids": set(ids)} if ids else None
+            cleaned.append((seq, message))
+            continue
+        if message.role == "tool":
+            if pending is not None and message.tool_call_id in pending["ids"]:
+                pending["ids"].discard(message.tool_call_id)
+                cleaned.append((seq, message))
+            # 孤儿结果（对应的申请不在投影里）：丢掉
+            continue
+        # user / system：上一轮对话就此结束，未应答的调用在这里收尾
+        if pending is not None:
+            cleaned = _drop_unanswered(cleaned, pending)
+            pending = None
+        cleaned.append((seq, message))
+    if pending is not None:
+        cleaned = _drop_unanswered(cleaned, pending)
+    return cleaned
+
+
+def _drop_unanswered(
+    pairs: list[tuple[int, Message]], pending: dict[str, Any]
+) -> list[tuple[int, Message]]:
+    """把没人应答的那些 tool_calls 从对应的 assistant 消息里摘掉（见 sanitize_pairs）。"""
+    if not pending["ids"]:
+        return pairs
+    index = pending["index"]
+    if not 0 <= index < len(pairs):
+        return pairs                     # 消息已被前一轮修剪掉：无事可做
+    seq, message = pairs[index]
+    kept_calls = [call for call in message.tool_calls if call.id not in pending["ids"]]
+    if not kept_calls and not (message.content or "").strip():
+        return pairs[:index] + pairs[index + 1 :]        # 空壳：整条丢
+    trimmed = Message(
+        role="assistant", content=message.content, tool_calls=kept_calls,
+        tool_call_id=message.tool_call_id,
+    )
+    return pairs[:index] + [(seq, trimmed)] + pairs[index + 1 :]
+
+
 def conversation_message_seqs(events: Iterable[Event]) -> list[int]:
     """当前投影出的对话消息各自的来源 seq（诊断/断言用；顺序即列表顺序）。"""
     return [seq for seq, _ in conversation_pairs(events)]
 
 
 def derive_messages(events: Iterable[Event]) -> list[Message]:
-    """从事件序列投影出模型历史；system 消息取"当前生效"的那一条。"""
+    """从事件序列投影出模型历史；system 消息取"当前生效"的那一条。
+
+    最后一步是 `sanitize_pairs`：日志被截断/损坏时，投影仍要产出一份**能被 API
+    接受**的历史（否则那条会话会被永久卡死——每次请求都 400）。日志本身不动。
+    """
     materialized = list(events)
-    messages = [message for _, message in conversation_pairs(materialized)]
+    messages = [message for _, message in sanitize_pairs(conversation_pairs(materialized))]
     text = effective_system_prompt(materialized)
     if text is None:
         return messages
@@ -152,4 +237,5 @@ __all__ = [
     "derive_messages",
     "effective_system_prompt",
     "latest_prompt_trace",
+    "sanitize_pairs",
 ]

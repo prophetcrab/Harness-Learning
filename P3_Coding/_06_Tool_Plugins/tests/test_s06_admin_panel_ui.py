@@ -340,3 +340,115 @@ def test_snapshots_are_refetched_every_cycle():
         "面板会锁死在打开时的内容"
     )
     assert out["panelHasNewTool"] is True, f"新装的工具没出现在面板里：{out}"
+
+
+# ---------------------------------------------------------------------------
+# 面板不停闪烁（用户报告）——指纹必须"渲染与比较同源"
+# ---------------------------------------------------------------------------
+
+_STAMP_PROBE = r"""
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
+
+const src = readFileSync(process.argv[2], "utf8");
+
+function fakeEl(tag = "div") {
+  const base = {
+    tagName: tag, style: {}, dataset: {}, hidden: false, value: "",
+    textContent: "", innerHTML: "", className: "", scrollTop: 0, scrollHeight: 0,
+    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+    addEventListener() {}, removeEventListener() {}, focus() {}, blur() {},
+    appendChild() {}, remove() {}, setAttribute() {}, getAttribute: () => null,
+    closest: () => null, contains: () => false,
+    querySelector: () => fakeEl(), querySelectorAll: () => [],
+  };
+  return new Proxy(base, {
+    get(t, k) { return k in t ? t[k] : (t[k] = fakeEl(String(k))); },
+    set(t, k, v) { t[k] = v; return true; },
+  });
+}
+const byId = new Map();
+// 面板每 2.5 秒该不该重画：数一数 #pm-body 被写了几次
+let bodyWrites = 0;
+const document = {
+  getElementById: (id) => {
+    if (!byId.has(id)) {
+      const fresh = fakeEl();
+      if (id === "plugin-modal") fresh.hidden = true;   // 初始：面板是关着的
+      byId.set(id, fresh);
+    }
+    const node = byId.get(id);
+    if (id === "pm-body") {
+      return new Proxy(node, {
+        set(t, k, v) { if (k === "innerHTML") bodyWrites += 1; t[k] = v; return true; },
+        get(t, k) { return t[k]; },
+      });
+    }
+    return node;
+  },
+  createElement: (tag) => fakeEl(tag), addEventListener() {},
+  querySelector: () => fakeEl(), querySelectorAll: () => [], body: fakeEl("body"),
+};
+
+let toolsSnapshot = { groups: [{ category: "tools", label: "tools",
+    plugins: [{ name: "list_tools", status: "enabled", category: "tools", actions: [] }] }],
+  installable: [], actions: {}, counts: { total: 1, active: 1, disabled: 0 } };
+const ledgerPayload = {
+  plugins: [{ name: "tools", status: "active", category: "base" }],
+  services: [], tools: ["list_tools"], panels: [], display: [],
+  admins: [{ key: "tools", label: "工具", title: "工具管理", snapshot: "api/tools",
+             action: "api/tools/{name}/{action}", order: 20 }],
+};
+const fetch = async (url) => {
+  const body = String(url).includes("api/tools") ? toolsSnapshot : ledgerPayload;
+  return { ok: true, status: 200, json: async () => body, text: async () => "" };
+};
+
+const sandbox = {
+  document, fetch, location: { host: "127.0.0.1:1" }, console,
+  setTimeout: (fn) => { if (typeof fn === "function") fn(); return 0; },
+  clearTimeout() {}, setInterval: () => 0, clearInterval() {},
+  addEventListener() {}, CSS: { escape: (s) => s },
+};
+sandbox.window = sandbox;
+vm.createContext(sandbox);
+vm.runInContext(src, sandbox, { filename: "app.js" });
+await new Promise((done) => setTimeout(done, 80));
+
+sandbox.openLedger();                     // 打开面板（第一次渲染）
+const afterOpen = bodyWrites;
+
+// 服务器数据**一个字都没变**，轮询跑 5 轮（真实里是 2.5 秒一次）
+for (let i = 0; i < 5; i++) await sandbox.loadLedger();
+const afterIdle = bodyWrites;
+
+// 真变了才该重画：加一件工具
+toolsSnapshot = { groups: [{ category: "tool-x", label: "tool-x",
+    plugins: [{ name: "new_tool", status: "enabled", category: "tool-x", actions: [] }] }],
+  installable: [], actions: {}, counts: { total: 2, active: 2, disabled: 0 } };
+await sandbox.loadLedger();
+const afterChange = bodyWrites;
+
+console.log(JSON.stringify({ afterOpen, afterIdle, afterChange }));
+"""
+
+
+def test_panel_does_not_redraw_when_nothing_changed():
+    """**面板不该每 2.5 秒重画一次**（用户报告"一直在闪烁"）。
+
+    回归背景：`renderAdminPanel` 里写的指纹是 `{tab, s, a}`，而 `loadLedger`
+    里比较时构造的是 `{tab, p, s, a}`——**两个字符串永远不相等**，于是
+    "内容没变就不重画"的判断永远失效：每轮都把 `innerHTML` 重写一遍，
+    卡片带着入场动画（`.pm-card{animation:pm-in}`）反复重播，看起来就是闪。
+
+    这条真跑 `loadLedger`：数据不变时 `#pm-body` 只能被写一次（打开那次）；
+    数据变了才允许第二次。
+    """
+    out = _run_probe(_STAMP_PROBE)
+    assert out["afterOpen"] == 1, f"打开面板没渲染：{out}"
+    assert out["afterIdle"] == out["afterOpen"], (
+        f"数据没变却重画了 {out['afterIdle'] - out['afterOpen']} 次——面板会一直闪"
+    )
+    assert out["afterChange"] == out["afterIdle"] + 1, (
+        f"数据变了应当重画一次：{out}"
+    )
