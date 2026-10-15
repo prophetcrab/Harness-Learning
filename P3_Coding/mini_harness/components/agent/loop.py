@@ -120,7 +120,14 @@ class AgentLoop:
     # ------------------------------------------------------------------
 
     def cancel(self) -> None:
-        """请求取消（粘性）：下一次检查点（step 前）生效，之后所有 turn 都取消。"""
+        """请求取消**当前这个 turn**：下一个检查点（step 边界 / 流式分块之间）生效。
+
+        **它不是粘性的**（`_05` 收尾改）：标记在每个 turn 开始时清零。原先写成
+        "之后所有 turn 都取消"，在"中断当前 turn 再重新发一条"的用法下就是
+        灾难——中断过一次的会话，此后的每条消息都会在 0 步处被立刻取消，
+        看上去像"这条会话坏了"（实测踩到：重发的消息 turn 1→2 全是 cancelled·0 步）。
+        要停掉整条会话，用户不再发消息就行了。
+        """
         self._cancelled = True
 
     @property
@@ -149,6 +156,9 @@ class AgentLoop:
         should_stop: Callable[[], bool] | None = None,
     ) -> TurnResult:
         """处理一个 turn：把一条用户输入排空到最终回答 / 预算用尽 / 取消。"""
+        # 取消标记只在**本 turn 内**有效：新 turn 开始时清零（见 cancel() 的说明）。
+        # 放在最前面而不是 after append 之后：必须在第一个检查点之前就清掉。
+        self._cancelled = False
         self._turn += 1
         turn = self._turn
         self._history.append(user(user_text))
@@ -208,6 +218,16 @@ class AgentLoop:
                     turn_total=turn_usage.total_tokens,
                 )
             if stream_cancelled:
+                step = Step(index=step_index, request=request, response=response, tool_results=[])
+                steps.append(step)
+                self._emit("step_end", turn=turn, step=step_index)
+                return self._finish(turn, "cancelled", steps, response.message.content, turn_usage)
+            if self._stopped(should_stop):
+                # 取消不一定发生在流式过程中：**非流式**的 provider 调用要整个返回
+                # 才轮到这里（`_complete_or_stream` 里的分块检查看不到中途的取消）。
+                # 不在这里补一刀的话，"模型正在想"时按下中断会被忽略——turn 照样
+                # 以 done 收尾，用户以为没生效。工具调用不执行（半截决定不落地）。
+                response.message.tool_calls = []
                 step = Step(index=step_index, request=request, response=response, tool_results=[])
                 steps.append(step)
                 self._emit("step_end", turn=turn, step=step_index)

@@ -69,6 +69,26 @@
   .item-t{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap}
   .item-s{color:var(--faint);font-size:11.5px;margin-top:1px}
+  /* 正在跑 turn 的会话（`_05` 收尾：turn 跑在服务端，刷新也能接着看） */
+  .item.running{border-color:#2f4361}
+  .item.running .item-s{color:var(--accent)}
+  .run-dot{display:inline-block;width:7px;height:7px;border-radius:99px;
+    background:var(--ok);margin-right:6px;vertical-align:1px;
+    box-shadow:0 0 8px #4ade8099;animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  /* 会话忙时的选择条（中断 / 等它跑完）——不替用户决定，也不静默排队 */
+  .busy-choice{margin:0 22px 10px;padding:11px 14px;border-radius:11px;
+    background:#1a1f2b;border:1px solid #33405c;animation:pm-in .2s ease-out}
+  .bc-t{font-size:13px;font-weight:600;color:var(--fg)}
+  .bc-s{font-size:12px;color:var(--muted);margin:3px 0 9px}
+  .bc-s b{color:var(--warn);font-weight:600}
+  .bc-a{display:flex;gap:7px}
+  .bc-btn{background:#161c26;color:var(--muted);border:1px solid #26303f;
+    border-radius:8px;padding:5px 13px;font:inherit;font-size:12px;cursor:pointer;
+    transition:color .12s,border-color .12s,background .12s}
+  .bc-btn:hover{color:var(--fg);border-color:#3a4a61;background:#1b222d}
+  .bc-btn.danger:hover{color:#fca5a5;border-color:#5b2b2b;background:#1f1414}
   .mini{background:var(--panel-2);border:1px solid var(--line-2);color:var(--fg);
     border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;transition:all .15s}
   .mini:hover{border-color:var(--accent);color:var(--accent)}

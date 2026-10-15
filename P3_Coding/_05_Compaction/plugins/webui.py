@@ -27,8 +27,11 @@ effect/disposer 的用武之地。P2 时代的页面服务是手工起的（`cre
   而不是让整个界面消失）；`webui` 插件本身永不因依赖变动被重启；
 - **线程边界**：HTTP 服务在自己的线程里跑，但只**调用**服务、不改 ctx 状态；
   ctx 的装载/卸载只在主线程做（内核是同步的，没有锁）；
-- **会话串行化**：agent 服务的会话缓存不是线程安全的（多个标签页同时提问会
-  踩到它），本插件用一把锁把"跑 turn"串起来——同一时刻只有一个 turn 在执行。
+- **turn 跑在后台线程，HTTP 请求只是订阅者**（`_05` 收尾改）：
+  原先 turn 在**请求线程**里跑、并用一把全局锁串行化。两个后果：不同会话
+  不能并行；客户端一断（刷新页面）就再也看不到这个 turn 的进展。
+  现在 `TurnRunner` 在后台跑 turn、把帧广播给"当前订阅者"（可多个、可随时来走），
+  于是：**不同会话真正并行**、**刷新页面接回同一个 turn**、**不看着也照跑完**。
 
 API —— **壳只提供"通用"路由，插件专属路由由插件自述**（`_05` 收尾改造）：
 
@@ -36,9 +39,12 @@ API —— **壳只提供"通用"路由，插件专属路由由插件自述**（
       GET  /                          页面（index.html）
       GET  /app.css  /app.js          静态资源（白名单，见 STATIC_FILES）
       GET  /api/ledger                插件台账 / 服务 / 工具面 / 面板与显示自述
-      GET  /api/sessions              会话列表（turns / last_seq / 最近状态）
+      GET  /api/sessions              会话列表（turns / last_seq / 最近状态 / 在跑？）
       GET  /api/sessions/<id>/events  某会话的事件流 + 投影出的消息
-      POST /api/sessions/<id>/send    {text} → NDJSON 流：主循环事件逐条推，末行 __done
+      POST /api/sessions/<id>/send    {text} → 起一个 turn 并订阅：NDJSON 逐帧，
+                                      末行 __done；该会话已有在跑的 turn → 409
+      GET  /api/sessions/<id>/turn    只订阅（页面刷新后接回正在跑的那个）
+      POST /api/sessions/<id>/interrupt  请求中断（协作式；没有在跑的 → 404）
 
     **插件自述的**（壳不认识它们属于哪个插件，只按声明挂载）：
       GET  /api/approvals             审批插件声明
@@ -50,8 +56,8 @@ API —— **壳只提供"通用"路由，插件专属路由由插件自述**（
       display  我的事件该怎么画 → 壳按四种通用渲染器之一画
       routes   我有专属端点 → 壳挂载并负责传输（分块 / 分帧 / 收尾）
 
-已知边界（刻意的）：只绑本机、无鉴权、事件流只推给发起请求的那个客户端
-（多客户端广播属于 RPC / 事件流跟随的题目）。
+已知边界（刻意的）：只绑本机、无鉴权；中断是协作式的（正在跑的**工具调用**
+不会被砍断，要等它返回——见 components/agent/runner.py）。
 """
 
 from __future__ import annotations
@@ -64,6 +70,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from components.agent.runner import TurnRunner
 from components.session import derive_messages
 from components.shell import RouteTable, display_of, panels_of, routes_of
 from kernel import Context
@@ -200,21 +207,41 @@ def _collect_panels(ctx: Context) -> list[dict[str, Any]]:
     return sorted(collected, key=lambda item: (item["order"], item["service"]))
 
 
-def _sessions_overview(sessions) -> dict[str, Any]:
-    """会话列表：id / turn 数 / 最新 seq / 最近一个 turn 的收尾状态。"""
+def _sessions_overview(sessions, runner: Any = None) -> dict[str, Any]:
+    """会话列表：id / turn 数 / 最新 seq / 最近收尾状态 / **是否正在跑 turn**。
+
+    "正在跑"从执行器现取（`runner.running()`），不是从日志猜的——日志里
+    一个 turn 的 `turn/start` 与 `turn/end` 之间就是进行中，但没有 turn/end 的
+    会话也可能是被强杀了（那是"崩溃修复"的题目），两者必须区分开。
+    """
+    running = runner.running() if runner is not None else {}
     items: list[dict[str, Any]] = []
     for session_id in sessions.list_sessions():
         events, _ = sessions.load(session_id)
         turns = sum(1 for event in events if event.type == "turn/start")
         last_end = next((event for event in reversed(events) if event.type == "turn/end"), None)
+        run = running.get(session_id)
         items.append(
             {
                 "id": session_id,
                 "turns": turns,
                 "last_seq": events[-1].seq if events else 0,
                 "last_status": last_end.data.get("status") if last_end else None,
+                # 在跑的会话：页面据此在列表里标"运行中"并允许中断。
+                "running": run is not None,
             }
         )
+    # 正在跑但还没有任何日志的会话（刚发出去、日志还没落）也要列出来，
+    # 否则页面上的"新会话"会在列表里消失一小会儿。
+    known = {item["id"] for item in items}
+    for session_id, run in running.items():
+        if session_id not in known:
+            items.append(
+                {
+                    "id": session_id, "turns": 0, "last_seq": 0,
+                    "last_status": None, "running": run.running,
+                }
+            )
     return {"sessions": items}
 
 
@@ -241,13 +268,16 @@ def _session_detail(sessions, session_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
-    """构造处理器类：路由 + 流式 turn + 会话串行化。
+def _make_handler(ctx: Context, runner: Any, state: dict[str, Any]):
+    """构造处理器类：路由 + 流式订阅 + 中断。
 
     **服务一律现取，不在这里抓一份存着**（`_05` 查出的纪律）：`agent` /
     `sessions` 是可选依赖，它们可能被卸下又装回（换模型、自扩展工具装卸），
     抓存的旧引用会指向一个已经停用的服务。`ctx.get()` 每次问当前值——
     服务不在时返回 None，由各路由给出人话响应。
+
+    `runner` 是 turn 执行器（后台线程 + 多订阅者），见 components/agent/runner.py。
+    它是**进程级**的（不属于某个插件），由插件在 setup 里建好后交给处理器闭包。
     """
 
     def _require_or_none(name: str) -> Any | None:
@@ -259,6 +289,9 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
         #: 默认（HTTP/1.0）下没有 Content-Length 也没有 chunked，客户端只能
         #: 等连接关闭才认账，于是"逐字到达"变成"一次全到"（实测踩到）。
         protocol_version = "HTTP/1.1"
+
+        #: turn 执行器（闭包注入；每次请求现用，不做类型假设）。
+        _runner = runner
 
         def log_message(self, fmt: str, *args: Any) -> None:
             # 静音默认访问日志（写 stderr 会刷屏）；需要排查时再打开。
@@ -332,7 +365,10 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
             elif route == "/api/ledger":
                 self._send_json(200, _ledger(ctx))
             elif route == "/api/sessions":
-                self._sessions_or_503(lambda service: _sessions_overview(service))
+                self._sessions_or_503(lambda service: _sessions_overview(service, self._runner))
+            elif route.startswith("/api/sessions/") and route.endswith("/turn"):
+                session_id = unquote(route[len("/api/sessions/") : -len("/turn")])
+                self._watch_turn(session_id)
             elif route.startswith("/api/sessions/") and route.endswith("/events"):
                 session_id = unquote(route[len("/api/sessions/") : -len("/events")])
                 self._sessions_or_503(
@@ -349,7 +385,10 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
             route = urlparse(self.path).path
             if route.startswith("/api/sessions/") and route.endswith("/send"):
                 session_id = unquote(route[len("/api/sessions/") : -len("/send")])
-                self._stream_turn(session_id)
+                self._start_turn(session_id)
+            elif route.startswith("/api/sessions/") and route.endswith("/interrupt"):
+                session_id = unquote(route[len("/api/sessions/") : -len("/interrupt")])
+                self._interrupt_turn(session_id)
             elif self._plugin_routes().dispatch(
                 "POST", route, ctx=ctx, body=self._read_json(), responder=self
             ):
@@ -391,17 +430,31 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
             self.send_header("Cache-Control", "no-store")
             self.send_header("Transfer-Encoding", "chunked")
             self.send_header("X-Accel-Buffering", "no")
+            # 同上：流式响应一律写完即关（被中途放弃的连接不能复用）。
+            self.send_header("Connection", "close")
+            self.close_connection = True
             self.end_headers()
             self._alive = True
             self._chunked = True
             return _FrameWriter(self)
 
-        # ---- 流式 turn ----
+        # ---- 流式 turn（起一个 turn 并订阅它） ----
 
-        def _stream_turn(self, session_id: str) -> None:
-            agent = _require_or_none(AGENT_SERVICE)
-            if agent is None:
+        def _runner_or_503(self) -> Any | None:
+            if self._runner is None:
                 self._send_json(503, {"error": "agent 服务未就绪（agent 插件未激活）"})
+                return None
+            return self._runner
+
+        def _start_turn(self, session_id: str) -> None:
+            """POST /send：起一个 turn，然后**订阅**它（与页面刷新后接回同一条路）。
+
+            **顺序很讲究**（踩过）：reserve（忙就 409，此时还没发响应头）→
+            发 200 + chunked 头 → 挂订阅者 → launch。倒过来的话，快 turn 会在
+            订阅者挂上之前把帧全发完，客户端一帧都收不到。
+            """
+            runner = self._runner_or_503()
+            if runner is None:
                 return
             body = self._read_json()
             text = str(body.get("text") or "").strip()
@@ -409,6 +462,56 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
                 self._send_json(400, {"error": "缺少 text"})
                 return
 
+            run = runner.reserve(session_id, text)
+            if run is None:
+                # 该会话已有在跑的 turn：**不排队**（排队会让用户以为发出去了）。
+                # 前端据此弹"中断 / 等待"，由人来决定，见 app.js 的 busy 分支。
+                self._send_json(
+                    409,
+                    {
+                        "error": "这条会话正在跑一个 turn（要发新的，请先中断或等它结束）",
+                        "busy": True,
+                        "session": session_id,
+                    },
+                )
+                return
+            self._stream_turn(run, start=True)
+
+        def _watch_turn(self, session_id: str) -> None:
+            """GET /turn：只订阅当前在跑的 turn（页面刷新后接回）。"""
+            runner = self._runner_or_503()
+            if runner is None:
+                return
+            run = runner.get(session_id)
+            if run is None:
+                self._send_json(404, {"error": "该会话当前没有在跑的 turn", "running": False})
+                return
+            self._stream_turn(run)
+
+        def _interrupt_turn(self, session_id: str) -> None:
+            """POST /interrupt：请求中断（协作式）。
+
+            **回 JSON 而不是流**，而且 `ok` 只表示"请求已送达主循环"——
+            真正停下要等循环下一次看标记（正在跑的工具调用不砍断）。
+            """
+            runner = self._runner_or_503()
+            if runner is None:
+                return
+            if not runner.cancel(session_id):
+                self._send_json(404, {"error": "该会话当前没有在跑的 turn"})
+                return
+            self._send_json(200, {"ok": True, "session": session_id})
+
+        def _stream_turn(self, run: Any, *, start: bool = False) -> None:
+            """把一条 turn 的帧流给本次请求的调用方（订阅 → 逐帧写 → 收尾）。
+
+            `start=True`：这个 run 是刚 reserve 的、**还没启动**——挂上订阅者后
+            才 launch（保证不漏帧，见 _start_turn 的顺序说明）。
+
+            **晚到的订阅者与已完成的 turn**：`subscribe` 返回 False 说明 turn
+            已经跑完——此时直接发它的终帧，让客户端立刻收尾，而不是挂在
+            "等下一帧"上直到超时（刷新刚好撞上收尾是常见情形）。
+            """
             self.send_response(200)
             self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
@@ -420,45 +523,49 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
             # 3) 每帧写完 flush（见 _write_event），否则攒在缓冲区里一起发。
             self.send_header("Transfer-Encoding", "chunked")
             self.send_header("X-Accel-Buffering", "no")   # 中间层别缓冲（nginx 惯例）
+            # 同上：流式响应一律写完即关（被中途放弃的连接不能复用）。
+            self.send_header("Connection", "close")
+            self.close_connection = True
             self.end_headers()
             self._alive = True
             self._chunked = True
 
-            def emit(kind: str, payload: dict[str, Any]) -> None:
+            def sink(kind: str, payload: dict[str, Any]) -> None:
                 self._write_event(kind, payload)
+                if run.final is not None and (kind, payload) == run.final:
+                    # 终帧也是广播出来的（等终帧的订阅者靠它收尾）——记一笔，
+                    # 收尾时别重复发一遍（重复的 `__done` 会让前端的"末帧"语义悬空）。
+                    self._sent_final = True
+
+            self._sent_final = False
 
             # 整个推送过程包在 try/finally 里：**任何**退出路径（正常、异常、
             # 提前 return）都必须写终止块，否则客户端会一直等下一帧。
             try:
-                # 会话缓存与剧本 provider 都不是线程安全的：turn 在这里串行执行。
-                # 审批通道也在这把锁**之内**挂/摘：保证"问人"永远问当前真正在跑的
-                # 那个 turn 的连接（锁外挂会让等待中的 turn 互相抢通道）。
-                policy = ctx.get(APPROVAL_SERVICE)
-                with lock:
-                    handle = None
-                    if policy is not None and hasattr(policy, "attach_stream"):
-                        handle = policy.attach_stream(emit)
-                    opened = agent.open(session_id, on_event=emit)
-                    if opened.repaired and session_id not in state["repaired_reported"]:
-                        state["repaired_reported"].add(session_id)
-                        emit("__repair", {"message": "上次会话被强杀，日志尾部已自动修复"})
+                if start:
+                    # 订阅者已挂上（launch 里 append）→ 现在才真的开跑。
+                    self._runner.launch(run, sink=sink)
                     try:
-                        result = agent.ask(text, session_id=session_id)
-                    except Exception as exc:  # 兜底：异常也以帧的形式告知前端，不炸服务
-                        emit("__error", {"message": f"turn 执行失败：{exc}"})
-                        return
+                        run.done.wait()
                     finally:
-                        if handle is not None and hasattr(policy, "detach_stream"):
-                            policy.detach_stream(handle)  # 只摘自己挂的那个（身份校验）
-                emit(
-                    "__done",
-                    {
-                        "turn": result.turn,
-                        "status": result.status,
-                        "steps": len(result.steps),
-                        "final_text": result.final_text,
-                    },
-                )
+                        run.unsubscribe(sink)
+                elif not run.subscribe(sink):
+                    # 已经跑完（或正好在此刻收尾）：终帧一定有了，直接发完收工。
+                    final = run.final
+                    if final is not None:
+                        self._write_event(*final)
+                    return
+                else:
+                    try:
+                        # 等终帧。**这不是"跑 turn"**——turn 在后台线程里跑，
+                        # 这里只是等它结束（等多久都不影响它继续）。
+                        run.done.wait()
+                    finally:
+                        run.unsubscribe(sink)
+                # 自己没收到终帧就补一条：客户端断了、或终帧在 subscribe
+                # 之前就发过了。不补的话前端会一直转圈。
+                if self._alive and not self._sent_final and run.final is not None:
+                    self._write_event(*run.final)
             finally:
                 self._close_stream()
 
@@ -536,12 +643,65 @@ class WebUiPlugin:
         self._port = port
 
     def setup(self, ctx: Context):
-        lock = threading.Lock()
         state: dict[str, Any] = {"repaired_reported": set()}
 
-        # 依赖**不在这里取**：agent / sessions 是可选依赖，可能被卸下再装回，
-        # 抓一份存着就会指向停用的旧服务（见 _make_handler 的说明）。
-        handler = _make_handler(ctx, lock, state)
+        # turn 执行器：**turn 跑在后台线程里**，HTTP 请求只是订阅者（见模块 docstring）。
+        # 回调从 ctx 现取服务——webui 声明它们是 optional（可能被卸下再装回），
+        # 抓一份存着会指向已停用的旧服务。
+        def ask_turn(session_id: str, text: str, sink: Any) -> Any:
+            """跑一个 turn。`sink` 是这个 turn 的写帧端（执行器给的）。
+
+            **谁需要它，就在哪里挂上**（两处）：
+
+            - `agent.watch`：主循环事件（step_request / step_delta / …）；
+            - `policy.attach_thread_stream`：审批帧——审批是在**这条 turn 的
+              线程**里被调用的，所以按线程登记就能"各问各的人"。
+
+            都挂在**跑 turn 的这条线程**上（本函数就是执行器的线程体），
+            收尾时摘掉。
+            """
+            agent = ctx.get(AGENT_SERVICE)
+            if agent is None:
+                raise RuntimeError("agent 服务未就绪（agent 插件未激活）")
+            policy = ctx.get(APPROVAL_SERVICE)
+            unwatch = agent.watch(session_id, lambda kind, payload: sink(kind, payload))
+            attached = policy is not None and hasattr(policy, "attach_thread_stream")
+            if attached:
+                policy.attach_thread_stream(sink)
+            try:
+                agent.open(session_id)
+                return agent.ask(text, session_id=session_id)
+            finally:
+                unwatch()
+                if attached:
+                    policy.detach_thread_stream()
+
+        def cancel_turn(session_id: str) -> bool:
+            agent = ctx.get(AGENT_SERVICE)
+            if agent is None:
+                return False
+            return bool(agent.cancel(session_id))
+
+        def prepare_turn(session_id: str) -> str | None:
+            """开场提示（如日志尾部刚被修复）——只在首次报告，不重复刷屏。"""
+            agent = ctx.get(AGENT_SERVICE)
+            if agent is None:
+                return None
+            try:
+                opened = agent.open(session_id)
+            except Exception:  # noqa: BLE001 —— 开场信息拿不到不该挡住 turn
+                return None
+            if not opened.repaired or session_id in state["repaired_reported"]:
+                return None
+            state["repaired_reported"].add(session_id)
+            return "上次会话被强杀，日志尾部已自动修复"
+
+        runner = TurnRunner(
+            ask=ask_turn, cancel=cancel_turn, prepare=prepare_turn,
+            thread_prefix="p3-turn",
+        )
+
+        handler = _make_handler(ctx, runner, state)
         server = ThreadingHTTPServer((self._host, self._port), handler)
         server.daemon_threads = True
         thread = threading.Thread(

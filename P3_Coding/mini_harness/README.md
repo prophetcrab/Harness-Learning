@@ -12,7 +12,7 @@ P3 的**地基**：一个把"能力"全部表达为插件的 mini harness。三�
 
 ```bash
 cd P3_Coding/mini_harness
-python -m pytest -q                    # 322 用例，全离线
+python -m pytest -q                    # 341 用例，全离线
 python demo.py                         # 八节演示（装配 / 台账 / 对话 / resume / 热插拔 / 回卷 / 界面插件 / RPC）
 python chat.py --ask "帮我算 2+3"       # 离线一个 turn
 python chat.py                         # 离线交互（/web 现场装卸界面插件）
@@ -36,6 +36,7 @@ components/    纯构件（P1/P2/P3 沉淀；不 import kernel）
   tools/         注册表 + pre/execute/post 管线 + 审批策略 + 参数模型 + 计算器
   fs/ proc/      FileSystem 与 Subprocess 接缝的实现
   agent/         主循环（turn/step + 轨迹 + 取消 + 每步上下文压缩）
+                 runner.py：turn 执行器（后台线程 + 多订阅者；并行 / 接回 / 中断）
   context/       token 估算与请求构成拆分（仪表与压缩共用）
   shell/         界面契约：PanelSpec / DisplaySpec / RouteSpec + 统一发现
                  （插件自述"我有个页面 / 我的事件怎么画 / 我的端点"，壳零知识）
@@ -56,7 +57,7 @@ plugins/       能力插件（把构件装成 ctx 服务）
   clock.py       ★ 示例可装卸插件（不在默认装配里）
   boot.py        boot / boot_offline / boot_realtime
 webui/         界面插件的静态资源（index.html + app.css + app.js；原生 JS 零依赖）
-tests/         322 个用例（18 个文件；文件名统一 test_p3_*）
+tests/         341 个用例（19 个文件；文件名统一 test_p3_*）
 chat.py demo.py run.bat run.sh conftest.py
 ```
 
@@ -124,11 +125,16 @@ ctx.unload_plugin("webui")             # 卸载：shutdown + join + 端口释放
 可一键 安装/卸载/停用/启用 + 筛选）、对话（NDJSON 流式推事件）、
 **append-only 事件流**。API：`/api/ledger`、
 `/api/sessions`、`/api/sessions/<id>/events`、`POST /api/sessions/<id>/send`、
+`GET /api/sessions/<id>/turn`（接回正在跑的 turn）、
+`POST /api/sessions/<id>/interrupt`（中断）、
 `/api/plugins`（分类台账）、`POST /api/plugins/<name>/<action>`（一键操作）。
 
 三条实现纪律：**生命周期只在主线程**（内核无锁）；服务线程只调服务、不改 ctx；
-**跑 turn 用一把锁串行化**（agent 的会话缓存不是线程安全的，多标签页同时提问
-会踩）。已知边界：只绑本机、无鉴权；事件流只推给发起的那个客户端。
+**turn 跑在后台线程里、HTTP 请求只是订阅者**（`_05` 收尾改）——于是不同会话
+**并行**（同会话仍串行：历史是那一份对象）、**刷新页面接回同一个 turn**
+（没人看着也照跑完）、**可以中断**（协作式；在跑的工具要返回）。细节见
+`components/agent/runner.py` 与 `docs/decisions/0034-turn-runner-concurrency.md`。
+已知边界：只绑本机、无鉴权；事件流只推给当前订阅者（可多个、可随时来走）。
 
 ## 已装的能力插件（`boot_offline` / `boot_realtime` 的默认面）
 

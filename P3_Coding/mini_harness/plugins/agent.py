@@ -97,10 +97,20 @@ class HarnessSession:
 class AgentService:
     """会话管理器：按 session_id 打开/缓存/复用会话（对外唯一入口）。
 
-    **线程安全**：`open` / `ask` 用一把可重入锁串行化——会话缓存（`_open`）、
-    观察者注册、以及底层 provider（剧本队列不是线程安全的）都不允许并发触碰。
-    界面（webui）与 RPC 可能从不同线程同时发起 turn；这把锁是**底层保障**，
-    各入口自己的锁只负责它那层的语义（如 webui 的"标签页 → 观察者"绑定）。
+    **并发粒度：每条会话一把锁**（`_05` 收尾改）。原先是一把全局 `RLock` 把
+    整个 turn 包住——A 会话跑 30 秒，B 会话就得在门口干等，尽管两条会话的
+    历史、循环、压缩器完全不共享。现在：
+
+    - 打开/查表用一把**短临界区**的全局锁（只护几个 dict，不做慢活）；
+    - 真正跑 turn 时持**这条会话自己的锁**——同会话串行（历史是那一份对象，
+      两个 turn 交叉写必然乱），**不同会话并行**。
+
+    **观察者分两层**（并行之后必须能挂多个）：
+
+    - `open(on_event=...)`：主观察者，**替换**语义（终端入口 `chat.py` 每轮
+      重新打开时用；与 P1/P2 行为一致）；
+    - `watch(...)`：追加订阅，返回退订函数（界面推流器用——页面刷新后新旧
+      两个连接会短暂并存，**不能互相顶掉**）。
     """
 
     def __init__(
@@ -128,17 +138,45 @@ class AgentService:
         self._token_budget = token_budget
         self._middlewares = tuple(middlewares)
         self._open: dict[str, HarnessSession] = {}
+        #: 主观察者（open(on_event=...) 设置，**替换**语义）。
         self._observers: dict[str, LoopObserver] = {}
-        self._lock = threading.RLock()  # 见类文档：多线程入口的底层保障
+        #: 追加订阅者（watch() 挂，**可多个**：并行/刷新后新旧连接会并存）。
+        self._watchers: dict[str, list[LoopObserver]] = {}
+        #: 每条会话一把锁：同会话串行、跨会话并行（见类文档）。
+        self._turn_locks: dict[str, threading.RLock] = {}
+        #: 全局短锁：只护上面几个 dict 的读写，绝不包住 turn。
+        self._lock = threading.RLock()
 
     # ------------------------------------------------------------------
     # 会话打开（打开即恢复）
     # ------------------------------------------------------------------
 
     def open(self, session_id: str = "default", *, on_event: LoopObserver | None = None) -> HarnessSession:
-        """打开（或恢复）一条会话；同名复用缓存。返回开场信息（resumed/repaired）。"""
+        """打开（或恢复）一条会话；同名复用缓存。返回开场信息（resumed/repaired）。
+
+        `on_event` 是**主观察者**（替换语义）：终端入口每轮重开时用它接管推流；
+        界面那种"多个推流器并存"的场景请用 `watch()`。
+        """
         with self._lock:
             return self._open_locked(session_id, on_event=on_event)
+
+    def watch(self, session_id: str, observer: LoopObserver) -> Callable[[], None]:
+        """追加一个订阅者，返回退订函数。
+
+        **为什么不能复用 open(on_event=...)**：那是替换语义，而并行改造之后
+        "同一会话同时有多个观察者"是常态（页面刷新：新连接先挂上，旧连接还要
+        收尾；RPC 跟随与界面可能同时在看）。替换会让先来的悄悄失去推送。
+        """
+        with self._lock:
+            self._watchers.setdefault(session_id, []).append(observer)
+
+        def unwatch() -> None:
+            with self._lock:
+                watchers = self._watchers.get(session_id)
+                if watchers and observer in watchers:
+                    watchers.remove(observer)
+
+        return unwatch
 
     def _open_locked(
         self, session_id: str, *, on_event: LoopObserver | None = None
@@ -177,13 +215,20 @@ class AgentService:
 
         def sink(kind: str, payload: dict) -> None:
             recorder(kind, payload)
-            # 观察者**每步现取**（不在这里捕获）：观察者是"当前这个 turn 的发起方"
+            # 观察者**每次现取**（不在这里捕获）：观察者是"当前这个 turn 的发起方"
             # （如界面某次请求的推流器），会随每个 turn 更换。曾经在这里捕获
             # 第一次打开时的观察者——第二轮起就会往**已经关掉的旧连接**上推流，
             # 写死套接字抛 OSError 把 turn 打断（"只聊了一轮就死"的根因）。
-            observer = self._observers.get(session_id)
+            with self._lock:
+                observer = self._observers.get(session_id)
+                watchers = list(self._watchers.get(session_id, ()))
             if observer is not None:
                 observer(kind, payload)
+            for watch in watchers:
+                try:
+                    watch(kind, payload)
+                except Exception:  # noqa: BLE001 —— 一个订阅者断了不影响本次 turn
+                    continue
             self._ctx.emit(LOOP_EVENT, session=session_id, kind=kind, payload=payload)
 
         # 4) 工具管线 + 主循环（历史由日志投影——不存在单独的恢复分支）。
@@ -221,9 +266,15 @@ class AgentService:
     # ------------------------------------------------------------------
 
     def ask(self, text: str, session_id: str = "default") -> TurnResult:
-        """跑一个 turn：打开（或恢复）会话 → 排空输入 → 返回结果（全程持锁）。"""
+        """跑一个 turn：打开（或恢复）会话 → 排空输入 → 返回结果。
+
+        **只持这条会话自己的锁**（见类文档）：同一会话的 turn 依次跑（历史是
+        那一份对象），**不同会话并行**。全局锁只在 `_open_locked` 里短暂持有。
+        """
         with self._lock:
             opened = self._open_locked(session_id)
+            turn_lock = self._turn_locks.setdefault(session_id, threading.RLock())
+        with turn_lock:
             self._ctx.emit(
                 TURN_START,
                 session=session_id,
@@ -241,14 +292,27 @@ class AgentService:
             )
             return result
 
+    def cancel(self, session_id: str = "default") -> bool:
+        """请求取消这条会话正在跑的 turn（**协作式**：主循环在 step 边界与流式
+        分块之间看标记，正在执行的工具调用不会被砍断）。没有已打开的会话 → False。
+        """
+        with self._lock:
+            opened = self._open.get(session_id)
+        if opened is None:
+            return False
+        opened.loop.cancel()
+        return True
+
     def compact(self, session_id: str = "default") -> Any | None:
         """手动压缩一次（`/compact`）：打开（或恢复）会话 → 立即折叠历史。
 
-        与 `ask` 用同一把锁：压缩会改写内存历史并往日志追加 checkpoint，
-        不能让另一个 turn 在中间穿过去。
+        与 `ask` 用**同一把会话锁**：压缩会改写内存历史并往日志追加 checkpoint，
+        不能让同会话的另一个 turn 在中间穿过去。
         """
         with self._lock:
             opened = self._open_locked(session_id)
+            turn_lock = self._turn_locks.setdefault(session_id, threading.RLock())
+        with turn_lock:
             return opened.compact()
 
     @property

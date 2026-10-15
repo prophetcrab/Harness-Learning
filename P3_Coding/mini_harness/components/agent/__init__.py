@@ -20,6 +20,7 @@ from components.agent.compact import (
     plan_compaction,
 )
 from components.agent.loop import AgentLoop, ContextCompactor, EventHook, ExecuteTool
+from components.agent.runner import FrameSink, TurnRun, TurnRunner
 from components.agent.trace import Step, ToolResult, TurnResult, TurnStatus
 
 __all__ = [
@@ -29,11 +30,14 @@ __all__ = [
     "CompactionPolicy",
     "Compactor",
     "ContextCompactor",
-    "ExecuteTool",
     "EventHook",
+    "ExecuteTool",
+    "FrameSink",
     "Step",
     "ToolResult",
     "TurnResult",
+    "TurnRun",
+    "TurnRunner",
     "TurnStatus",
     "build_summary_request",
     "choose_cut",

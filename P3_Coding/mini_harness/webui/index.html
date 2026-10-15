@@ -40,6 +40,16 @@
   <section id="center">
     <div class="banner" id="banner" hidden></div>
     <div id="chat"><div class="wrap"></div></div>
+    <!-- 「这条会话正在跑」时的选择条：中断 / 等它跑完（不替用户决定，也不静默排队） -->
+    <div class="busy-choice" id="busy-choice" hidden>
+      <div class="bc-t">这条会话正在跑一个 turn</div>
+      <div class="bc-s">刚才那条消息<b>没有发出</b>——中断当前 turn 后重发，或等它跑完。</div>
+      <div class="bc-a">
+        <button type="button" class="bc-btn danger" data-act="interrupt">中断并重新发送</button>
+        <button type="button" class="bc-btn" data-act="wait">等它跑完（接着看）</button>
+        <button type="button" class="bc-btn" data-act="dismiss">取消</button>
+      </div>
+    </div>
     <div class="runline" id="runline"><span>就绪</span></div>
     <form id="composer" autocomplete="off">
       <div id="cmdmenu" hidden></div>

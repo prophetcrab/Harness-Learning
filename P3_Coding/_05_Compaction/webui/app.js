@@ -3,7 +3,7 @@
 const $ = (id) => document.getElementById(id);
 const chatEl = $("chat"), wrapEl = chatEl.querySelector(".wrap");
 const sessionsEl = $("sessions"), eventsEl = $("events");
-const state = { current: null, sending: false, follow: true, display: [] };
+const state = { current: null, sending: false, follow: true, display: [], runningIds: new Set() };
 window.addEventListener("error", (e) => { window.__lastError = String(e.message || e); });
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
@@ -779,11 +779,14 @@ async function loadSessions() {
   const data = await api("/api/sessions");
   const items = data.sessions || [];
   sessionsEl.innerHTML = items.length ? items.map((s) => `
-    <div class="item ${s.id === state.current ? "active" : ""}" data-id="${esc(s.id)}">
-      <div class="item-t">${esc(s.id)}</div>
-      <div class="item-s">${s.turns} turns · seq ${s.last_seq}${s.last_status ? ` · ${esc(s.last_status)}` : ""}</div>
+    <div class="item ${s.id === state.current ? "active" : ""} ${s.running ? "running" : ""}"
+         data-id="${esc(s.id)}">
+      <div class="item-t">${s.running ? '<span class="run-dot" title="正在跑 turn"></span>' : ""}${esc(s.id)}</div>
+      <div class="item-s">${s.turns} turns · seq ${s.last_seq}${s.running ? " · 运行中" : (s.last_status ? ` · ${esc(s.last_status)}` : "")}</div>
     </div>`).join("") : `<div class="side-empty">还没有会话</div>`;
+  state.runningIds = new Set(items.filter((s) => s.running).map((s) => s.id));
 }
+
 async function openSession(id, opts = {}) {
   state.current = id;
   if (!opts.silent) setIdle("加载中…");
@@ -792,6 +795,14 @@ async function openSession(id, opts = {}) {
   renderEventsFromHistory(data.events || []);
   await loadSessions();
   if (!opts.silent) setIdle(`会话 ${id} · ${(data.events || []).length} 条事件`);
+  // **接回正在跑的 turn**（`_05` 收尾）：刷新页面/切会话时，服务端那个 turn
+  // 从没停过——这里只是重新订阅它，帧继续往页面上流。没有在跑的就 404，静默跳过。
+  // `state.sending` 为真说明**已经在跟随某条流**（自己刚发的 / 正在接回的），
+  // 再挂一个订阅会让同一帧渲染两遍。
+  if (!opts.noWatch && !activeWatch && !state.sending
+      && (state.runningIds || new Set()).has(id)) {
+    watchTurn(id, { silent: true });
+  }
 }
 
 /* ---------------- send ---------------- */
@@ -813,14 +824,11 @@ function terminalFrames() {
   return new Set([...TERMINAL_FRAMES, ...extra]);
 }
 
-/** 读一条 NDJSON 流：逐帧交给 onFrame；返回**末帧**（`__done` 或插件自述的
- *  terminal 帧——壳不认具体名字，见 terminalFrames()）。 */
-async function streamFrames(url, body, onFrame) {
-  const res = await fetch(url, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+/** 逐行解析一条 NDJSON 响应：每帧交给 onFrame，返回**末帧**。
+ *
+ *  收尾帧（`__done` / `__error` / 插件自述的 terminal）只记不发——它们是协议，
+ *  不是内容；其余一律当事件显示（包括 `__approval` 这类"要人看见"的帧）。 */
+async function readNDJSON(res, onFrame) {
   const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
   let last = null;
   for (;;) {
@@ -843,6 +851,20 @@ async function streamFrames(url, body, onFrame) {
     }
   }
   return last;
+}
+
+/** 读一条 NDJSON 流（POST）：逐帧交给 onFrame；返回**末帧**。
+ *
+ *  `signal` 可中断订阅（AbortController）。**注意它只断"看"，不断 turn**：
+ *  turn 跑在服务端后台线程里，断开订阅它照跑完（这正是刷新页面不掉进度的原因）。 */
+async function streamFrames(url, body, onFrame, signal) {
+  const res = await fetch(url, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+    signal,
+  });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  return readNDJSON(res, onFrame);
 }
 
 /** 手动压缩（/compact）：不跑 turn，只折叠历史；结果以帧到达。 */
@@ -933,19 +955,98 @@ async function runCommand(index) {
   await command.run();
 }
 
-$("composer").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const text = ta.value.trim();
-  if (!text || state.sending) return;
-  // 菜单开着且正好是某条完整命令 → 走命令，别当普通消息发出去
-  const exact = COMMANDS.find((c) => c.name === text);
-  if (exact && !cmdMenu.hidden) {
-    hideCmdMenu();
-    ta.value = ""; autosize();
-    await exact.run();
-    return;
+/* ---------------- send / 接回 / 中断 ----------------
+
+   turn 跑在**服务端的后台线程**里，HTTP 请求只是订阅者（见 plugins/webui.py）。
+   于是三件事成立，前端只需要配合：
+
+     发消息       → POST /send（起 turn 并订阅）。该会话已有 turn 在跑 → 409，
+                    此时**问用户"中断还是等"**，不替用户做决定（也不排队：
+                    排队会让人以为发出去了）。
+     刷新页面     → 打开会话后 GET /turn 接回正在跑的那个（没有就是 404），
+                    帧继续往页面上流——**turn 从没被打断过**。
+     中断         → POST /interrupt（协作式：正在跑的工具调用要等它返回）。
+
+   "运行中"的可视化有三处：左栏会话列表的标记、状态栏的转圈文案、
+   运行中的 turn 自己那张"进行中"卡片。 */
+
+/** 当前正在订阅的 turn（null = 没在订阅任何 turn）。 */
+let activeWatch = null;
+/** 发送代次：见 sendMessage 里"中断后重发"的竞态说明。 */
+let sendGeneration = 0;
+
+/** 中断请求 + 收尾（409 分支与"中断"按钮共用）。 */
+async function interruptTurn(sessionId) {
+  try {
+    const res = await fetch(
+      `/api/sessions/${encodeURIComponent(sessionId)}/interrupt`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+    );
+    const data = await res.json();
+    if (!res.ok) return data.error || `${res.status}`;
+    return "";
+  } catch (err) {
+    return err.message || String(err);
   }
+}
+
+/** 订阅某会话正在跑的 turn（GET /turn）：帧照常走 handleFrame。
+ *  `silent` = 接回时不刷状态栏（页面刚打开，别和"加载中"抢）。 */
+async function watchTurn(sessionId, opts = {}) {
+  if (activeWatch) { try { activeWatch.abort(); } catch (e) { /* 已结束 */ } }
+  const ctl = new AbortController();
+  activeWatch = ctl;
+  state.sending = true;
+  setBusy(true);
+  let last = null;
+  try {
+    const res = await fetch(
+      `/api/sessions/${encodeURIComponent(sessionId)}/turn`,
+      { method: "GET", signal: ctl.signal },
+    );
+    if (res.status === 404) {                // 没有在跑的 turn：正常情形，不是错误
+      activeWatch = null;
+      state.sending = false;
+      setBusy(false);
+      return;
+    }
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    setRunning("接回运行中的 turn…");
+    ensureWorking("这个会话还在跑，继续跟随…");
+    last = await readNDJSON(res, handleFrame);
+    if (last && last.kind === "__error") {
+      setRunline(last.payload.message || "turn 失败", "err");
+    }
+  } catch (err) {
+    if (err.name !== "AbortError") setRunline(`接回失败：${esc(err.message)}`, "err");
+  } finally {
+    if (activeWatch === ctl) {
+      activeWatch = null;
+      state.sending = false;
+      setBusy(false);
+      removeWorking();
+      await openSession(sessionId, { silent: true });
+      if (!opts.silent && !$("runline").classList.contains("err")) setIdle("就绪");
+    }
+  }
+}
+
+/** 真正发一条消息（发出去 → 跟随流 → 收尾渲染）。
+ *
+ *  与 `$("composer")` 的 submit 分开：submit 负责"该不该发"（命令 / 忙不忙），
+ *  本函数只负责"发"。这样"中断并重新发送"可以直接调它，不会又被忙碌判断拦一次
+ *  （踩过：重发走了 submit，而那条订阅流的 finally 刚好把闸门关回去）。
+ *
+ *  `retryBusy`：中断后的重发用它。**取消是协作式的**——正在跑的工具调用要等它
+ *  返回（可能几秒），这期间服务端仍会回 409。重发时不该把用户又弹回"中断/等"
+ *  的选择条（他刚选完），所以这里等它真的让开为止（最多约 15 秒）。
+ */
+async function sendMessage(text, { retryBusy = false } = {}) {
   if (!state.current) state.current = "default";
+  // 「第几次发送」：中断后重发时，旧那条流的收尾 finally 可能还没跑完。
+  // 它如果照常去 setIdle / 重渲染，就会盖掉新 turn 的状态（踩过：
+  // 重发成功但状态栏停在"已中断"）。所以收尾前先核对代次。
+  const gen = ++sendGeneration;
   state.sending = true;
   setBusy(true);
   ta.value = ""; autosize();
@@ -955,21 +1056,106 @@ $("composer").addEventListener("submit", async (e) => {
   setRunning("运行中…");
   ensureWorking("思考中…");
   let done = null;
+  const attempts = retryBusy ? 30 : 1;
   try {
-    const last = await streamFrames(
-      `/api/sessions/${encodeURIComponent(state.current)}/send`, { text }, handleFrame,
-    );
-    if (last && last.kind === "__done") done = last.payload;
-  } catch (err) {
-    removeWorking();
-    setRunline(`出错：${esc(err.message)}`, "err");
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        const last = await streamFrames(
+          `/api/sessions/${encodeURIComponent(state.current)}/send`, { text }, handleFrame,
+        );
+        if (last && last.kind === "__done") done = last.payload;
+        break;
+      } catch (err) {
+        const busy = String(err.message || "").includes("409");
+        if (busy && attempt + 1 < attempts) {
+          // 上一个 turn 还在收尾（协作式取消要等工具返回）：等一会儿再试
+          if (attempt === 0) setRunning("等上一个 turn 收尾…");
+          await new Promise((r) => setTimeout(r, 500));
+          continue;
+        }
+        if (busy) {                       // 老规矩：让用户来选（中断 / 等）
+          removeWorking();
+          if (gen === sendGeneration) { state.sending = false; setBusy(false); }
+          showBusyChoice(text);
+          return;
+        }
+        removeWorking();
+        setRunline(`出错：${esc(err.message)}`, "err");
+        break;
+      }
+    }
   } finally {
-    state.sending = false;
-    setBusy(false);
-    await openSession(state.current, { silent: true });
-    if (done) setIdle(`turn ${done.turn} · ${done.status} · ${done.steps} 步 · 最终回答已渲染`);
-    else if (!$("runline").classList.contains("err")) setIdle("就绪");
+    if (gen === sendGeneration) {          // 还是"我这一发"：正常收尾
+      state.sending = false;
+      setBusy(false);
+    }
+    await openSession(state.current, { silent: true, noWatch: true });
+    if (gen === sendGeneration) {
+      if (done) setIdle(`turn ${done.turn} · ${done.status} · ${done.steps} 步 · 最终回答已渲染`);
+      else if (!$("runline").classList.contains("err")) setIdle("就绪");
+    }
   }
+}
+
+$("composer").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = ta.value.trim();
+  if (!text) return;
+  // 菜单开着且正好是某条完整命令 → 走命令，别当普通消息发出去
+  const exact = COMMANDS.find((c) => c.name === text);
+  if (exact && !cmdMenu.hidden) {
+    hideCmdMenu();
+    ta.value = ""; autosize();
+    await exact.run();
+    return;
+  }
+  // **正在跑 turn**：不静默吞掉，也不排队——把选择交给用户
+  //（中断重发 / 等它跑完）。用户明确要求"运行中发送新对话应该先选择中断"。
+  if (state.sending) { showBusyChoice(text); return; }
+  await sendMessage(text);
+});
+
+/** 「这条会话正在跑」时给用户的选择：中断它 / 等它跑完（不替用户决定）。
+ *
+ *  元素在 index.html 里（壳的家具，与 #banner 同类）——这里只管填字与显隐。 */
+function showBusyChoice(pendingText) {
+  const node = $("busy-choice");
+  node.dataset.text = pendingText;
+  node.hidden = false;
+}
+
+$("busy-choice").addEventListener("click", async (e) => {
+  const btn = e.target.closest(".bc-btn");
+  if (!btn) return;
+  const node = $("busy-choice");
+  const act = btn.dataset.act;
+  node.hidden = true;
+  if (act === "dismiss") return;
+  if (act === "wait") { await watchTurn(state.current); return; }
+  // 中断可能"扑空"：点下去的那一刻 turn 刚好跑完了（模型回答快时很常见）。
+  // 那不是失败——用户想要的是"让我的消息发出去"，所以照样重发。
+  const problem = await interruptTurn(state.current);
+  const missed = problem.includes("没有在跑的 turn");
+  if (problem && !missed) { setRunline(`中断失败：${esc(problem)}`, "err"); return; }
+  if (!missed) setRunning("正在中断…");
+  // 等它真的收尾（协作式：执行中的工具要跑完），最长 20 秒
+  for (let i = 0; i < 40; i++) {
+    if (missed && i > 0) break;
+    await new Promise((r) => setTimeout(r, 500));
+    const data = await api("/api/sessions");
+    const item = (data.sessions || []).find((s) => s.id === state.current);
+    if (!item || !item.running) break;
+  }
+  await openSession(state.current, { silent: true, noWatch: true });
+  // turn 确实已经收尾（上面轮询确认过），把"正在发"的闸门放开——
+  // 客户端那条订阅流的 finally 可能还没跑到，不放开会把重发吞掉。
+  state.sending = false;
+  setBusy(false);
+  const text = node.dataset.text || "";
+  if (!text) { setIdle("已中断"); return; }
+  setIdle("已中断，重新发送…");
+  ta.value = "";
+  await sendMessage(text, { retryBusy: true });   // 直接发；等上一个 turn 让开再发
 });
 
 /* ---------------- composer + interactions ---------------- */

@@ -30,6 +30,9 @@ from kernel import Context
 from plugins.events import APPROVAL_REQUESTED, APPROVAL_RESOLVED
 from plugins.services import APPROVAL_SERVICE, APPROVAL_SURFACE, FS_SERVICE
 
+#: 推送通道：写一帧（kind, payload）。webui 的 turn 推流器就是它。取哪一条
+#: 见 `WebApprovalPolicy._frames`：**优先本线程登记的**，兜底是 attach_stream 挂的。
+
 #: 推送通道：webui 在跑 turn 时把自己的写帧函数挂上来（kind, payload）。
 Sender = Callable[[str, dict[str, Any]], None]
 #: 预览构造器：给定工具名与参数，返回要展示给审批人的文本（或 None）。
@@ -59,12 +62,30 @@ class PendingApproval:
 
 
 class WebApprovalPolicy:
-    """浏览器里的审批：推帧 → 等点击 → 无应答 fail-closed。"""
+    """浏览器里的审批：推帧 → 等点击 → 无应答 fail-closed。
+
+    **推流通道按线程登记，不是全局一个**（`_05` 收尾改并行时重做）。
+    原先是一个 `_sender` 槽：turn 开始挂上、结束摘掉。串行时代没问题（同一时刻
+    只有一个 turn），但**并行之后它必然出错**——A 会话在等审批时，B 会话挂上
+    自己的通道覆盖了它，A 的审批帧就推到了 B 的页面上（或者推丢，等 300 秒超时）。
+
+    现在按**线程**登记：工具管线在哪个线程跑 turn，`approve()` 就取那个线程的
+    通道（turn 的线程是固定的，从 reserve 到收尾都是同一条）。于是并行时两条
+    会话各问各的人，互不干扰。
+
+    （为什么用线程而不是 ContextVar：本项目的阶段目录各持一份同名包、测试会
+    驱逐 `sys.modules`——同一个模块可能加载成两份，模块级全局对象因此"set 的
+    那份与读的那份不是同一个"。挂在**服务对象实例**上的登记表绕开了这个问题，
+    因为服务对象是运行时单例。）
+    """
 
     def __init__(self, *, timeout: float = 300.0, preview: PreviewBuilder | None = None) -> None:
         self._timeout = timeout
         self._preview = preview
+        #: 兜底通道：显式 `attach_stream` 挂的那个（终端/测试等"没有登记线程"的入口用）。
         self._sender: Sender | None = None
+        #: 线程 id → 该线程正在跑的 turn 的写帧端（并行时每人一份）。
+        self._thread_senders: dict[int, Sender] = {}
         self._pending: dict[str, PendingApproval] = {}
         self._lock = threading.Lock()
         self._ctx: Context | None = None
@@ -78,22 +99,36 @@ class WebApprovalPolicy:
         self._ctx = ctx
 
     def attach_stream(self, sender: Sender) -> Sender:
-        """跑 turn 前挂上当前连接的写帧函数；**返回句柄**（卸载时凭它校验）。
+        """挂一个兜底通道；**返回句柄**（摘除时凭它校验身份）。
 
-        为什么要返回句柄：turn 是串行的，但"等待审批"会让一个 turn 长时间挂着，
-        期间另一个 turn 可能已经挂上自己的连接。如果卸载时不校验身份，
-        先结束的那个 turn 会把**后来者**的通道一起清掉——审批就会误报
-        "浏览器未连接"（实测踩到过）。所以卸载只清"还是我挂的那个"。
+        为什么要返回句柄：卸载时不校验身份的话，先结束的那个调用方会把
+        **后来者**的通道一起清掉——审批就会误报"浏览器未连接"（实测踩到过）。
         """
         with self._lock:
             self._sender = sender
         return sender
 
     def detach_stream(self, sender: Sender | None = None) -> None:
-        """摘掉推流通道；给了句柄就只摘自己挂的那个（见 attach_stream）。"""
+        """摘掉兜底通道；给了句柄就只摘自己挂的那个（见 attach_stream）。"""
         with self._lock:
             if sender is None or self._sender is sender:
                 self._sender = None
+
+    def attach_thread_stream(self, sender: Sender) -> None:
+        """给**当前线程**登记一个推流通道（执行器在跑 turn 的线程里调）。"""
+        with self._lock:
+            self._thread_senders[threading.get_ident()] = sender
+
+    def detach_thread_stream(self) -> None:
+        """摘掉当前线程的登记（turn 收尾时调，别让线程 id 复用撞上旧通道）。"""
+        with self._lock:
+            self._thread_senders.pop(threading.get_ident(), None)
+
+    def _frames(self) -> Sender | None:
+        """当前可用的推流通道：**先看本线程登记的，再看兜底的**。"""
+        with self._lock:
+            sender = self._thread_senders.get(threading.get_ident())
+        return sender or self._sender
 
     @property
     def timeout(self) -> float:
@@ -123,8 +158,7 @@ class WebApprovalPolicy:
 
     def approve(self, request: ApprovalRequest) -> ApprovalDecision:
         """推一次审批到浏览器并等待；没人应答按 fail-closed 拒绝。"""
-        with self._lock:
-            sender = self._sender
+        sender = self._frames()
         if sender is None:
             return ApprovalDecision(
                 False, "浏览器未连接：无人可审批，按 fail-closed 拒绝"
