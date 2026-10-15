@@ -15,8 +15,9 @@
   <div class="spacer"></div>
   <button class="tbtn on" id="toggle-left" title="折叠 / 展开左栏">会话</button>
   <button class="tbtn on" id="toggle-right" title="折叠 / 展开轨迹栏">轨迹</button>
-  <button class="tbtn" id="ctx-btn" title="上下文容量仪表（context-meter 插件）">📐 上下文</button>
-  <button class="tbtn" id="token-btn" title="Token 用量统计（token-usage 插件）">📊 Token 用量</button>
+  <!-- 面板按钮由脚本按「插件的自述」生成（app.js 读 /api/ledger 的 panels）：
+       壳不认识任何插件，加一个面板插件不用改这里。 -->
+  <span id="panel-btns"></span>
   <span class="dot-status" title="服务在线"></span>
 </header>
 
@@ -48,28 +49,17 @@
   </section>
 </main>
 
-<div id="ctx-panel" hidden>
+<!-- 通用面板容器（一次只显示一个；内容由脚本按插件自述填入） -->
+<div id="plugin-panel" hidden>
   <div class="tbox">
     <div class="tbar">
-      <h3>📐 上下文容量</h3>
-      <span class="turl" id="ctx-url"></span>
-      <a class="tbtn" id="ctx-open" target="_blank" rel="noopener">新标签打开</a>
-      <button class="tbtn" id="ctx-close">关闭</button>
-    </div>
-    <iframe id="ctx-frame" title="上下文容量仪表"></iframe>
-  </div>
-</div>
-
-<div id="token-panel" hidden>
-  <div class="tbox">
-    <div class="tbar">
-      <h3>📊 Token 用量</h3>
-      <span class="turl" id="token-url"></span>
+      <h3 id="pp-title"></h3>
+      <span class="turl" id="pp-url"></span>
       <div class="spacer"></div>
-      <a class="tbtn" id="token-open" target="_blank" rel="noopener">新标签打开</a>
-      <button class="tbtn" id="token-close">关闭</button>
+      <a class="tbtn" id="pp-open" target="_blank" rel="noopener">新标签打开</a>
+      <button class="tbtn" id="pp-close">关闭</button>
     </div>
-    <iframe id="token-frame" title="Token 用量统计"></iframe>
+    <iframe id="pp-frame" title="插件页面"></iframe>
   </div>
 </div>
 <script src="app.js"></script>

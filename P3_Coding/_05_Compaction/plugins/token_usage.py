@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from components.panel import PanelSpec
 from components.tools import define_tool
 from kernel import Context
 from plugins.events import LLM_RESPONSE
@@ -230,7 +231,7 @@ class _UsageHandler(BaseHTTPRequestHandler):
 
 @dataclass(frozen=True)
 class UsageEndpoint:
-    """`token-usage` 服务的形态：只读地址（页面据此挂载入口）。"""
+    """`token-usage` 服务的形态：只读地址 + **自己的面板自述**（见 panel/spec.py）。"""
 
     host: str
     port: int
@@ -239,6 +240,23 @@ class UsageEndpoint:
     def url(self) -> str:
         return f"http://{self.host}:{self.port}/"
 
+    @property
+    def panels(self) -> tuple[PanelSpec, ...]:
+        return (
+            PanelSpec(
+                service=TOKEN_USAGE_SERVICE,
+                label="📊 Token",
+                title="📊 Token 用量",
+                badge_path="api/usage",
+                # 合计 token 在 JSON 的 totals.total_tokens 里——壳只认
+                # "点号路径取字段"这一种规则，不写业务逻辑。
+                badge_field="totals.total_tokens",
+                badge_kind="number",
+                badge_fallback="📊 Token 用量",
+                order=30,
+            ),
+        )
+
 
 # ---------------------------------------------------------------------------
 # 插件本体
@@ -246,22 +264,37 @@ class UsageEndpoint:
 
 
 class TokenUsagePlugin:
-    """提供 `token-usage` 服务与 `usage_stats` 工具；可选起用量页面（默认起）。"""
+    """提供 `token-usage` 服务与 `usage_stats` 工具；可选起用量页面（默认起）。
+
+    **声明 `inject = (TOOLS_SERVICE,)`**：本插件要往工具面里注册 `usage_stats`，
+    与 self_tools / clock 同一个约定（注册工具的插件都声明这个依赖）。
+    不声明的话，tools 插件被换掉时内核不知道要重启本插件，`usage_stats`
+    会**永久消失**（实测：换掉 tools 后它就不在工具面里了）。
+
+    **账本挂在实例上，不在 setup 里新建**：声明 inject 之后，"依赖被换掉 →
+    本插件停用 → 依赖回来 → 重新激活"时 `setup` 会再跑一遍；而实例还是同一个
+    （内核停用只回卷登记，不丢插件对象）。账本放实例上，历史就**不会因为
+    换了个插件而被清空**。真正的卸载（`unload_plugin`）才会丢弃实例——
+    那时账本归零才是对的（与"卸载即回卷"一致）。
+
+    这是一条值得记的区分：**插件的"激活状态"（它登记了什么、起了什么服务）
+    会被回卷，但插件的"身份与它自己积累的数据"不该被回卷。**
+    """
 
     name = "token-usage"
+    inject = (TOOLS_SERVICE,)
 
     def __init__(self, *, serve: bool = True, host: str = "127.0.0.1", port: int = 8767) -> None:
         self._serve = serve
         self._host = host
         self._port = port
+        #: 账本与"当前会话/turn"都挂在实例上（见类文档：激活状态 ≠ 插件身份）。
+        self._ledger = UsageLedger()
+        self._current: dict[str, Any] = {"session": "", "turn": 0}
 
     def setup(self, ctx: Context):
-        ledger = UsageLedger()
-
-        # 当前会话与 turn 号：turn/start 事件来的时候记下
-        # （llm/response 里两者都没有）。turn 由 agent 的锁串行执行，
-        # 所以"当前"是可靠的。
-        current = {"session": "", "turn": 0}
+        ledger = self._ledger
+        current = self._current
 
         def on_turn_start(**payload: Any) -> None:
             current["turn"] = int(payload.get("turn", 0))
@@ -289,20 +322,16 @@ class TokenUsagePlugin:
         ctx.on(LLM_RESPONSE, on_response)
 
         # 模型可读：让它知道自己花了多少（预算敏感场景）
-        registry = ctx.get(TOOLS_SERVICE)
-        if registry is not None:
-            registry.register(
-                define_tool(
-                    "usage_stats",
-                    "查看本会话的 token 用量：总用量、按 turn 的明细、最近几次调用。"
-                    "只读，无需审批。",
-                ),
-                ledger.snapshot,
-            )
-
-        disposers: list[Any] = []
-        if registry is not None:
-            disposers.append(lambda: registry.unregister("usage_stats"))
+        registry = ctx.require(TOOLS_SERVICE)   # inject 已保证就绪
+        registry.register(
+            define_tool(
+                "usage_stats",
+                "查看本会话的 token 用量：总用量、按 turn 的明细、最近几次调用。"
+                "只读，无需审批。",
+            ),
+            ledger.snapshot,
+        )
+        disposers: list[Any] = [lambda: registry.unregister("usage_stats")]
 
         if self._serve:
             handler = type("Handler", (_UsageHandler,), {"ledger": ledger})

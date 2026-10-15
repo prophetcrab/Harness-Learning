@@ -435,6 +435,9 @@ class SelfToolsPlugin:
 
     name = "self-tools"
     inject = (TOOLS_SERVICE,)
+    #: 可选：审批策略（缺失 → 装卸操作全拒，fail-closed）与文件系统
+    #: （缺失 → install_plugin 读不到源码并如实报错）。
+    optional = (APPROVAL_SERVICE, FS_SERVICE)
 
     def __init__(
         self,

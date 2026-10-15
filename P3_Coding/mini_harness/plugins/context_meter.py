@@ -41,6 +41,7 @@ from components.context.tokens import (
     measure_parts,
 )
 from components.llm.provider import LLMRequest
+from components.panel import PanelSpec
 from kernel import Context
 from plugins.events import LLM_REQUEST, LLM_RESPONSE
 from plugins.services import CONTEXT_METER_SERVICE
@@ -273,7 +274,11 @@ class _MeterHandler(BaseHTTPRequestHandler):
 
 @dataclass(frozen=True)
 class ContextMeterEndpoint:
-    """`context-meter` 服务的形态：只读地址 + 容量（页面与按钮据此挂载/显示）。"""
+    """`context-meter` 服务的形态：只读地址 + 容量 + **自己的面板自述**。
+
+    `panels` 是"界面挂载点"的声明（见 components/panel/spec.py）：主界面遍历
+    所有服务的这份声明挂按钮，**不认识本插件**——加面板不用改壳。
+    """
 
     host: str
     port: int
@@ -282,6 +287,22 @@ class ContextMeterEndpoint:
     @property
     def url(self) -> str:
         return f"http://{self.host}:{self.port}/"
+
+    @property
+    def panels(self) -> tuple[PanelSpec, ...]:
+        return (
+            PanelSpec(
+                service=CONTEXT_METER_SERVICE,
+                label="📐 上下文",          # 📐
+                title="📐 上下文容量",
+                badge_path="api/context",
+                badge_field="percent",
+                badge_kind="percent",
+                badge_suffix="%",
+                badge_fallback="📐 上下文",
+                order=20,
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -244,10 +244,14 @@ def test_endpoint_discoverable_and_webui_has_panel(tmp_path: Path):
     with urllib.request.urlopen(webui_url, timeout=8) as response:
         html = response.read().decode("utf-8")
     # 标记在 index.html，挂载逻辑在 app.js（`_05` 起拆成三件套）
-    assert "ctx-btn" in html and "ctx-panel" in html
-    with urllib.request.urlopen(webui_url + "app.js", timeout=8) as response:
-        js = response.read().decode("utf-8")
-    assert "api/context" in js and "context-meter" in js
+    # `_05` 收尾后：壳不再写死面板元素，改成一个通用容器 + 面板自述。
+    # 断言换成"通用挂载点 + 这个插件自述的面板在列表里"——比原来更严：
+    # 原来只查字符串在文件里（写死也算过），现在查的是**真的被发布了**。
+    assert "plugin-panel" in html and "panel-btns" in html
+    assert "ctx-panel" not in html and "ctx-btn" not in html   # 旧写法已清
+    labels = {p["service"]: p["label"] for p in ledger["panels"]}
+    assert "context-meter" in labels
+    assert "上下文" in labels["context-meter"]
     booted.close()
 
 

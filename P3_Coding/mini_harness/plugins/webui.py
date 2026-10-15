@@ -55,6 +55,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from components.panel import panels_of
 from components.session import derive_messages
 from kernel import Context
 from plugins.services import (
@@ -142,15 +143,37 @@ def _ledger(ctx: Context) -> dict[str, Any]:
             for info in ctx.plugins
         ],
         "services": ctx.services,
-        # 有地址的服务（.url / .address）顺手带给页面：主页面据此挂载入口
-        # （token-usage 的用量页面就是这么挂上去的——通用规则，非特例）。
+        # 有地址的服务（.url / .address）顺手带给页面：主页面据此挂载入口。
         "endpoints": {
             name: url
             for name in ctx.services
             if (url := _endpoint_of(ctx.get(name))) is not None
         },
+        # **面板自述**（`_05` 补齐）：插件在自己那个服务对象上挂 `panels = (...)`,
+        # 页面遍历这个列表挂按钮——于是"加一个面板插件"**不用改壳**。
+        "panels": _collect_panels(ctx),
         "tools": [spec.name for spec in tools_service.specs()] if tools_service is not None else [],
     }
+
+
+def _collect_panels(ctx: Context) -> list[dict[str, Any]]:
+    """收集所有服务的面板自述（附上服务地址），按 order + 服务名排序。
+
+    写成显式循环而不是多层推导式：生成器里多个 `if` 与海象的求值顺序很容易
+    写出"以为会执行、其实被过滤掉了"的代码（这里踩过一次）。循环一眼看得清。
+
+    只收集**有地址**的服务：面板按钮点开要打开那个插件的页面，没地址就没页面
+    可开——宁可不出按钮，也不要给用户一个点了没反应的入口。
+    """
+    collected: list[dict[str, Any]] = []
+    for name in ctx.services:
+        service = ctx.get(name)
+        endpoint = _endpoint_of(service)
+        if endpoint is None:
+            continue
+        for panel in panels_of(service):
+            collected.append({**panel.to_dict(), "url": endpoint})
+    return sorted(collected, key=lambda item: (item["order"], item["service"]))
 
 
 def _sessions_overview(sessions) -> dict[str, Any]:
@@ -477,7 +500,12 @@ class WebUiPlugin:
     #: 可选依赖（不是 inject！）：界面要在"换模型 / 装卸插件"时**一直开着**，
     #: 而 agent 依赖 llm——声明成必需的话，模型一装卸 llm 就会连锁停用整个
     #: 界面服务、端口关闭（实测踩到）。见模块 docstring 的完整说明。
-    optional = (AGENT_SERVICE, SESSIONS_SERVICE)
+    optional = (
+        AGENT_SERVICE,        # 跑 turn（缺 → 各路由回 503 人话）
+        SESSIONS_SERVICE,     # 会话/台账（缺 → 同上）
+        APPROVAL_SERVICE,     # 浏览器审批（缺 → 无待批可展示）
+        TOOLS_SERVICE,        # 台账里列工具面（缺 → 那一栏留空）
+    )
 
     def __init__(self, *, host: str = "127.0.0.1", port: int = 8766) -> None:
         self._host = host

@@ -97,8 +97,9 @@ def test_webui_starts_without_dependencies_and_degrades(tmp_path: Path):
     info = [p for p in ctx.plugins if p.name == "webui"][0]
     assert info.status == "active"
     assert info.inject == ()                              # 没有必需依赖
-    assert set(info.optional) == {"agent", "sessions"}
-    assert set(info.missing_optionals) == {"agent", "sessions"}   # 当前都缺
+    # 可选依赖：跑 turn 的 + 展示用的，全都缺了也不许拦着界面起来
+    assert set(info.optional) == {"agent", "sessions", "approval", "tools"}
+    assert set(info.missing_optionals) == {"agent", "sessions", "approval", "tools"}
 
     url = ctx.require(WEBUI_SERVICE).url
     with urllib.request.urlopen(url, timeout=8) as response:
@@ -322,7 +323,7 @@ def test_static_assets_served_with_correct_types(tmp_path: Path):
 
     for path, marker, expected_type in (
         ("", "<!DOCTYPE html>", "text/html"),
-        ("index.html", "ctx-panel", "text/html"),
+        ("index.html", "plugin-panel", "text/html"),   # `_05`：通用面板容器
         ("app.css", ":root{", "text/css"),
         ("app.js", "use strict", "text/javascript"),
     ):

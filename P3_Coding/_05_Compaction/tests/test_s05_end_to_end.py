@@ -181,7 +181,9 @@ def test_swapping_fs_plugin_deactivates_and_reactivates_dependents(tmp_path: Pat
 
     booted.ctx.unload_plugin("fs:MemoryFS")
     # tools / agent 依赖 fs：随提供者退位；窗口内没有服务可用。
-    assert set(booted.ctx.pending_plugins) == {"tools", "agent"}
+    # token-usage 现在也声明了 inject=("tools",)：它要往工具面注册 usage_stats，
+    # 容器换掉时它必须一起退位（否则工具永久消失——这正是补声明修掉的那个 bug）
+    assert set(booted.ctx.pending_plugins) == {"tools", "token-usage", "agent"}
     assert TOOLS_SERVICE not in booted.ctx.services
 
     disk_ws = tmp_path / "disk_ws"

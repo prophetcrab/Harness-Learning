@@ -255,6 +255,9 @@ class ToolsPlugin:
 
     name = "tools"
     inject = (FS_SERVICE,)
+    #: 可选：命令执行能力（缺失则 shell 工具不出现——一直是这个语义，
+    #: 只是原先没写进声明里）。
+    optional = (SUBPROCESS_SERVICE,)
 
     def __init__(
         self,

@@ -203,6 +203,8 @@ class WebApprovalPlugin:
     """提供 `approval` 服务（浏览器审批策略）；界面插件会自动接管它的推流。"""
 
     name = "web-approval"
+    #: 可选：文件系统（用于把待写内容摆给审批人看；没有就只给参数摘要）。
+    optional = (FS_SERVICE,)
 
     def __init__(self, *, timeout: float = 300.0) -> None:
         self._timeout = timeout

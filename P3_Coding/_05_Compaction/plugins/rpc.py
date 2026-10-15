@@ -271,6 +271,8 @@ class RpcPlugin:
 
     name = "rpc"
     inject = (AGENT_SERVICE, SESSIONS_SERVICE)
+    #: 可选：握手时顺手报工具名；工具面没就绪也不该拦住服务起来。
+    optional = (TOOLS_SERVICE,)
 
     def __init__(self, *, listen: int | None = None, host: str = "127.0.0.1") -> None:
         self._listen = listen

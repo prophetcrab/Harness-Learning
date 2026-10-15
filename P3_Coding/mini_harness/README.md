@@ -37,6 +37,7 @@ components/    纯构件（P1/P2/P3 沉淀；不 import kernel）
   fs/ proc/      FileSystem 与 Subprocess 接缝的实现
   agent/         主循环（turn/step + 轨迹 + 取消 + 每步上下文压缩）
   context/       token 估算与请求构成拆分（仪表与压缩共用）
+  panel/         面板自述（PanelSpec）：插件声明界面形态，壳零知识遍历
   rpc/           换行 JSON-RPC 帧词汇 + 传输（协议线纪律）
   env.py         .env 与真实 provider 构造
 plugins/       能力插件（把构件装成 ctx 服务）
@@ -52,7 +53,7 @@ plugins/       能力插件（把构件装成 ctx 服务）
   clock.py       ★ 示例可装卸插件（不在默认装配里）
   boot.py        boot / boot_offline / boot_realtime
 webui/         界面插件的静态资源（index.html + app.css + app.js；原生 JS 零依赖）
-tests/         227 个用例（14 个文件；文件名统一 test_p3_*）
+tests/         268 个用例（17 个文件；文件名统一 test_p3_*）
 chat.py demo.py run.bat run.sh conftest.py
 ```
 
@@ -134,8 +135,9 @@ compact（`_05` 上下文压缩；服务名 compacter）
 agent（对外入口：ask 一个 turn）
 ```
 
-顶栏两个按钮（📊 Token / 📐 上下文）由页面**通用发现**挂上：
-主界面不认识任何插件，只读 `/api/ledger` 的 `endpoints`（服务自报地址）。
+顶栏的面板按钮由页面**遍历插件自述**生成（`/api/ledger` 的 `panels`）：
+插件在自己那个服务对象上声明 `panels = (PanelSpec(...),)` —— 壳**不认识任何
+具体插件**，加一个面板插件不用改壳（`components/panel/spec.py`）。
 
 上下文压缩的行为要点（`_05`；细节见 `_05_Compaction/README.md`）：
 

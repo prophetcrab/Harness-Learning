@@ -262,6 +262,10 @@ class AgentPlugin:
 
     name = "agent"
     inject = (LLM_SERVICE, TOOLS_SERVICE, SESSIONS_SERVICE, PROMPT_SERVICE)
+    #: 可选依赖：取不到就降级（approval 缺失 → 管线 fail-closed；
+    #: compacter 缺失 → 不压缩）。声明出来的意义是**台账里看得见**，
+    #: 且符合"取过的服务都要声明"这条纪律。
+    optional = (APPROVAL_SERVICE, COMPACTER_SERVICE)
 
     def __init__(
         self,

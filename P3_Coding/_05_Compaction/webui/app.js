@@ -445,6 +445,10 @@ let knownPlugins = null;
 async function loadLedger() {
   const data = await api("/api/ledger");
   const tools = data.tools || [], plugins = data.plugins || [];
+  // 面板自述（插件声明、壳遍历）——这是界面上的"零知识"入口：
+  // 插件多一个少一个，这里只是列表长度变了，壳本身不用改。
+  panelBar.panels = data.panels || [];
+  renderPanelButtons();
   // 插件集合变化 → 高亮新增的那一行（"装完立刻出现在左栏"的视觉反馈）
   const names = plugins.map((p) => p.name);
   const added = knownPlugins ? names.filter((n) => !knownPlugins.includes(n)) : [];
@@ -756,119 +760,131 @@ $("toggle-right").addEventListener("click", () => {
   $("toggle-right").classList.toggle("on", !document.body.classList.contains("no-right"));
 });
 
-/* ---------------- 仪表面板的通用挂载（`_05` 重构抽出的共用件） ----------------
-   原先 token 用量与上下文仪表两块各写一遍同样的逻辑（解析地址 → 发现 endpoint →
-   iframe 打开 → 轮询刷新徽标），两份几乎逐字重复。现在只剩这一份工厂，两处
-   调用各给一个配置。
+/* ---------------- 插件面板：壳零知识 ----------------
 
-   地址解析顺序（页面不认识任何插件，只认服务自报的地址）：
-     ① URL 参数 ?<queryKey>=http://host:port/（手工指定，最优先）
-     ② window.<globalKey>（部署时注入）
-     ③ /api/ledger 的 endpoints["<service>"]（服务自报地址，通用发现）
-     ④ 默认地址（该插件的默认端口）
+   这里是"完全插件化"在界面上的落点：**壳不认识任何插件**。
 
-   返回一个句柄（含 base 只读属性），便于测试与排错；元素不全时返回 null。 */
-function mountPanel(config) {
-  const { queryKey, globalKey, service, title, badge } = config;
-  const btn = document.getElementById(config.btnId);
-  const panel = document.getElementById(config.panelId);
-  const frame = document.getElementById(config.frameId);
-  const urlEl = document.getElementById(config.urlId);
-  const openEl = document.getElementById(config.openId);
-  const closeEl = document.getElementById(config.closeId);
-  if (!btn || !panel || !frame) return null;
+   机制：插件在自己那个服务对象上声明 `panels = (PanelSpec(...),)`（见
+   components/panel/spec.py）→ webui 的 /api/ledger 把它连同服务地址一起交给
+   页面 → 本段遍历这个列表，为每个面板生成一个顶栏按钮 + 一个 iframe。
 
-  const fromQuery = new URLSearchParams(location.search).get(queryKey);
-  let base = String(fromQuery || window[globalKey] || config.defaultUrl);
-  if (!/^https?:\/\//i.test(base)) base = "http://" + base;   // 只接受 http(s)
-  if (!base.endsWith("/")) base += "/";
+   于是"加一个面板插件"**不用改这个文件、也不用改 index.html**：插件自己
+   声明按钮叫什么、页面在哪、徽标读哪个 JSON 字段。壳只做三件通用的事——
+   放按钮、点开显示那个插件的页面、按声明读个数字贴到按钮上。 */
 
-  function setUrl(url) {
-    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return;
-    base = url.endsWith("/") ? url : url + "/";
-    urlEl.textContent = base;
-    urlEl.title = base;
-    openEl.href = base;
-    frame.dataset.ready = "";
-    if (!panel.hidden) { frame.src = base; frame.dataset.ready = "1"; }
-  }
-
-  async function discover() {   // 服务自报地址（需要 /api/ledger 带 endpoints）
-    try {
-      const data = await api("/api/ledger");
-      setUrl(data && data.endpoints && data.endpoints[service]);
-    } catch (err) { /* 保留当前 base：老版本 ledger 没有 endpoints 字段 */ }
-  }
-
-  async function refreshBadge() {   // 服务在不在 / 徽标显示什么
-    if (!badge) return;
-    try {
-      const res = await fetch(base + badge.path, { cache: "no-store" });
-      const data = await res.json();
-      btn.textContent = badge.text(data);
-      btn.title = title + " 插件：" + badge.tip(data) + " · " + base;
-    } catch (err) {
-      btn.textContent = badge.fallback;
-      btn.title = "读不到 " + base + badge.path + "（插件未装载？点击仍可打开页面）";
-    }
-  }
-
-  btn.addEventListener("click", async () => {
-    panel.hidden = false;
-    if (frame.dataset.ready !== "1") {
-      await discover();
-      frame.src = base;
-      frame.dataset.ready = "1";
-    }
-    refreshBadge();
-  });
-  closeEl.addEventListener("click", () => { panel.hidden = true; });
-  panel.addEventListener("click", (e) => { if (e.target === panel) panel.hidden = true; });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") panel.hidden = true; });
-
-  setUrl(base);
-  discover().then(refreshBadge);
-  setInterval(refreshBadge, 5000);
-  return { get base() { return base; } };
+/** 按点号路径取嵌套字段（"totals.total_tokens"）；取不到返回 undefined。 */
+function pickField(data, path) {
+  if (!path) return undefined;
+  return String(path).split(".").reduce(
+    (acc, key) => (acc == null ? undefined : acc[key]), data);
 }
 
-/* ---------------- 上下文仪表（context-meter 插件） ---------------- */
-mountPanel({
-  btnId: "ctx-btn", panelId: "ctx-panel", frameId: "ctx-frame",
-  urlId: "ctx-url", openId: "ctx-open", closeId: "ctx-close",
-  queryKey: "context_meter", globalKey: "CONTEXT_METER_URL",
-  service: "context-meter", defaultUrl: "http://127.0.0.1:8768/",
-  title: "context-meter",
-  badge: {
-    path: "api/context",
-    // 窗口 1M 之后百分比几乎恒为 0.x%，取整会一直显示 "0%"——小数位按量级给：
-    // 小于 10% 时保留 1 位（0.2% 这种才看得见趋势），够大就取整省地方。
-    text: (d) => {
-      const percent = Number(d.percent ?? 0);
-      const shown = percent < 10 ? percent.toFixed(1) : percent.toFixed(0);
-      return "📐 上下文 " + shown + "%";
-    },
-    tip: (d) => "已用 " + Number(d.used ?? 0).toLocaleString("zh-CN")
-      + " / " + Number(d.capacity ?? 0).toLocaleString("zh-CN") + " tokens",
-    fallback: "📐 上下文",
-  },
-});
+/** 按插件自述格式出一个徽标数字。 */
+function badgeText(panel, data) {
+  const value = pickField(data, panel.badge_field);
+  if (value == null) return panel.label;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return panel.label;
+  if (panel.badge_kind === "percent") {
+    // 窗口大到 1M 之后百分比常常是 0.x——取整会一直显示 0%，
+    // 所以小于 10 时保留一位（这种"显示策略"是壳的事，不是插件的事）。
+    const shown = number < 10 ? number.toFixed(1) : number.toFixed(0);
+    return `${panel.label} ${shown}${panel.badge_suffix || "%"}`;
+  }
+  return `${panel.label} ${number.toLocaleString("zh-CN")}${panel.badge_suffix || ""}`;
+}
 
-/* ---------------- token 用量（token-usage 插件） ---------------- */
-mountPanel({
-  btnId: "token-btn", panelId: "token-panel", frameId: "token-frame",
-  urlId: "token-url", openId: "token-open", closeId: "token-close",
-  queryKey: "token_usage", globalKey: "TOKEN_USAGE_URL",
-  service: "token-usage", defaultUrl: "http://127.0.0.1:8767/",
-  title: "token-usage",
-  badge: {
-    path: "api/usage",
-    text: (d) => "📊 Token " + Number(d.totals?.total_tokens || 0).toLocaleString("zh-CN"),
-    tip: (d) => (d.calls ?? 0) + " 次调用 · 合计 "
-      + Number(d.totals?.total_tokens || 0).toLocaleString("zh-CN") + " tokens",
-    fallback: "📊 Token 用量",
-  },
+const panelBar = {
+  panels: [],          // 最近一次 ledger 里的面板自述
+  base: new Map(),     // service → 解析后的地址
+  badge: new Map(),    // service → 最近一次徽标数据
+  current: null,       // 当前打开的面板（service 名）
+};
+
+function panelBase(panel) {
+  // 地址解析顺序：URL 参数（手工指定）→ 全局变量 → 服务自报 → 自述里没有兜底
+  const fromQuery = new URLSearchParams(location.search).get(
+    panel.service.replace(/-/g, "_"));
+  const fromGlobal = window[panel.service.toUpperCase().replace(/-/g, "_") + "_URL"];
+  let base = String(fromQuery || fromGlobal || panel.url || "");
+  if (!base) return "";
+  if (!/^https?:\/\//i.test(base)) base = "http://" + base;
+  return base.endsWith("/") ? base : base + "/";
+}
+
+/** 点开某个面板：填标题/地址、装上 iframe（惰性）、刷新徽标。 */
+async function openPanel(service) {
+  const panel = panelBar.panels.find((p) => p.service === service);
+  if (!panel) return;
+  const box = document.getElementById("plugin-panel");
+  const frame = document.getElementById("pp-frame");
+  const base = panelBase(panel);
+  panelBar.current = service;
+  document.getElementById("pp-title").textContent = panel.title || panel.label;
+  const urlEl = document.getElementById("pp-url");
+  urlEl.textContent = base;
+  urlEl.title = base;
+  document.getElementById("pp-open").href = base;
+  if (base && frame.dataset.for !== service) {     // 换面板才重装 iframe
+    frame.src = base;
+    frame.dataset.for = service;
+  }
+  box.hidden = false;
+  refreshPanelBadges();
+}
+
+function closePanel() {
+  document.getElementById("plugin-panel").hidden = true;
+  panelBar.current = null;
+}
+
+/** 刷新所有面板按钮上的徽标（跨源读插件自己的 JSON，靠它的 CORS 头）。 */
+async function refreshPanelBadges() {
+  for (const panel of panelBar.panels) {
+    const btn = document.querySelector(`[data-panel="${CSS.escape(panel.service)}"]`);
+    if (!btn) continue;
+    const base = panelBase(panel);
+    if (!panel.badge_path) { btn.textContent = panel.label; continue; }
+    try {
+      const res = await fetch(base + panel.badge_path, { cache: "no-store" });
+      const data = await res.json();
+      btn.textContent = badgeText(panel, data);
+      btn.title = `${panel.title || panel.label}（${panel.service} 插件） · ${base}`;
+    } catch (err) {
+      btn.textContent = panel.badge_fallback || panel.label;
+      btn.title = `读不到 ${base}${panel.badge_path}（插件未装载？点击仍可打开页面）`;
+    }
+  }
+}
+
+/** 按面板自述建/更新顶栏按钮（ledger 每次刷新都会调）。 */
+function renderPanelButtons() {
+  const host = document.getElementById("panel-btns");
+  if (!host) return;
+  host.innerHTML = "";
+  for (const panel of panelBar.panels) {
+    const btn = document.createElement("button");
+    btn.className = "tbtn";
+    btn.type = "button";
+    btn.dataset.panel = panel.service;
+    btn.textContent = panel.badge_fallback || panel.label;
+    btn.title = `${panel.title || panel.label}（${panel.service} 插件）`;
+    btn.addEventListener("click", () => {
+      if (panelBar.current === panel.service
+          && !document.getElementById("plugin-panel").hidden) closePanel();
+      else openPanel(panel.service);
+    });
+    host.appendChild(btn);
+  }
+  refreshPanelBadges();
+}
+
+document.getElementById("pp-close").addEventListener("click", closePanel);
+document.getElementById("plugin-panel").addEventListener("click", (e) => {
+  if (e.target.id === "plugin-panel") closePanel();
 });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePanel(); });
+setInterval(refreshPanelBadges, 5000);
 
 /* ---------------- init ---------------- */
 (async function init() {
