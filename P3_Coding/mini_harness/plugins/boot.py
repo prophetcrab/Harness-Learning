@@ -27,6 +27,7 @@ from plugins.compact import compact_plugin
 from plugins.context_meter import context_meter_plugin
 from plugins.fs import jail_fs_plugin, local_fs_plugin, memory_fs_plugin
 from plugins.llm import deepseek_llm_plugin, fake_llm_plugin, offline_llm_plugin
+from plugins.plugin_admin import plugin_admin_plugin
 from plugins.proc import local_proc_plugin, scripted_proc_plugin
 from plugins.prompt import PromptPlugin
 from plugins.self_tools import self_tools_plugin
@@ -117,6 +118,7 @@ def boot_offline(
         ToolsPlugin(workspace=workspace),
     ]
     plugins.append(token_usage_plugin())   # `_03`：用量账本 + 用量页面（8767）
+    plugins.append(plugin_admin_plugin())  # `_05` 收尾：插件管理（分类 + 一键开关）
     plugins.append(context_meter_plugin(capacity=context_window))  # `_04`：仪表（8768）
     plugins.append(compact_plugin(capacity=context_window))        # `_05`：压缩
     if self_tools:
@@ -160,6 +162,7 @@ def boot_realtime(
         ToolsPlugin(workspace=workspace),
     ]
     plugins.append(token_usage_plugin())   # `_03`：用量账本 + 用量页面（8767）
+    plugins.append(plugin_admin_plugin())  # `_05` 收尾：插件管理（分类 + 一键开关）
     plugins.append(context_meter_plugin(capacity=context_window))  # `_04`：仪表（8768）
     plugins.append(compact_plugin(capacity=context_window))        # `_05`：压缩
     if self_tools:

@@ -39,13 +39,16 @@ def test_boot_offline_activates_all_plugins_and_serves(tmp_path: Path):
         "prompt",
         "tools",
         "token-usage",          # `_03`：用量账本 + 用量页面
+        "plugin-admin",         # `_05` 收尾：插件管理（分类 + 一键开关）
         "context-meter",        # `_04`：上下文仪表
         "compact",              # `_05`：上下文压缩（服务名 compacter）
         "agent",
     ]
     assert booted.ctx.services == [
         "llm", "fs", "subprocess", "sessions", "prompt", "tools",
-        "token-usage", "context-meter", "compacter",
+        "token-usage",
+        "plugin-admin", "plugin-admin.surface",   # `_05` 收尾：插件管理 + 端点
+        "context-meter", "compacter",
         "compact.surface",      # `_05`：压缩插件的界面自述（显示规则 + 端点）
         "agent",
     ]

@@ -22,6 +22,8 @@ from plugins.services import FS_SERVICE
 class FsPlugin:
     """把一个 FileSystem 实现装成 `fs` 服务（卸载自动回卷）。"""
 
+    #: 应用角色（base）：没有文件系统就没有 coding 能力（工具面依赖它）。
+    category = "base"
     def __init__(self, provider: FileSystem) -> None:
         self._provider = provider
         self.name = f"fs:{type(provider).__name__}"

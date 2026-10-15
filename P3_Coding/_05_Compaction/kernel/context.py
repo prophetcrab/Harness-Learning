@@ -42,14 +42,27 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from kernel.plugin import plugin_injects, plugin_name, plugin_optionals, plugin_setup
+from kernel.plugin import (
+    DEFAULT_CATEGORY,
+    plugin_category,
+    plugin_injects,
+    plugin_name,
+    plugin_optionals,
+    plugin_setup,
+)
 
 # 装载函数：执行副作用，返回撤销函数（或 None 表示"副作用都走 ctx 自动管理"）。
 Install = Callable[[], "Callable[[], None] | None"]
 Disposer = Callable[[], None]
 EventHandler = Callable[..., Any]
 
-PluginStatus = Literal["pending", "active", "failed"]
+#: 插件状态。
+#:
+#:     pending   已装载，依赖未齐（依赖来了会自动激活）
+#:     active    运行中（提供的服务可用、订阅生效）
+#:     disabled  **被停用**（`_05` 收尾）：effect 已回卷，但注册还在，一键可恢复
+#:     failed    激活时 setup 抛错（台账里保留错误，供排查）
+PluginStatus = Literal["pending", "active", "disabled", "failed"]
 
 
 class DuplicateSlotError(ValueError):
@@ -86,6 +99,9 @@ class PluginInfo:
     status: PluginStatus
     inject: tuple[str, ...]
     missing: tuple[str, ...]  # 当前未满足的**必需**依赖（status=pending 时有意义）
+    #: 插件自述的应用角色（base / capability / other；见 kernel/plugin.py）。
+    #: 内核只搬运这个值，解释它（比如"base 不可卸载"）是消费方的事。
+    category: str = DEFAULT_CATEGORY
     #: 可选依赖声明（`_05`）：表里列出、缺了不禁用——missing_optionals 是当前
     #: 取不到的那些（界面/台账据此显示"降级中"，而不是假装一切正常）。
     optional: tuple[str, ...] = ()
@@ -103,6 +119,9 @@ class _PluginRecord:
     #: 可选依赖：**不参与 `_deps_ok`**——缺了照常激活、来了不重装（见
     #: kernel/plugin.py 的语义表）。这里存着主要是为了可见性（PluginInfo）。
     optional: tuple[str, ...] = ()
+    #: 应用角色（`_05` 收尾）：装载时从插件对象上读出来存这儿——插件对象本身
+    #: 不进台账（只留 bound setup），所以这类声明必须**装载期快照**。
+    category: str = DEFAULT_CATEGORY
     status: PluginStatus = "pending"
     disposer: Disposer | None = None  # 激活时拿到的 effect 卸载句柄
     error: BaseException | None = None
@@ -314,6 +333,7 @@ class Context:
             setup=plugin_setup(plugin),
             inject=plugin_injects(plugin),
             optional=plugin_optionals(plugin),
+            category=plugin_category(plugin),
         )
         self._plugins[name] = record
         try:
@@ -367,6 +387,64 @@ class Context:
                 self._suppressed.discard(dependent.name)
         self._settle()
 
+    def disable_plugin(self, name: str) -> list[str]:
+        """**停用**一个插件（`_05` 收尾）：回卷它的 effect，但**保留注册**。
+
+        与卸载的区别（这是"一键关掉某个能力"需要的语义）：
+
+            卸载  → 从台账里删掉；要再回来必须重新提供插件对象（重新装配）
+            停用  → 只回卷 effect、状态标为 disabled；重新启用用**同一个对象**，
+                    配置与身份都不丢（`setup` 会在同一实例上再跑一遍）
+
+        级联与卸载一致：依赖它的插件会被一起停用（它们退回 pending，等它重新
+        启用后由 settle 自动激活）。返回被影响的插件名（含自己）。
+
+        为什么需要它：`_04` 实测工具说明书占上下文 77.6%——能按需关掉一个
+        能力插件（比如某次任务不需要工具），是省钱也是收窄攻击面。
+        """
+        record = self._plugins.get(name)
+        if record is None:
+            raise UnknownPluginError(f"插件不存在：{name}（无法停用）")
+        if record.status == "disabled":
+            raise ValueError(f"插件已处于停用状态：{name}")
+        dependents = list(reversed(self._dependent_records(record)))
+        # 先把自己标成 disabled：回卷过程中会触发 settle，而 settle 的激活循环
+        # 只碰 pending —— 不先标的话，它会在我们回卷到一半时又把自己装回去。
+        record.status = "disabled"
+        self._suppressed.update(dep.name for dep in dependents)
+        try:
+            for dependent in dependents:
+                self._deactivate(dependent)          # 依赖者退回 pending
+            self._deactivate(record, status="disabled")
+        finally:
+            for dependent in dependents:
+                self._suppressed.discard(dependent.name)
+        self._settle()
+        return [record.name, *(dep.name for dep in dependents)]
+
+    def enable_plugin(self, name: str) -> None:
+        """重新启用一个被停用的插件：标回 pending，交由 settle 决定能否激活。
+
+        **不保证一定激活**：依赖缺失时它会停在 pending（台账里能看到缺什么），
+        这正是"启用"该有的诚实行为——不是"我点了就应该活"。
+        """
+        record = self._plugins.get(name)
+        if record is None:
+            raise UnknownPluginError(f"插件不存在：{name}（无法启用）")
+        if record.status not in ("disabled", "failed"):
+            raise ValueError(
+                f"插件当前是 {record.status}，不需要启用"
+                "（只有 disabled / failed 的插件可以启用）"
+            )
+        record.status = "pending"
+        record.error = None
+        self._settle()
+
+    @property
+    def disabled_plugins(self) -> list[str]:
+        """被停用的插件名（按装载顺序）。"""
+        return [rec.name for rec in self._plugins.values() if rec.status == "disabled"]
+
     @property
     def plugins(self) -> list[PluginInfo]:
         """全部插件的状态快照（按装载顺序）。"""
@@ -380,6 +458,7 @@ class Context:
                 missing_optionals=tuple(
                     dep for dep in record.optional if dep not in self._slots
                 ),
+                category=record.category,
                 error=record.error,
             )
             for record in self._plugins.values()
@@ -422,9 +501,16 @@ class Context:
         record.provided = tuple(sorted(set(self._slots) - before))
         record.status = "active"
 
-    def _deactivate(self, record: _PluginRecord) -> None:
-        """停用（或丢弃）一个插件记录：回卷它的 effect，退回 pending。"""
-        record.status = "pending"
+    def _deactivate(
+        self, record: _PluginRecord, *, status: PluginStatus = "pending"
+    ) -> None:
+        """停用（或丢弃）一个插件记录：回卷它的 effect，置为该状态（默认 pending）。
+
+        `status` 参数是"停用"（disable）需要的：如果先回卷、事后再改状态，
+        回卷过程中触发的 settle 会看到它还是 pending、依赖也齐 → **立刻把它
+        重新激活**（实测踩到）。所以状态必须**先设好**，让 settle 一眼认出它。
+        """
+        record.status = status
         record.error = None
         record.provided = ()
         disposer, record.disposer = record.disposer, None

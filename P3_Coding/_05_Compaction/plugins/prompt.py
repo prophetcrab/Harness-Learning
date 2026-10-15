@@ -57,6 +57,8 @@ class PromptPlugin:
     """提供 `prompt` 服务（含 section 装配器与运行时变量瀑布）。"""
 
     name = "prompt"
+    #: 应用角色（base）：系统提示词是 agent 的组成部分。
+    category = "base"
 
     def __init__(
         self,

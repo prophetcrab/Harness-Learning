@@ -7,8 +7,9 @@ P3 阶段的编码工作区。**组织方式沿用 P2：阶段式工作区**—�
 **当前进度**：基线已落地（完全插件化 + 界面 + RPC）；`_01`（自扩展工具 +
 浏览器审批 + 从工作区安装插件）、`_02`（流式输出 + 取消）、`_03`（用量与
 预算）、`_04`（上下文仪表：容量 / 构成 / 缓存命中）、`_05`（上下文压缩：
-日志折叠声明 + 重放同构，默认窗口 1M）**均已完成**；`mini_harness/` 基线
-已按 PLAN 在 `_05` 里程碑重生成（206 用例全绿）。
+日志折叠声明 + 重放同构，默认窗口 1M）**均已完成**；`_05` 收尾补做了
+**插件管理**（分类台账 + 一键 安装/卸载/停用/启用）。`mini_harness/` 基线
+已按 PLAN 同步到 `_05` 完成态（**321 用例全绿**）。
 
 > P3 的路线定位见根 [README.md](../README.md) 的"未来路线图"。按计划，P3 的
 > 能力范围应由"垂类"裁剪；先交付**地基**，后续能力（自扩展、流式、预算计量、
@@ -60,7 +61,7 @@ kernel/      插件内核：ctx（服务 / 事件 / effect）+ 插件生命周�
 | 层 | 文件 | 内容 |
 |---|---|---|
 | `kernel/` | `context.py` | **Context**：服务槽位（provide/retract/require/get）、事件（on/emit/waterfall）、effect 台账（装载即登记、卸载自动回卷、子先父后）、插件生命周期 |
-| | `plugin.py` | **Plugin** 协议与声明（name / inject / setup 的读取） |
+| | `plugin.py` | **Plugin** 协议与声明（name / inject / optional / category / setup 的读取） |
 | `components/` | `llm/ session/ prompt/ tools/ fs/ proc/ agent/ rpc/` | P1/P2 的构件原样沉淀（provider 接缝、事件日志、提示词装配、工具管线、能力实现、主循环、JSON-RPC 帧与传输）；`session/projection.py` 合并了 P2 的 `system/message` 遮蔽 |
 | `plugins/` | `llm.py fs.py proc.py tools.py sessions.py prompt.py agent.py` | 七个能力插件 + 服务名/事件名常量 + `boot.py` 标准装配 |
 | | `webui.py` + `webui/index.html` | ★ **界面插件**（本机 HTTP 服务 + 零依赖页面）——装载即起、卸载即停 |
@@ -91,7 +92,7 @@ kernel/      插件内核：ctx（服务 / 事件 / effect）+ 插件生命周�
 **boot**：`boot(plugins=[...])` 装载并检查"没有残留 pending"（依赖写错
 fail loud）；`Booted.close()` 逆序卸载全部插件。
 
-## 4. 九个标准插件
+## 4. 十四个标准插件
 
 | 插件 | 提供 | inject | 说明 |
 |---|---|---|---|
@@ -102,8 +103,19 @@ fail loud）；`Booted.close()` 逆序卸载全部插件。
 | `sessions` | `sessions` | — | 打开即恢复 + 崩溃尾行修复 + 列举 + 分叉 |
 | `prompt` | `prompt` | — | section 装配 + `prompt/variables` 瀑布 + 装配单 |
 | `agent` | `agent` | `llm` `tools` `sessions` `prompt` | 会话管理：`ask(text, session_id)` 跑一个 turn |
-| `webui` | `webui` | `agent` `sessions` | ★ **浏览器界面**：本机 HTTP 服务；**装载即起、卸载即停**（端口释放）；页面看插件台账 / 会话 / 实时事件流 |
+| `webui` | `webui` | （可选）`agent` `sessions` | ★ **浏览器界面**：本机 HTTP 服务；**装载即起、卸载即停**（端口释放）；页面看插件台账 / 会话 / 实时事件流 |
 | `rpc` | `rpc` | `agent` `sessions` | ★ **JSON-RPC 服务端**：`initialize` / `session.prompt` / `session.follow`（重放+订阅）；stdio 或 TCP（`listen=` 装载即起、卸载即停） |
+| `self-tools` | `self-tools` | `tools` `fs` | `_01`：让模型装卸白名单插件（`install_plugin` 需人工审批） |
+| `web-approval` | （审批策略） | — | `_01`：审批点在浏览器里，问不到人则 fail-closed |
+| `token-usage` | 账本 + 页面 | `tools` | `_03`：用量账本 + 用量页面（8767） |
+| `context-meter` | 仪表 + 页面 | — | `_04`：上下文构成 / 容量（8768） |
+| `compact` | `compacter` | `llm` | `_05`：上下文压缩（90% 触发、日志只追加折叠声明） |
+| `plugin-admin` | 管理 + 端点 | — | `_05` 收尾：分类台账 + 一键 安装/卸载/停用/启用 |
+| `clock` | — | — | 示例可装卸插件（不在默认装配里） |
+
+> 每个插件都声明 `category`（`base` / `capability` / `other`）：内核只读出来
+> 记进台账，**策略归 `plugin_admin`**（基础插件不给卸载按钮）。见
+> [docs/decisions/0033](../docs/decisions/0033-plugin-admin.md)。
 
 **界面与 RPC 都是插件**（`plugins/webui.py`、`plugins/rpc.py`）——它比多数能力更能说明 effect 的价值：
 HTTP 服务天然带生命周期（线程 + 端口），P2 时代的页面服务是手工起的、
@@ -139,7 +151,7 @@ stdio 模式有一条硬纪律：**stdout 只出帧**（banner/台账全走 stde
 
 ```bash
 cd P3_Coding/mini_harness
-python -m pytest -q                       # 66 个用例（全离线）
+python -m pytest -q                       # 321 个用例（全离线）
 
 # 离线组合（默认）：离线模型 + MemoryFS + 剧本命令
 python chat.py

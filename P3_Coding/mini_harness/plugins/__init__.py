@@ -65,6 +65,11 @@ from plugins.llm import (
     fake_llm_plugin,
     offline_llm_plugin,
 )
+from plugins.plugin_admin import (
+    PluginAdminPlugin,
+    PluginAdminService,
+    plugin_admin_plugin,
+)
 from plugins.proc import ProcPlugin, local_proc_plugin, scripted_proc_plugin
 from plugins.prompt import PromptPlugin, PromptService
 from plugins.rpc import (
@@ -90,6 +95,7 @@ from plugins.services import (
     CONTEXT_METER_SERVICE,
     FS_SERVICE,
     LLM_SERVICE,
+    PLUGIN_ADMIN_SERVICE,
     PROMPT_SERVICE,
     RPC_SERVICE,
     SELF_TOOLS_SERVICE,
@@ -135,6 +141,7 @@ __all__ = [
     "OFFLINE_DEMO_REPLY",
     "PLUGIN_LOADED",
     "PLUGIN_UNLOADED",
+    "PLUGIN_ADMIN_SERVICE",
     "PROMPT_SERVICE",
     "PROMPT_VARIABLES",
     "RPC_SERVICE",
@@ -162,6 +169,8 @@ __all__ = [
     "HarnessSession",
     "LlmPlugin",
     "ObservableSession",
+    "PluginAdminPlugin",
+    "PluginAdminService",
     "ProcPlugin",
     "PromptPlugin",
     "PromptService",
@@ -197,6 +206,7 @@ __all__ = [
     "measure_parts",
     "memory_fs_plugin",
     "offline_llm_plugin",
+    "plugin_admin_plugin",
     "rpc_plugin",
     "scripted_proc_plugin",
     "self_tools_plugin",

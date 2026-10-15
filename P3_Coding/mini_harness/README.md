@@ -12,7 +12,7 @@ P3 的**地基**：一个把"能力"全部表达为插件的 mini harness。三�
 
 ```bash
 cd P3_Coding/mini_harness
-python -m pytest -q                    # 206 用例，全离线
+python -m pytest -q                    # 321 用例，全离线
 python demo.py                         # 八节演示（装配 / 台账 / 对话 / resume / 热插拔 / 回卷 / 界面插件 / RPC）
 python chat.py --ask "帮我算 2+3"       # 离线一个 turn
 python chat.py                         # 离线交互（/web 现场装卸界面插件）
@@ -27,7 +27,7 @@ python chat.py --realtime              # 真实组合（DeepSeek + 磁盘 + 进�
 ```
 kernel/        插件内核（纯逻辑，不认识任何业务词汇）
   context.py     Context：服务槽位 + 事件（emit/waterfall）+ effect 台账 + 插件生命周期
-  plugin.py      Plugin 协议与声明（name / inject / setup）
+  plugin.py      Plugin 协议与声明（name / inject / optional / category / setup）
 components/    纯构件（P1/P2/P3 沉淀；不 import kernel）
   llm/           中立词汇（Message/Usage 含缓存字段）+ provider 协议 + 流式聚合
                  + FakeLLM / DeepSeekProvider
@@ -51,10 +51,12 @@ plugins/       能力插件（把构件装成 ctx 服务）
   token_usage.py ★ 用量账本 + 页面（`_03`，8767）
   context_meter.py ★ 上下文仪表 + 页面（`_04`，8768）
   compact.py     ★ 上下文压缩（`_05`）：提供 compacter 服务
+  plugin_admin.py★ 插件管理（`_05` 收尾）：分类台账 + 一键安装/卸载/停用/启用
+  catalog.py     共享白名单（模型侧与界面侧消费同一份，避免漂移）
   clock.py       ★ 示例可装卸插件（不在默认装配里）
   boot.py        boot / boot_offline / boot_realtime
 webui/         界面插件的静态资源（index.html + app.css + app.js；原生 JS 零依赖）
-tests/         292 个用例（19 个文件；文件名统一 test_p3_*）
+tests/         321 个用例（18 个文件；文件名统一 test_p3_*）
 chat.py demo.py run.bat run.sh conftest.py
 ```
 
@@ -118,9 +120,10 @@ ctx.require("webui").url               # → http://127.0.0.1:<port>/
 ctx.unload_plugin("webui")             # 卸载：shutdown + join + 端口释放，零残留
 ```
 
-页面三栏：**插件台账**（每个插件的 status 与 inject）、对话（NDJSON 流式推事件）、
-**append-only 事件流**。API：`/api/ledger`、`/api/sessions`、
-`/api/sessions/<id>/events`、`POST /api/sessions/<id>/send`。
+页面三栏：**插件台账**（按 基础/能力/其他 分组，可一键 安装/卸载/停用/启用）、
+对话（NDJSON 流式推事件）、**append-only 事件流**。API：`/api/ledger`、
+`/api/sessions`、`/api/sessions/<id>/events`、`POST /api/sessions/<id>/send`、
+`/api/plugins`（分类台账）、`POST /api/plugins/<name>/<action>`（一键操作）。
 
 三条实现纪律：**生命周期只在主线程**（内核无锁）；服务线程只调服务、不改 ctx；
 **跑 turn 用一把锁串行化**（agent 的会话缓存不是线程安全的，多标签页同时提问
@@ -133,8 +136,15 @@ llm  fs  proc  sessions  prompt  tools
 token-usage（`_03` 用量账本 + 页面 8767）
 context-meter（`_04` 上下文仪表 + 页面 8768）
 compact（`_05` 上下文压缩；服务名 compacter）
+plugin-admin（`_05` 收尾 插件管理；服务名 plugin-admin + 端点自述）
 agent（对外入口：ask 一个 turn）
 ```
+
+**分类（`category` 声明）**：`base`（地基，卸了应用不成立）/ `capability`
+（额外能力，可按需开关）/ `other`（演示示例）。内核只读出来记进台账，**策略归
+`plugin_admin`**——它按 `(分类, 状态, 是否在可安装名单)` 算出该给哪些按钮下发给
+界面。`disable` 与 `unload` 是两件事：前者回卷 effect 但保留注册（`enable`
+原地复活），后者从账本移除。详见 `docs/decisions/0033-plugin-admin.md`。
 
 界面对插件是**零知识**的——插件自述三件事，壳只按声明分派
 （`components/shell/`）：

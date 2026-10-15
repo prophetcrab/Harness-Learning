@@ -36,6 +36,8 @@ class ClockPlugin:
     """装载它 → 多一个 `now` 工具；卸载它 → 工具消失、服务撤销。"""
 
     name = "clock"
+    #: 应用角色（other）：演示插件：演示装载即扩展。
+    category = "other"
     inject = (TOOLS_SERVICE,)  # 要登记工具，所以依赖工具面服务
 
     def setup(self, ctx: Context):

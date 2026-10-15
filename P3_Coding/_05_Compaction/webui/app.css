@@ -84,6 +84,24 @@
   .dot.failed{background:var(--err)}
   .plug-n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .plug-i{color:var(--faint);font-size:11px}
+  /* 插件分组（`_05` 收尾）：基础 / 能力 / 其他 */
+  .plug-group{margin-bottom:9px}
+  .plug-group-h{display:flex;align-items:center;gap:6px;font-size:10.5px;
+    color:var(--faint);letter-spacing:.06em;padding:4px 0 3px;
+    border-bottom:1px solid #1a1f28;margin-bottom:3px}
+  .plug-group-n{color:#39414f;font-variant-numeric:tabular-nums}
+  /* 基础标记：不可卸载（策略由 plugin-admin 决定，壳只显示它下发的状态） */
+  .plug-base{color:#7c8798;font-size:9.5px;border:1px solid #2a3140;
+    border-radius:4px;padding:0 4px;flex:none}
+  /* 一键动作按钮 */
+  .plug-actions{display:flex;gap:3px;margin-left:auto;flex:none}
+  .pa-btn{background:#151b24;color:var(--muted);border:1px solid #24303f;
+    border-radius:6px;padding:1px 7px;font-size:10.5px;cursor:pointer;
+    transition:color .12s,border-color .12s}
+  .pa-btn:hover{color:var(--fg);border-color:#37455a}
+  .pa-btn.pa-unload:hover,.pa-btn.pa-disable:hover{color:#fca5a5;border-color:#5b2b2b}
+  .pa-btn.pa-install{color:var(--accent);border-color:#26405f}
+
   /* 可选依赖缺失（`_05`）：插件还活着，只是暂时用不了那几样服务 */
   .plug-degraded{color:var(--warn);font-size:10.5px;border:1px solid #4a3a1a;
     background:#241d0f;border-radius:5px;padding:0 5px;flex:none}

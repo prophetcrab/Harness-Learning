@@ -147,6 +147,8 @@ class SessionsPlugin:
     """提供 `sessions` 服务（会话日志根目录在构造时定死）。"""
 
     name = "sessions"
+    #: 应用角色（base）：日志是唯一真相，没有它就没有会话。
+    category = "base"
 
     def __init__(self, root: str | Path) -> None:
         self._root = Path(root)

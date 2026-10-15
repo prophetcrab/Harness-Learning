@@ -37,6 +37,8 @@ class LlmPlugin:
     """把一个 LLMProvider 装成 `llm` 服务（带事件广播与请求瀑布）。"""
 
     name = "llm"
+    #: 应用角色（base）：没有模型就没有 agent。
+    category = "base"
 
     def __init__(self, provider: LLMProvider) -> None:
         self._provider = provider

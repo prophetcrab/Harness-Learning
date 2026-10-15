@@ -34,6 +34,8 @@ APPROVAL_SURFACE = "approval.surface"
 TOKEN_USAGE_SERVICE = "token-usage"
 #: 上下文仪表服务的只读地址（`_04`；页面据此挂载仪表入口）。
 CONTEXT_METER_SERVICE = "context-meter"
+#: 插件管理服务（`_05` 收尾；分类台账 + 安装/卸载/停用/启用）。
+PLUGIN_ADMIN_SERVICE = "plugin-admin"
 #: 上下文压缩器（`_05`；agent 插件注入它，卸载 = 不再压缩）。
 COMPACTER_SERVICE = "compacter"
 #: 压缩插件的**界面自述**（`_05`）：显示规则 + 专属端点。
@@ -50,6 +52,7 @@ __all__ = [
     "CLOCK_SERVICE",
     "FS_SERVICE",
     "LLM_SERVICE",
+    "PLUGIN_ADMIN_SERVICE",
     "PROMPT_SERVICE",
     "RPC_SERVICE",
     "SELF_TOOLS_SERVICE",

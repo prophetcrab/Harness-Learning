@@ -473,43 +473,152 @@ async function api(path, opts) {
   return res.json();
 }
 let knownPlugins = null;
+/* ---------------- 插件台账（分组 + 一键开关） ----------------
+
+   **壳不知道"哪些动作该出现"**：每个插件该有哪些按钮（安装/卸载/停用/启用）
+   由 plugin-admin 插件按策略算好，随快照一起下发（`snapshot.actions` 是动作名
+   → 中文文案的映射）。壳只做两件事：分组渲染、点按钮 POST 回去。
+
+   没装 plugin-admin 时（能力插件，允许被关掉）自动退化为**只读**：仍显示
+   分组与状态，但没有按钮——界面不会因为缺了它而报错或空白。 */
+
+/** 一次管理动作（安装/卸载/停用/启用）。 */
+async function pluginAction(name, action) {
+  try {
+    const res = await fetch(`/api/plugins/${encodeURIComponent(name)}/${action}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.status);
+    showBanner(data.message || "完成");          // 成败都有话（人点的操作不静默）
+    await loadLedger();
+  } catch (err) {
+    showBanner(`操作失败：${err.message}`);
+  }
+}
+
 async function loadLedger() {
   const data = await api("/api/ledger");
-  const tools = data.tools || [], plugins = data.plugins || [];
+  const tools = data.tools || [];
   // 面板自述（插件声明、壳遍历）——这是界面上的"零知识"入口：
   // 插件多一个少一个，这里只是列表长度变了，壳本身不用改。
   panelBar.panels = data.panels || [];
   renderPanelButtons();
   // 显示自述（插件声明事件怎么画）——壳只按 renderer 名分派
   state.display = data.display || [];
-  // 插件集合变化 → 高亮新增的那一行（"装完立刻出现在左栏"的视觉反馈）
+
+  $("tools-badge").innerHTML = `工具 <b>${tools.length}</b>`;
+  $("tools-badge").title = tools.join(" · ");
+
+  // 管理快照优先（有 plugin-admin 才有）；否则退回只读的原始台账
+  let snapshot = null;
+  try {
+    const res = await fetch("/api/plugins", { cache: "no-store" });
+    if (res.ok) snapshot = await res.json();
+  } catch (err) { /* 缺插件管理：下面走只读分支 */ }
+
+  const plugins = data.plugins || [];
   const names = plugins.map((p) => p.name);
   const added = knownPlugins ? names.filter((n) => !knownPlugins.includes(n)) : [];
   const removed = knownPlugins ? knownPlugins.filter((n) => !names.includes(n)) : [];
   knownPlugins = names;
-  $("tools-badge").innerHTML = `工具 <b>${tools.length}</b>`;
-  $("tools-badge").title = tools.join(" · ");
-  pluginsEl.innerHTML = plugins.map((p) => {
-    // 可选依赖缺了 → 标"降级"（插件还活着，只是暂时用不了那几样服务）
-    const missingOpt = p.missing_optionals || [];
-    const deps = [
-      `必需：${p.inject.length ? p.inject.join(", ") : "无"}`,
-      (p.optional || []).length ? `可选：${p.optional.join(", ")}` : "",
-      missingOpt.length ? `当前缺：${missingOpt.join(", ")}` : "",
-    ].filter(Boolean).join(" · ");
-    return `
-    <div class="plug ${added.includes(p.name) ? "plug-new" : ""}" title="依赖：${esc(deps)}">
-      <span class="dot ${esc(p.status)}${added.includes(p.name) ? " new" : ""}"></span>
-      <span class="plug-n">${esc(p.name)}</span>
-      ${missingOpt.length ? `<span class="plug-degraded" title="可选依赖缺失：${esc(missingOpt.join(", "))}">降级</span>` : ""}
-      ${p.inject.length ? `<span class="plug-i mono">← ${esc(p.inject.join(","))}</span>` : ""}
-    </div>`;
-  }).join("") || `<div class="side-empty">（无）</div>`;
+
+  pluginsEl.innerHTML = snapshot
+    ? renderGroupedPlugins(snapshot, added)
+    : renderReadonlyPlugins(plugins, added);      // 无 admin：只读
+  if (!snapshot) {
+    pluginsEl.insertAdjacentHTML("beforeend",
+      `<div class="side-empty">插件管理未装载（只读展示）</div>`);
+  }
   if (added.length) setIdle(`插件台账更新：新增 ${added.join("、")}`
     + (removed.length ? `；移除 ${removed.join("、")}` : ""));
   $("plugin-count").textContent =
     `${plugins.filter((p) => p.status === "active").length}/${plugins.length} 活跃`;
 }
+
+function pluginDepsTip(p) {
+  const missingOpt = p.missing_optionals || [];
+  return [
+    `必需：${p.inject.length ? p.inject.join(", ") : "无"}`,
+    (p.optional || []).length ? `可选：${p.optional.join(", ")}` : "",
+    missingOpt.length ? `当前缺：${missingOpt.join(", ")}` : "",
+    p.blocked_reason || "",
+  ].filter(Boolean).join(" · ");
+}
+
+/** 一个插件行 + 它的动作按钮。 */
+function pluginRow(p, added, actionLabels) {
+  const missingOpt = p.missing_optionals || [];
+  const actions = (p.actions || []).map((a) => `
+    <button type="button" class="pa-btn pa-${esc(a)}" data-name="${esc(p.name)}"
+            data-action="${esc(a)}" title="${esc((actionLabels && actionLabels[a]) || a)}"
+      >${esc((actionLabels && actionLabels[a]) || a)}</button>`).join("");
+  return `
+  <div class="plug ${added.includes(p.name) ? "plug-new" : ""}" title="依赖：${esc(pluginDepsTip(p))}">
+    <span class="dot ${esc(p.status)}${added.includes(p.name) ? " new" : ""}"></span>
+    <span class="plug-n">${esc(p.name)}</span>
+    ${missingOpt.length ? `<span class="plug-degraded" title="可选依赖缺失：${esc(missingOpt.join(", "))}">降级</span>` : ""}
+    ${p.category === "base" ? `<span class="plug-base" title="基础插件：当前应用的最小集合">基础</span>` : ""}
+    ${actions ? `<span class="plug-actions">${actions}</span>` : ""}
+  </div>`;
+}
+
+/** 分组渲染（插件管理在时）：按 base / capability / other 三组。 */
+function renderGroupedPlugins(snapshot, added) {
+  const labels = snapshot.actions || {};
+  const html = (snapshot.groups || []).filter((g) => g.plugins.length).map((g) => `
+    <div class="plug-group">
+      <div class="plug-group-h" title="${esc(g.hint)}">${esc(g.label)}
+        <span class="plug-group-n">${g.plugins.length}</span></div>
+      ${g.plugins.map((p) => pluginRow(p, added, labels)).join("")}
+    </div>`).join("");
+  const installable = snapshot.installable || [];
+  const installHtml = installable.length ? `
+    <div class="plug-group">
+      <div class="plug-group-h" title="可安装：白名单里有、当前没装的插件">可安装
+        <span class="plug-group-n">${installable.length}</span></div>
+      ${installable.map((x) => `
+        <div class="plug">
+          <span class="dot pending"></span>
+          <span class="plug-n">${esc(x.name)}</span>
+          <span class="plug-actions">
+            <button type="button" class="pa-btn pa-install" data-name="${esc(x.name)}"
+                    data-action="install" title="安装">安装</button>
+          </span>
+        </div>`).join("")}
+    </div>` : "";
+  return (html + installHtml) || `<div class="side-empty">（无）</div>`;
+}
+
+/** 只读渲染（没装 plugin-admin 时）：仍按分类显示，但没有按钮。 */
+function renderReadonlyPlugins(plugins, added) {
+  const order = ["base", "capability", "other"];
+  const labels = { base: "基础插件", capability: "能力插件", other: "其他插件" };
+  const hints = {
+    base: "当前应用的最小集合",
+    capability: "可按需开关的额外能力",
+    other: "演示与示例",
+  };
+  return order.map((cat) => {
+    const group = plugins.filter((p) => (p.category || "other") === cat);
+    if (!group.length) return "";
+    return `
+    <div class="plug-group">
+      <div class="plug-group-h" title="${esc(hints[cat])}">${esc(labels[cat])}
+        <span class="plug-group-n">${group.length}</span></div>
+      ${group.map((p) => pluginRow(p, added, null)).join("")}
+    </div>`;
+  }).join("") || `<div class="side-empty">（无）</div>`;
+}
+
+/* 插件按钮的事件委托：一次绑定，重渲染后依然有效。 */
+pluginsEl.addEventListener("click", (e) => {
+  const btn = e.target.closest(".pa-btn");
+  if (!btn) return;
+  e.preventDefault();                       // 防误触表单提交
+  pluginAction(btn.dataset.name, btn.dataset.action);
+});
+
 async function loadSessions() {
   const data = await api("/api/sessions");
   const items = data.sessions || [];

@@ -40,6 +40,12 @@ from pydantic import BaseModel, Field
 
 from components.tools import ApprovalDecision, ApprovalRequest, define_tool, schema_from_model
 from kernel import Context, plugin_name
+from plugins.catalog import (
+    DEFAULT_CATALOG_NAMES as _SHARED_CATALOG_NAMES,
+)
+from plugins.catalog import (
+    default_catalog as _shared_catalog,
+)
 from plugins.events import PLUGIN_LOADED, PLUGIN_UNLOADED
 from plugins.services import (
     APPROVAL_SERVICE,
@@ -53,24 +59,20 @@ from plugins.services import (
 _approved_call = threading.local()
 
 #: 默认的可装载白名单：插件名 → 工厂函数（惰性导入，避免模块级循环依赖）。
-DEFAULT_CATALOG_NAMES = ("clock", "webui", "rpc")
+#: 默认可装载白名单（转发自 plugins/catalog.py，避免两份漂移）。
+DEFAULT_CATALOG_NAMES = _SHARED_CATALOG_NAMES
 #: 默认可卸载白名单：只放"卸载也不会破坏当前会话"的插件。
 DEFAULT_UNLOADABLE = ("clock",)
 
 
 def default_catalog() -> dict[str, Callable[[], object]]:
-    """默认白名单的三个可选插件（都是"装了有用、卸了不伤人"的类型）。"""
-    from plugins.clock import clock_plugin
-    from plugins.rpc import rpc_plugin
-    from plugins.webui import webui_plugin
+    """默认可装载的三个插件 —— 转发到共享白名单（`plugins/catalog.py`）。
 
-    return {
-        "clock": clock_plugin,
-        # 界面：端口交给系统分配（port=0），装配即起、卸载即停
-        "webui": lambda: webui_plugin(port=0),
-        # RPC：TCP 监听同样交给系统分配（listen=0）
-        "rpc": lambda: rpc_plugin(listen=0),
-    }
+    白名单只有一份：**模型**（本插件的 `load_plugin` 工具）与**人**
+    （`plugins/plugin_admin.py` 的界面按钮）消费的是同一张表，
+    不会出现"一个加了另一个不知道"的漂移。
+    """
+    return _shared_catalog()
 
 
 class LoadPluginArgs(BaseModel):
@@ -434,6 +436,8 @@ class SelfToolsPlugin:
     """提供 `self-tools` 服务与三件自扩展工具（inject tools：要登记工具）。"""
 
     name = "self-tools"
+    #: 应用角色（capability）：自扩展——关掉它模型就不能装卸插件了。
+    category = "capability"
     inject = (TOOLS_SERVICE,)
     #: 可选：审批策略（缺失 → 装卸操作全拒，fail-closed）与文件系统
     #: （缺失 → install_plugin 读不到源码并如实报错）。

@@ -261,6 +261,8 @@ class AgentPlugin:
     """提供 `agent` 服务（依赖：llm / tools / sessions / prompt）。"""
 
     name = "agent"
+    #: 应用角色（base）：对外唯一入口（ask 一个 turn）。
+    category = "base"
     inject = (LLM_SERVICE, TOOLS_SERVICE, SESSIONS_SERVICE, PROMPT_SERVICE)
     #: 可选依赖：取不到就降级（approval 缺失 → 管线 fail-closed；
     #: compacter 缺失 → 不压缩）。声明出来的意义是**台账里看得见**，

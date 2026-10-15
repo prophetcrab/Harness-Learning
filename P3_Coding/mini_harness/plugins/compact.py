@@ -106,6 +106,8 @@ class CompactPlugin:
     """提供 `compacter` 服务（inject llm）；装载即生效，卸载即不再压缩。"""
 
     name = "compact"
+    #: 应用角色（capability）：上下文压缩：关掉只是不压，对话照常。
+    category = "capability"
     inject = (LLM_SERVICE,)
 
     def __init__(

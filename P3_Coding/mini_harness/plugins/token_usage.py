@@ -282,6 +282,8 @@ class TokenUsagePlugin:
     """
 
     name = "token-usage"
+    #: 应用角色（capability）：观测：用量账本 + 页面——关掉只是看不到账，对话照常。
+    category = "capability"
     inject = (TOOLS_SERVICE,)
 
     def __init__(self, *, serve: bool = True, host: str = "127.0.0.1", port: int = 8767) -> None:

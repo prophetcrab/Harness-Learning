@@ -21,6 +21,8 @@ from plugins.services import SUBPROCESS_SERVICE
 class ProcPlugin:
     """把一个 SubprocessService 实现装成 `subprocess` 服务。"""
 
+    #: 应用角色（base）：命令执行是 coding 的核心能力之一。
+    category = "base"
     def __init__(self, service: SubprocessService) -> None:
         self._service = service
         self.name = f"proc:{type(service).__name__}"

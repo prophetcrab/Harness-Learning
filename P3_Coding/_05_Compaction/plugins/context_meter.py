@@ -314,6 +314,8 @@ class ContextMeterPlugin:
     """提供 `context-meter` 服务与仪表页面（装载即起，卸载即停）。"""
 
     name = "context-meter"
+    #: 应用角色（capability）：观测：上下文仪表 + 页面——关掉只是看不到读数。
+    category = "capability"
 
     def __init__(
         self,

@@ -142,6 +142,9 @@ def _ledger(ctx: Context) -> dict[str, Any]:
             {
                 "name": info.name,
                 "status": info.status,
+                # 应用角色（base / capability / other）：**只读降级**路径也要用它
+                # 分组——没装 plugin-admin 时界面仍按分类显示，只是没有按钮。
+                "category": info.category,
                 "inject": list(info.inject),
                 "missing": list(info.missing),
                 # 可选依赖（`_05`）：页面据此标"降级运行"——缺了不禁用，但要说清楚
@@ -516,6 +519,8 @@ class WebUiPlugin:
     """提供 `webui` 服务：本机 HTTP 界面（装载即起，卸载即停）。"""
 
     name = "webui"
+    #: 应用角色（capability）：界面：没有它 agent 仍可用（终端/RPC 都能说话）。
+    category = "capability"
     #: 可选依赖（不是 inject！）：界面要在"换模型 / 装卸插件"时**一直开着**，
     #: 而 agent 依赖 llm——声明成必需的话，模型一装卸 llm 就会连锁停用整个
     #: 界面服务、端口关闭（实测踩到）。见模块 docstring 的完整说明。

@@ -254,6 +254,8 @@ class ToolsPlugin:
     """按已就绪的能力组装工具面（inject 保证 fs 一定在）。"""
 
     name = "tools"
+    #: 应用角色（base）：工具面本身；没有它模型没有手。
+    category = "base"
     inject = (FS_SERVICE,)
     #: 可选：命令执行能力（缺失则 shell 工具不出现——一直是这个语义，
     #: 只是原先没写进声明里）。

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import re
 import socket
 import urllib.error
 import urllib.request
@@ -142,6 +143,8 @@ def test_ledger_reports_plugins_services_and_tools(tmp_path: Path):
         "prompt",
         "tools",
         "token-usage",          # `_03`
+        "plugin-admin",         # `_05` 收尾：插件管理
+        "plugin-admin.surface",
         "context-meter",        # `_04`
         "compacter",            # `_05`
         "compact.surface",      # `_05`：压缩插件的界面自述
@@ -419,3 +422,31 @@ def test_index_page_includes_rich_renderer(tmp_path: Path):
     assert "allow-same-origin" not in js.split("setAttribute", 1)[1][:60]
     booted.ctx.unload_plugin("webui")
     booted.close()
+
+
+def test_every_dom_id_app_js_reaches_for_exists_in_index_html():
+    """静态契约：`app.js` 取用的每个元素 id，`index.html` 里都得有。
+
+    回归背景：拆三件套时 `#banner` 元素掉了两回，而 `showBanner()` 只在
+    用户点插件操作按钮时才被调到——于是页面看着一切正常，一点"安装"就
+    `null.textContent` 炸掉，报错还只在浏览器控制台里。这类"少个 DOM 节点"
+    的错不该靠人肉点一遍才发现，所以把两者对一遍。
+    """
+    root = Path(__file__).resolve().parent.parent / "webui"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    js = (root / "app.js").read_text(encoding="utf-8")
+
+    referenced: set[str] = set()
+    for pattern in (
+        r'\$\("([\w-]+)"\)',                    # 页面内的 $(id) 简写
+        r'getElementById\("([\w-]+)"\)',
+        r'querySelector\("#([\w-]+)"\)',
+    ):
+        referenced |= set(re.findall(pattern, js))
+    declared = set(re.findall(r'id="([\w-]+)"', html))
+
+    missing = sorted(referenced - declared)
+    assert not missing, (
+        f"app.js 用到的这些 id 在 index.html 里不存在：{missing}"
+        f"（典型症状：点按钮时控制台报 null，界面无反应）"
+    )

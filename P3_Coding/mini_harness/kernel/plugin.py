@@ -1,4 +1,4 @@
-"""Plugin —— 插件协议与声明（name / inject / optional / setup）。
+"""Plugin —— 插件协议与声明（name / inject / optional / category / setup）。
 
 一个插件就是"有 `setup(ctx)` 方法的对象"，或（更轻）一个普通函数/可调用对象
 ——沿用 P2 `_07` 的鸭子类型协议。P3 新增两样**声明**（`_05` 补了第三样）：
@@ -21,6 +21,11 @@
   （重启 = 端口换掉 = 用户眼前的页面失联）。代价是插件要在**用的时候**现取
   （见 plugins/webui.py 的 `_agent_or_none`），而不能在 setup 里抓一份存着。
 
+- `category`：插件在**应用里的角色**（`base` / `capability` / `other`）。
+  内核只负责"读出来、记进台账"，不解释它的含义——策略由消费方决定
+  （见 plugins/plugin_admin.py：base 不可卸载、其余可按需开关）。
+  未声明 → `other`（保守：不声称自己是基础设施）。
+
 协议只需要"有个 setup"，插件作者不必 import 任何基类（与 LLMProvider /
 FileSystem / SubprocessService 同款：结构满足即成立）。
 
@@ -35,6 +40,19 @@ from typing import Any, Protocol, runtime_checkable
 
 # setup：装载函数，可返回 disposer（Callable[[], None]）或 None。
 SetupFn = Callable[[Any], "Callable[[], None] | None"]
+
+#: 插件角色的三个取值（`_05` 收尾）：
+#:
+#:     base        基础：当前应用**不可卸载**的最小集合（卸了应用就不成立）
+#:     capability  能力：提供额外能力（工具 / 观测 / 压缩……），可按需开关
+#:     other       其他：演示、示例、不参与应用成立与否的插件
+#:
+#: 内核不解释这三个值的含义——它只负责读出来记进台账；"能不能卸载"这类
+#: **策略**由消费方（plugins/plugin_admin.py）决定。这样同一个插件在不同
+#: 应用里可以是不同角色（比如聊天应用里 fs 不必是 base）。
+PLUGIN_CATEGORIES: tuple[str, ...] = ("base", "capability", "other")
+#: 未声明时的默认角色（保守：不声称自己是基础设施）。
+DEFAULT_CATEGORY = "other"
 
 
 @runtime_checkable
@@ -114,9 +132,30 @@ def plugin_optionals(plugin: object) -> tuple[str, ...]:
     return optionals
 
 
+def plugin_category(plugin: object) -> str:
+    """读取插件的角色声明（category）；缺失取默认值，非法值 fail loud。
+
+    为什么非法值要报错而不是回退：写错一个字母（`"capabilty"`）会让这个插件
+    悄悄降级成"其他"、失去它本该有的行为（比如被当成可卸载的）。宁可装载期炸。
+    """
+    raw = getattr(plugin, "category", DEFAULT_CATEGORY)
+    if raw is None:
+        return DEFAULT_CATEGORY
+    value = str(raw)
+    if value not in PLUGIN_CATEGORIES:
+        raise ValueError(
+            f"插件 {plugin_name(plugin)} 的 category 不合法：{value!r}"
+            f"（可用：{'、'.join(PLUGIN_CATEGORIES)}）"
+        )
+    return value
+
+
 __all__ = [
+    "DEFAULT_CATEGORY",
+    "PLUGIN_CATEGORIES",
     "Plugin",
     "SetupFn",
+    "plugin_category",
     "plugin_injects",
     "plugin_name",
     "plugin_optionals",
