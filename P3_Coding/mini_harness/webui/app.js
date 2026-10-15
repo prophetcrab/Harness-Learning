@@ -854,10 +854,15 @@ async function openSession(id, opts = {}) {
   if (!opts.silent) setIdle(`会话 ${id} · ${(data.events || []).length} 条事件`);
   // **接回正在跑的 turn**（`_05` 收尾）：刷新页面/切会话时，服务端那个 turn
   // 从没停过——这里只是重新订阅它，帧继续往页面上流。没有在跑的就 404，静默跳过。
-  // `activeWatch` 为真说明已经在跟随（自己刚发的 / 正在接回的），再挂会让同一帧
-  // 渲染两遍；而上面已经保证"要跟随的一定是当前这条会话"。
-  if (!opts.noWatch && !activeWatch && !state.sending
-      && (state.runningIds || new Set()).has(id)) {
+  //
+  // 判据只看 `activeWatch`：它非空说明**已经在跟随某条流**（自己刚发的 / 正在
+  // 接回的），再挂一个会让同一帧渲染两遍。而上面刚做过"不是这条会话就断开"，
+  // 所以此刻还在跟随的一定就是这条会话，直接跳过即可。
+  //
+  // **别再加 `!state.sending`**：那是"我正握着一次发送"的标志，而 abortWatch
+  // 刚把它清掉，于是刚切过来的这条会话明明在跑却不接回——界面一片安静，用户要
+  // 手动刷新才看得到（真实报告："切换对话时正在运行标志只有第一个起效"）。
+  if (!opts.noWatch && !activeWatch && (state.runningIds || new Set()).has(id)) {
     watchTurn(id, { silent: true });
   }
 }

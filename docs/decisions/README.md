@@ -77,3 +77,6 @@
 - [0033 插件管理：把"哪些插件是地基"变成可点击的事实](0033-plugin-admin.md)（P3 `_05` 收尾）
 - [0034 turn 执行器：并行会话、刷新不掉、可中断](0034-turn-runner-concurrency.md)（P3 `_05` 收尾）
 - [0035 角色由装配方定：base / capability 是应用的性质](0035-assembly-declares-role.md)（P3 `_05` 收尾）
+- [0036 工具插件化：底座与内容分开（一件事一个插件）](0036-tool-plugins.md)（P3 `_06`）
+- [0037 管理弹层由自述驱动：壳内置一页只读，插件声明即可顶替](0037-self-described-admin-panel.md)（P3 `_06`）
+- [0038 源码即插件：入口判据、署名与审批预览的三处实测教训](0038-loader-owner-approval-lessons.md)（P3 `_06`）

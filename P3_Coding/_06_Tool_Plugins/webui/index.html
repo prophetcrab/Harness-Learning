@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mini harness · P3</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header>
+  <div class="brand"><span class="logo"></span>mini harness</div>
+  <span class="chip">P3 · 完全插件化</span>
+  <span class="chip" id="host-badge">…</span>
+  <span class="chip" id="tools-badge" title="">工具 …</span>
+  <div class="spacer"></div>
+  <button class="tbtn on" id="toggle-left" title="折叠 / 展开左栏">会话</button>
+  <button class="tbtn on" id="toggle-right" title="折叠 / 展开轨迹栏">轨迹</button>
+  <!-- 面板按钮由脚本按「插件的自述」生成（app.js 读 /api/ledger 的 panels）：
+       壳不认识任何插件，加一个面板插件不用改这里。 -->
+  <span id="panel-btns"></span>
+  <span class="dot-status" title="服务在线"></span>
+</header>
+
+<main>
+  <section id="left">
+    <div class="side-head"><h2>会话</h2>
+      <button class="mini" id="new-session">＋ 新会话</button></div>
+    <div id="sessions"></div>
+    <!-- 插件台账入口：点开是一个独立的管理面板（内容由 plugin-admin 的快照渲染）。
+         左栏只放这一张"门卡"——台账本身占地方且要经常操作，适合独立成层。 -->
+    <button type="button" class="ledger-entry" id="ledger-entry"
+            title="打开管理面板（插件台账 / 工具管理）">
+      <span class="le-ico"></span>
+      <span class="le-t">管理面板</span>
+      <span class="le-n" id="plugin-count">—</span>
+      <span class="le-go" id="ledger-entry-go">管理 ›</span>
+    </button>
+  </section>
+
+  <section id="center">
+    <div class="banner" id="banner" hidden></div>
+    <div id="chat"><div class="wrap"></div></div>
+    <!-- 「这条会话正在跑」时的选择条：中断 / 等它跑完（不替用户决定，也不静默排队） -->
+    <div class="busy-choice" id="busy-choice" hidden>
+      <div class="bc-t">这条会话正在跑一个 turn</div>
+      <div class="bc-s">刚才那条消息<b>没有发出</b>——中断当前 turn 后重发，或等它跑完。</div>
+      <div class="bc-a">
+        <button type="button" class="bc-btn danger" data-act="interrupt">中断并重新发送</button>
+        <button type="button" class="bc-btn" data-act="wait">等它跑完（接着看）</button>
+        <button type="button" class="bc-btn" data-act="dismiss">取消</button>
+      </div>
+    </div>
+    <div class="runline" id="runline"><span>就绪</span></div>
+    <form id="composer" autocomplete="off">
+      <div id="cmdmenu" hidden></div>
+      <textarea id="text" rows="1"
+        placeholder="输入消息…（Enter 发送 · Shift+Enter 换行 · 输入 / 看快捷命令）"></textarea>
+      <button type="submit" id="send">发送</button>
+    </form>
+  </section>
+
+  <section id="right">
+    <div class="side-head"><h2>事件轨迹</h2>
+      <span class="count mono" id="seq-tag"></span></div>
+    <table id="events"><tbody></tbody></table>
+  </section>
+</main>
+
+<!-- 通用面板容器（一次只显示一个；内容由脚本按插件自述填入） -->
+<div id="plugin-panel" hidden>
+  <div class="tbox">
+    <div class="tbar">
+      <h3 id="pp-title"></h3>
+      <span class="turl" id="pp-url"></span>
+      <div class="spacer"></div>
+      <a class="tbtn" id="pp-open" target="_blank" rel="noopener">新标签打开</a>
+      <button class="tbtn" id="pp-close">关闭</button>
+    </div>
+    <iframe id="pp-frame" title="插件页面"></iframe>
+  </div>
+</div>
+<!-- 管理面板：独立的弹出层（左栏入口点开）。**标签页由插件自述**（app.js 读
+     /api/ledger 的 admins）——壳不认识"插件"也不认识"工具"，只按 分组/卡片/
+     按钮 的通用形状渲染。没装任何管理插件时退回壳内置的只读页（同一套渲染）。 -->
+<div id="plugin-modal" hidden>
+  <div class="pm-box" role="dialog" aria-modal="true" aria-labelledby="pm-title">
+    <div class="pm-head">
+      <h2 id="pm-title">管理面板</h2>
+      <div class="pm-tabs" id="pm-tabs"></div>
+      <span class="pm-sub" id="pm-sub"></span>
+      <div class="spacer"></div>
+      <input class="pm-search" id="pm-search" type="search" autocomplete="off"
+             placeholder="筛选…" title="按名字或依赖筛选">
+      <button class="tbtn" id="pm-close" title="关闭（Esc）">关闭</button>
+    </div>
+    <div class="pm-body" id="pm-body"></div>
+    <div class="pm-foot" id="pm-foot"></div>
+    <div class="pm-toast" id="pm-toast" hidden></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
