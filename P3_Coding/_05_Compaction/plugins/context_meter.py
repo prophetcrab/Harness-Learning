@@ -41,7 +41,7 @@ from components.context.tokens import (
     measure_parts,
 )
 from components.llm.provider import LLMRequest
-from components.panel import PanelSpec
+from components.shell import PanelSpec
 from kernel import Context
 from plugins.events import LLM_REQUEST, LLM_RESPONSE
 from plugins.services import CONTEXT_METER_SERVICE
@@ -276,7 +276,7 @@ class _MeterHandler(BaseHTTPRequestHandler):
 class ContextMeterEndpoint:
     """`context-meter` 服务的形态：只读地址 + 容量 + **自己的面板自述**。
 
-    `panels` 是"界面挂载点"的声明（见 components/panel/spec.py）：主界面遍历
+    `panels` 是"界面挂载点"的声明（见 components/shell/panel.py）：主界面遍历
     所有服务的这份声明挂按钮，**不认识本插件**——加面板不用改壳。
     """
 

@@ -24,10 +24,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from components.shell import DisplaySpec, RouteRequest, RouteSpec, Surface
 from components.tools import ApprovalDecision, ApprovalRequest
 from kernel import Context
 from plugins.events import APPROVAL_REQUESTED, APPROVAL_RESOLVED
-from plugins.services import APPROVAL_SERVICE, FS_SERVICE
+from plugins.services import APPROVAL_SERVICE, APPROVAL_SURFACE, FS_SERVICE
 
 #: 推送通道：webui 在跑 turn 时把自己的写帧函数挂上来（kind, payload）。
 Sender = Callable[[str, dict[str, Any]], None]
@@ -199,6 +200,40 @@ def _build_preview(ctx: Context) -> PreviewBuilder:
     return preview
 
 
+#: 审批事件的显示规则（壳按 renderer 分派）。
+DISPLAY: tuple[DisplaySpec, ...] = (
+    DisplaySpec("__approval", "fold", "需要你的批准：{tool}", "preview", order=1),
+)
+
+
+def _list_pending(request: RouteRequest) -> None:
+    """GET /api/approvals —— 当前等待中的审批（页面刷新后也能补看到）。"""
+    policy = request.ctx.get(APPROVAL_SERVICE)
+    request.json({"pending": policy.pending_list() if policy is not None else []})
+
+
+def _answer_pending(request: RouteRequest) -> None:
+    """POST /api/approvals/<id> —— 用户点了批准/拒绝。"""
+    request_id = request.params["id"]
+    policy = request.ctx.get(APPROVAL_SERVICE)
+    if policy is None:
+        request.json({"error": "当前没有审批策略"}, status=404)
+        return
+    body = request.body
+    approved = bool(body.get("approved"))
+    if policy.resolve(request_id, approved, str(body.get("note") or "")):
+        request.json({"ok": True, "id": request_id, "approved": approved})
+    else:
+        request.json({"error": f"没有等待中的审批：{request_id}"}, status=404)
+
+
+#: 本插件的端点：补看等待中的审批、回答某一条（壳负责挂载与传输）。
+APPROVAL_ROUTES: tuple[RouteSpec, ...] = (
+    RouteSpec("GET", "/api/approvals", _list_pending, order=1),
+    RouteSpec("POST", "/api/approvals/<id>", _answer_pending, order=2),
+)
+
+
 class WebApprovalPlugin:
     """提供 `approval` 服务（浏览器审批策略）；界面插件会自动接管它的推流。"""
 
@@ -213,6 +248,10 @@ class WebApprovalPlugin:
         policy = WebApprovalPolicy(timeout=self._timeout, preview=_build_preview(ctx))
         policy.bind_ctx(ctx)
         ctx.provide(APPROVAL_SERVICE, policy)
+        # 界面自述：审批事件怎么画 + 我的两条端点（壳负责挂载与传输）
+        ctx.provide(
+            APPROVAL_SURFACE, Surface(display=DISPLAY, routes=APPROVAL_ROUTES)
+        )
 
 
 def web_approval_plugin(*, timeout: float = 300.0) -> WebApprovalPlugin:

@@ -750,9 +750,11 @@ def test_webui_compact_route_streams_result(tmp_path: Path):
         body = response.read().decode("utf-8")
     frames = [json.loads(line) for line in body.splitlines() if line.strip()]
     kinds = [frame["kind"] for frame in frames]
-    assert "compact_applied" in kinds, f"没看到压缩帧：{kinds}"
+    # `_05` 收尾后：这条路由是**压缩插件自己声明的**（不再是壳里写死的），
+    # 而且它只回"结果帧"——过程帧（`compact_applied`）走的是事件流，不在这条
+    # 响应的帧序列里（那是两回事：前者是端点返回，后者是循环事件）。
     done = [frame for frame in frames if frame["kind"] == "__compact_done"]
-    assert done and done[0]["payload"]["folded"] >= 1
+    assert done and done[0]["payload"]["folded"] >= 1, f"帧序列：{kinds}"
     # 页面上有命令菜单容器与 /compact 命令声明（无专属按钮：敲 / 提示）
     with urllib.request.urlopen(url + "/", timeout=8) as response:
         html = response.read().decode("utf-8")

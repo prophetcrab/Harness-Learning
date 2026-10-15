@@ -2,7 +2,7 @@
 
 **这组测试钉住的是一条纪律**：加一个面板插件**不用改壳**（`index.html` /
 `app.js`），因为壳不认识任何具体插件——它只读插件在服务对象上挂的
-`panels` 自述（见 components/panel/spec.py）。
+`panels` 自述（见 components/shell/panel.py）。
 
 反例（这条纪律修之前的真实状况）：前端写死两处
 
@@ -18,7 +18,7 @@ import json
 import urllib.request
 from pathlib import Path
 
-from components.panel import PanelSpec, panels_of
+from components.shell import PanelSpec, panels_of
 from plugins import (
     CONTEXT_METER_SERVICE,
     TOKEN_USAGE_SERVICE,
@@ -132,7 +132,7 @@ def test_panel_without_endpoint_is_not_published(tmp_path: Path):
     理由：面板按钮点开要打开那个插件的页面——没有地址就没有页面可开。
     宁可不出按钮，也不要给用户一个点了没反应的入口。
     """
-    from components.panel import PanelSpec as Spec
+    from components.shell import PanelSpec as Spec
 
     class Addressless:
         """有自述、没地址——不该被发布。"""
@@ -182,7 +182,7 @@ def test_third_panel_plugin_needs_no_shell_change(tmp_path: Path):
     app.js）完全不认识它。它出现在 ledger 的 panels 里，就证明"加面板插件
     不用改壳"这件事成立。
     """
-    from components.panel import PanelSpec as Spec
+    from components.shell import PanelSpec as Spec
     from kernel import Context
 
     class DemoPanelPlugin:

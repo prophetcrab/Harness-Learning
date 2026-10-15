@@ -144,6 +144,7 @@ def test_ledger_reports_plugins_services_and_tools(tmp_path: Path):
         "token-usage",          # `_03`
         "context-meter",        # `_04`
         "compacter",            # `_05`
+        "compact.surface",      # `_05`：压缩插件的界面自述
         "agent",
         "webui",
     ]
@@ -378,7 +379,12 @@ def test_stream_frames_forwards_approval_to_the_page(tmp_path: Path):
     match = re.search(r"const TERMINAL_FRAMES = new Set\(\[(.*?)\]\)", js)
     assert match, "应由 TERMINAL_FRAMES 显式列出收尾帧"
     terminals = set(re.findall(r'"([^"]+)"', match.group(1)))
-    assert terminals == {"__done", "__error", "__compact_done", "__compact_noop"}
+    # 壳内置的只有这两个**通用协议**帧（壳与循环之间的约定）。
+    # 插件自己的收尾帧（如压缩的 `__compact_done`）**不在壳里**——它们由插件
+    # 自述（DisplaySpec.terminal），前端用 terminalFrames() 合并：
+    # 于是"加一个返回结果的插件端"不用改壳。
+    assert terminals == {"__done", "__error"}
+    assert "function terminalFrames()" in js, "应合并插件自述的收尾帧"
     # 关键：审批 / 修复**不在**白名单里（它们必须被渲染出来）
     assert "__approval" not in terminals, "__approval 被当成收尾帧吞掉了"
     assert "__repair" not in terminals, "__repair 被当成收尾帧吞掉了"

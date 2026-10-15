@@ -30,16 +30,25 @@ effect/disposer 的用武之地。P2 时代的页面服务是手工起的（`cre
 - **会话串行化**：agent 服务的会话缓存不是线程安全的（多个标签页同时提问会
   踩到它），本插件用一把锁把"跑 turn"串起来——同一时刻只有一个 turn 在执行。
 
-API（静态页面在 `webui/`：index.html + app.css + app.js，纯原生 JS、零依赖）：
+API —— **壳只提供"通用"路由，插件专属路由由插件自述**（`_05` 收尾改造）：
 
-    GET  /                          页面（index.html）
-    GET  /app.css  /app.js          静态资源（白名单，见 STATIC_FILES）
-    GET  /api/ledger                插件台账 / 服务 / 工具面（"完全插件化"的可见性）
-    GET  /api/sessions              会话列表（turns / last_seq / 最近状态）
-    GET  /api/sessions/<id>/events  某会话的事件流 + 投影出的消息（历史由日志投影）
-    POST /api/sessions/<id>/send    {text} → NDJSON 流：主循环事件逐条推，末行 __done
-    POST /api/sessions/<id>/compact 手动压缩（`/compact`）→ NDJSON 流：
-                                    成功末行 __compact_done / 无可压 __compact_noop
+    壳自己的（与任何具体插件无关）：
+      GET  /                          页面（index.html）
+      GET  /app.css  /app.js          静态资源（白名单，见 STATIC_FILES）
+      GET  /api/ledger                插件台账 / 服务 / 工具面 / 面板与显示自述
+      GET  /api/sessions              会话列表（turns / last_seq / 最近状态）
+      GET  /api/sessions/<id>/events  某会话的事件流 + 投影出的消息
+      POST /api/sessions/<id>/send    {text} → NDJSON 流：主循环事件逐条推，末行 __done
+
+    **插件自述的**（壳不认识它们属于哪个插件，只按声明挂载）：
+      GET  /api/approvals             审批插件声明
+      POST /api/approvals/<id>        审批插件声明
+      POST /api/sessions/<id>/compact 压缩插件声明
+
+    三条自述把"界面认识具体插件"从壳里挪回了插件（见 components/shell/）：
+      panels   我有个页面 → 给我一个顶栏按钮
+      display  我的事件该怎么画 → 壳按四种通用渲染器之一画
+      routes   我有专属端点 → 壳挂载并负责传输（分块 / 分帧 / 收尾）
 
 已知边界（刻意的）：只绑本机、无鉴权、事件流只推给发起请求的那个客户端
 （多客户端广播属于 RPC / 事件流跟随的题目）。
@@ -55,8 +64,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-from components.panel import panels_of
 from components.session import derive_messages
+from components.shell import RouteTable, display_of, panels_of, routes_of
 from kernel import Context
 from plugins.services import (
     AGENT_SERVICE,
@@ -152,8 +161,20 @@ def _ledger(ctx: Context) -> dict[str, Any]:
         # **面板自述**（`_05` 补齐）：插件在自己那个服务对象上挂 `panels = (...)`,
         # 页面遍历这个列表挂按钮——于是"加一个面板插件"**不用改壳**。
         "panels": _collect_panels(ctx),
+        # **显示自述**（`_05` 收尾）：插件声明"我的事件该怎么画"——
+        # 前端只按 renderer 名分派到四种通用渲染器，不认识任何具体事件名。
+        "display": _collect_display(ctx),
         "tools": [spec.name for spec in tools_service.specs()] if tools_service is not None else [],
     }
+
+
+def _collect_display(ctx: Context) -> list[dict[str, Any]]:
+    """收集所有服务的显示自述，按 order + kind 排序（顺序稳定）。"""
+    collected: list[dict[str, Any]] = []
+    for name in ctx.services:
+        for spec in display_of(ctx.get(name)):
+            collected.append(spec.to_dict())
+    return sorted(collected, key=lambda item: (item["order"], item["kind"]))
 
 
 def _collect_panels(ctx: Context) -> list[dict[str, Any]]:
@@ -314,10 +335,10 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
                 self._sessions_or_503(
                     lambda service: _session_detail(service, session_id)
                 )
-            elif route == "/api/approvals":
-                policy = ctx.get(APPROVAL_SERVICE)
-                pending = policy.pending_list() if policy is not None else []
-                self._send_json(200, {"pending": pending})
+            elif self._plugin_routes().dispatch(
+                "GET", route, ctx=ctx, body={}, responder=self
+            ):
+                return          # 命中插件的自述路由（壳不认识那是哪个插件）
             else:
                 self._send_json(404, {"error": f"未知路由：{route}"})
 
@@ -326,35 +347,42 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
             if route.startswith("/api/sessions/") and route.endswith("/send"):
                 session_id = unquote(route[len("/api/sessions/") : -len("/send")])
                 self._stream_turn(session_id)
-            elif route.startswith("/api/sessions/") and route.endswith("/compact"):
-                session_id = unquote(route[len("/api/sessions/") : -len("/compact")])
-                self._compact(session_id)
-            elif route.startswith("/api/approvals/"):
-                request_id = unquote(route[len("/api/approvals/") :])
-                body = self._read_json()
-                policy = ctx.get(APPROVAL_SERVICE)
-                if policy is None:
-                    self._send_json(404, {"error": "当前没有审批策略"})
-                elif policy.resolve(request_id, bool(body.get("approved")), str(body.get("note") or "")):
-                    self._send_json(200, {"ok": True, "id": request_id,
-                                          "approved": bool(body.get("approved"))})
-                else:
-                    self._send_json(404, {"error": f"没有等待中的审批：{request_id}"})
+            elif self._plugin_routes().dispatch(
+                "POST", route, ctx=ctx, body=self._read_json(), responder=self
+            ):
+                return          # 命中插件的自述路由
             else:
                 self._send_json(404, {"error": f"未知路由：{route}"})
 
-        # ---- 手动压缩（/compact） ----
+        # ---- 插件路由（自述驱动） ----
 
-        def _compact(self, session_id: str) -> None:
-            """一次手动压缩：NDJSON 流（复用 send 的帧格式，前端同一套解析）。
+        def _plugin_routes(self) -> Any:
+            """每次请求现建路由表——插件可能被装卸（自述跟着来去）。
 
-            不跑 turn——只折叠历史；但压缩本身要调一次模型（摘要），所以也走
-            流式响应：摘要期间的失败/成功都以帧到达，前端不必干等。
+            建表很便宜（就是遍历几十个服务读个属性），但**不能缓存**：
+            自扩展工具能运行时装卸插件，缓存会让新插件的端点装不上、
+            卸载的插件端点还留着。与"服务一律现取"是同一条纪律。
             """
-            agent = _require_or_none(AGENT_SERVICE)
-            if agent is None:
-                self._send_json(503, {"error": "agent 服务未就绪（agent 插件未激活）"})
-                return
+            # 扫**所有**服务（不按名字猜）——自述可以挂在服务对象上，也可以挂在
+            # 专门的 Surface 上；只要长着 routes 就收。与面板/显示同一套发现规则。
+            specs: list[Any] = []
+            for name in ctx.services:
+                specs.extend(routes_of(ctx.get(name)))
+            return RouteTable.build(specs)
+
+        # ---- 插件路由的回应方式（RouteResponder 的实现） ----
+
+        def json(self, status: int, payload: Any) -> None:   # noqa: A003
+            """`RouteRequest.json` 的落地：回一个 JSON 响应。"""
+            self._send_json(status, payload)
+
+        def stream(self) -> Any:
+            """`RouteRequest.stream` 的落地：开一个 NDJSON 分块响应。
+
+            分块传输、CRLF 分帧、终止块**全在这里**——插件 handler 只写帧。
+            这几处最容易写错（实测踩过三次：HTTP/1.0 退化、漏写终止块、
+            双重编码），所以集中一处、只写一遍。
+            """
             self.send_response(200)
             self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
@@ -363,32 +391,7 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
             self.end_headers()
             self._alive = True
             self._chunked = True
-
-            def emit(kind: str, payload: dict[str, Any]) -> None:
-                self._write_event(kind, payload)
-
-            try:
-                with lock:                      # 与 turn 互斥：不能和运行中的对话并写历史
-                    agent.open(session_id, on_event=emit)   # 打开（或恢复）会话，接上事件流
-                    try:
-                        outcome = agent.compact(session_id)
-                    except Exception as exc:    # 失败要说给人听（手动动作不静默）
-                        emit("__error", {"message": f"压缩失败：{exc}"})
-                        return
-                if outcome is None:
-                    emit("__compact_noop", {"message": "没有可压缩的历史（只有当前一轮）"})
-                else:
-                    emit(
-                        "__compact_done",
-                        {
-                            "folded": outcome.folded,
-                            "before_tokens": outcome.before_tokens,
-                            "after_tokens": outcome.after_tokens,
-                            "summary_tokens": outcome.summary_tokens,
-                        },
-                    )
-            finally:
-                self._close_stream()
+            return _FrameWriter(self)
 
         # ---- 流式 turn ----
 
@@ -486,6 +489,22 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
                 self._alive = False
 
     return Handler
+
+
+class _FrameWriter:
+    """流式帧的写入端（`RouteRequest.stream()` 给插件 handler 的就是它）。
+
+    handler 只写帧——**分块、收尾这些杂活在这里**。
+    """
+
+    def __init__(self, handler: Any) -> None:
+        self._handler = handler
+
+    def frame(self, kind: str, payload: dict[str, Any]) -> None:
+        self._handler._write_event(kind, payload)
+
+    def close(self) -> None:
+        self._handler._close_stream()
 
 
 # ---------------------------------------------------------------------------

@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from components.panel import PanelSpec
+from components.shell import PanelSpec
 from components.tools import define_tool
 from kernel import Context
 from plugins.events import LLM_RESPONSE

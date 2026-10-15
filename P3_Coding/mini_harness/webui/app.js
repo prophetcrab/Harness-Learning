@@ -3,7 +3,7 @@
 const $ = (id) => document.getElementById(id);
 const chatEl = $("chat"), wrapEl = chatEl.querySelector(".wrap");
 const sessionsEl = $("sessions"), pluginsEl = $("plugins"), eventsEl = $("events");
-const state = { current: null, sending: false, follow: true };
+const state = { current: null, sending: false, follow: true, display: [] };
 window.addEventListener("error", (e) => { window.__lastError = String(e.message || e); });
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
@@ -154,15 +154,49 @@ function systemChip(prompt) {
     + `<summary>系统提示词（点开查看）</summary><pre>${esc(prompt)}</pre></details></div>`);
 }
 function sysNoteNode() { return el(`<div class="row sys"><div class="sysnote">系统提示词已更新</div></div>`); }
-/* 压缩标记（`_05`）：日志里一条 compact/checkpoint，界面上一个折叠徽标。
-   点开能看到摘要全文——"模型眼前的历史被折成了什么"是可见的。 */
-function compactNode(d) {
-  const before = fmtTokens(d.before_tokens), after = fmtTokens(d.after_tokens);
-  const node = el(`<div class="row compact"><details class="cmpchip">`
-    + `<summary>⟳ 上下文已压缩：折叠 ${esc(d.folded ?? "?")} 条消息`
-    + (before && after ? `（约 ${before} → ${after} tokens）` : "")
-    + `</summary><pre>${esc(d.summary || "")}</pre></details></div>`);
-  return node;
+/* ---------------- 通用渲染器：壳按插件的"显示自述"分派 ----------------
+
+   壳不认识任何具体事件名（如 `某个插件/某事发生了`）。它只做两件事：
+     ① 从 /api/ledger 的 `display` 里查"这个 kind 该怎么画"；
+     ② 按 renderer 名调下面四个通用渲染器之一。
+
+   于是"加一个会产出事件的插件"不用改这个文件——插件声明 DisplaySpec 即可。
+   四种渲染器覆盖了常规形态；特殊呈现（图表之类）是插件**自己页面**的事。 */
+
+/** 按插件的显示自述渲染一条事件；查不到返回 null（壳不猜，宁可不画）。 */
+function renderBySpec(kind, payload) {
+  const spec = (state.display || []).find((d) => d.kind === kind);
+  if (!spec) return null;
+  const title = fillTemplate(spec.title, payload);
+  switch (spec.renderer) {
+    case "fold": {
+      // 可折叠徽标：标题一行，点开看详情字段（如压缩摘要全文）
+      const detail = spec.detail_field ? String(payload[spec.detail_field] ?? "") : "";
+      const node = el(`<div class="row compact"><details class="cmpchip">`
+        + `<summary>⟳ ${esc(title)}</summary>`
+        + (detail ? `<pre>${esc(detail)}</pre>` : "")
+        + `</details></div>`);
+      return node;
+    }
+    case "warn":
+      return el(`<div class="row sys"><div class="sysnote warn">${esc(title)}</div></div>`);
+    case "note":
+      return el(`<div class="row sys"><div class="sysnote">${esc(title)}</div></div>`);
+    case "status":
+      setIdle(title);
+      return null;                       // 只更新状态栏，不进对话流
+    default:
+      return null;
+  }
+}
+
+/** 模板取字段：`{folded}` → payload.folded。数字加千分位，缺值给 "?"。 */
+function fillTemplate(template, payload) {
+  return String(template || "").replace(/\{(\w+)\}/g, (_, key) => {
+    const raw = payload ? payload[key] : undefined;
+    if (raw == null || raw === "") return "?";
+    return typeof raw === "number" ? raw.toLocaleString("en-US") : String(raw);
+  });
 }
 function fmtTokens(n) {
   return typeof n === "number" && n > 0 ? n.toLocaleString("en-US") : "";
@@ -210,7 +244,12 @@ function renderChatFromEvents(events) {
         break;
       }
       case "turn/end": wrapEl.appendChild(turnStatusNode(d.turn, d.status, d.steps ?? 0)); break;
-      case "compact/checkpoint": wrapEl.appendChild(compactNode(d)); break;
+      default: {
+        // 历史重放也走同一套渲染自述（插件的日志事件照样不该写死在壳里）
+        const node = renderBySpec(ev.type, d);
+        if (node) wrapEl.appendChild(node);
+        break;
+      }
     }
   }
   chatEl.scrollTop = chatEl.scrollHeight;
@@ -340,33 +379,21 @@ function handleFrame(kind, payload) {
       setRunline("已取消（保留已收到的部分）", "err");
       break;
     }
-    case "compact_applied": {
-      // 压缩发生（`_05`）：聊天流里插一个折叠徽标，runline 说明一句。
-      wrapEl.appendChild(compactNode(payload));
-      const how = payload.trigger === "manual" ? "手动压缩" : "上下文已压缩";
-      setRunline(`${how}：折叠 ${payload.folded} 条 → 约 ${fmtTokens(payload.after_tokens) || "?"} tokens`);
-      scrollBottom();
-      break;
-    }
-    case "__compact_noop": {
-      // 收尾帧由 runCompact 统一处理（这里兜底：事件流里也留个痕）
-      showBanner(payload.message || "没有可压缩的历史");
-      break;
-    }
-    case "compact_failed": {
-      // 失败是瞬态的：只提示一句，对话照常继续（fail-soft）
-      showBanner("上下文压缩未成功（已跳过本次）：" + (payload.error || "未知原因"));
-      break;
-    }
     case "__approval": {
+      // 审批卡片是**固定形态**（要按钮、要回传）——它不是"展示"而是"交互"，
+      // 所以不走渲染自述，直接在这里画。其余事件一律交给通用渲染器。
       removeWorking();
-      const node = approvalNode(payload);
-      wrapEl.appendChild(node); scrollBottom();
+      wrapEl.appendChild(approvalNode(payload)); scrollBottom();
       setRunline("等待你的审批…"); break;
     }
     case "__repair": showBanner(payload.message || "上次会话被强杀，日志尾部已自动修复"); break;
     case "__error": removeWorking(); setRunline(`出错：${esc(payload.message)}`, "err"); break;
-    default: break;
+    default: {
+      // **插件自述的显示规则**（壳不认识具体事件名）——查得到就画，查不到就算了。
+      const node = renderBySpec(kind, payload);
+      if (node) { wrapEl.appendChild(node); scrollBottom(); }
+      break;
+    }
   }
 }
 function showBanner(text) { const b = $("banner"); b.textContent = text; b.hidden = false; }
@@ -388,8 +415,12 @@ function evSummary(type, d) {
       : clip(String(d.content || "").replace(/\s+/g, " "), 70);
     case "tool/result": return `${d.name} ${d.is_error ? "✗" : "✓"} ${clip(JSON.stringify(d.result), 46)}`;
     case "turn/end": return `${d.status} · ${d.steps} 步`;
-    case "compact/checkpoint": return `折叠 ${d.folded ?? "?"} 条 → 摘要 ${clip(String(d.summary || "").replace(/\s+/g, " "), 46)}`;
-    default: return clip(JSON.stringify(d), 70);
+    default: {
+      // 轨迹栏同样按自述取摘要（模板去掉占位符就是一句话）
+      const spec = (state.display || []).find((x) => x.kind === type);
+      if (spec && spec.title) return clip(fillTemplate(spec.title, d), 70);
+      return clip(JSON.stringify(d), 70);
+    }
   }
 }
 function evRowHtml(i, seq, type, summary, ts) {
@@ -449,6 +480,8 @@ async function loadLedger() {
   // 插件多一个少一个，这里只是列表长度变了，壳本身不用改。
   panelBar.panels = data.panels || [];
   renderPanelButtons();
+  // 显示自述（插件声明事件怎么画）——壳只按 renderer 名分派
+  state.display = data.display || [];
   // 插件集合变化 → 高亮新增的那一行（"装完立刻出现在左栏"的视觉反馈）
   const names = plugins.map((p) => p.name);
   const added = knownPlugins ? names.filter((n) => !knownPlugins.includes(n)) : [];
@@ -503,9 +536,20 @@ async function openSession(id, opts = {}) {
  *  `__` 开头，但它是**有人在等你点头**——吞掉它整个 turn 会卡死在等审批上
  *  （实测：模型调 write_file 后页面停在第 2 步"执行工具…"，审批卡片始终
  *  不出现，等 300 秒超时后按 fail-closed 拒绝 → 表现成"工具莫名失败"）。 */
-const TERMINAL_FRAMES = new Set(["__done", "__error", "__compact_done", "__compact_noop"]);
+/* 壳**内置**的收尾帧：这两个是壳与循环之间的通用协议（一次 turn/一次流对话的
+   结束），不属于任何插件。插件自己的收尾帧由它**自述**（DisplaySpec.terminal）
+   ——见 terminalFrames()。 */
+const TERMINAL_FRAMES = new Set(["__done", "__error"]);
 
-/** 读一条 NDJSON 流：逐帧交给 onFrame；返回末帧（__done / __compact_done …）。 */
+/** 收尾帧全集 = 壳内置的 + 插件自述的（带 terminal:true 的那些）。
+ *  这样"新增一个会返回结果的插件端"不用改壳——插件声明即可。 */
+function terminalFrames() {
+  const extra = (state.display || []).filter((d) => d.terminal).map((d) => d.kind);
+  return new Set([...TERMINAL_FRAMES, ...extra]);
+}
+
+/** 读一条 NDJSON 流：逐帧交给 onFrame；返回**末帧**（`__done` 或插件自述的
+ *  terminal 帧——壳不认具体名字，见 terminalFrames()）。 */
 async function streamFrames(url, body, onFrame) {
   const res = await fetch(url, {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -523,7 +567,7 @@ async function streamFrames(url, body, onFrame) {
       const line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1);
       if (!line) continue;
       let frame; try { frame = JSON.parse(line); } catch { continue; }
-      if (TERMINAL_FRAMES.has(frame.kind)) {
+      if (terminalFrames().has(frame.kind)) {
         last = { kind: frame.kind, payload: frame.payload };
         if (frame.kind === "__error") onFrame(frame.kind, frame.payload);  // 错误要显示
         continue;
@@ -548,13 +592,15 @@ async function runCompact() {
   try {
     last = await streamFrames(`/api/sessions/${encodeURIComponent(state.current)}/compact`, {}, handleFrame);
     removeWorking();
-    if (last && last.kind === "__error") setRunline(last.payload.message || "压缩失败", "err");
-    else if (last && last.kind === "__compact_noop") setIdle("没有可压缩的历史（只有当前一轮）");
-    else if (last && last.kind === "__compact_done") {
-      const before = fmtTokens(last.payload.before_tokens), after = fmtTokens(last.payload.after_tokens);
-      setIdle(`✓ 压缩完成：折叠 ${last.payload.folded} 条`
-        + (before && after ? `（约 ${before} → ${after} tokens）` : ""));
-    } else setIdle("压缩完成");
+    if (last && last.kind === "__error") {
+      setRunline(last.payload.message || "压缩失败", "err");
+    } else if (last) {
+      // **不认帧名**：由插件自述的显示规则决定怎么告诉用户
+      // （`status` 渲染器会更新状态栏；查不到就回一句通用的）。
+      const node = renderBySpec(last.kind, last.payload);
+      if (node) { wrapEl.appendChild(node); scrollBottom(); }
+      else if (!(state.display || []).some((d) => d.kind === last.kind)) setIdle("完成");
+    } else setIdle("完成");
   } catch (err) {
     removeWorking();
     setRunline(`出错：${esc(err.message)}`, "err");

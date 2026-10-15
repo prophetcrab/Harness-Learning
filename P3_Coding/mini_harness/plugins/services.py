@@ -28,17 +28,23 @@ SELF_TOOLS_SERVICE = "self-tools"
 CLOCK_SERVICE = "clock"
 #: 审批策略（浏览器手动审批；见 plugins/web_approval.py）。
 APPROVAL_SERVICE = "approval"
+#: 审批插件的**界面自述**（`_05`）：显示规则 + 两条端点。
+APPROVAL_SURFACE = "approval.surface"
 #: Token 用量服务的只读地址（`_03`；页面据此挂载用量入口）。
 TOKEN_USAGE_SERVICE = "token-usage"
 #: 上下文仪表服务的只读地址（`_04`；页面据此挂载仪表入口）。
 CONTEXT_METER_SERVICE = "context-meter"
 #: 上下文压缩器（`_05`；agent 插件注入它，卸载 = 不再压缩）。
 COMPACTER_SERVICE = "compacter"
+#: 压缩插件的**界面自述**（`_05`）：显示规则 + 专属端点。
+COMPACT_SURFACE = "compact.surface"
 
 __all__ = [
     "AGENT_SERVICE",
     "APPROVAL_SERVICE",
+    "APPROVAL_SURFACE",
     "COMPACTER_SERVICE",
+    "COMPACT_SURFACE",
     "CONTEXT_METER_SERVICE",
     "TOKEN_USAGE_SERVICE",
     "CLOCK_SERVICE",

@@ -27,9 +27,79 @@ from __future__ import annotations
 
 from components.agent.compact import CompactionPolicy, Compactor
 from components.context.tokens import DEFAULT_CONTEXT_WINDOW
+from components.shell import DisplaySpec, RouteRequest, RouteSpec, Surface
 from kernel import Context
 from plugins.events import COMPACT_EVENT, LOOP_EVENT
-from plugins.services import COMPACTER_SERVICE, LLM_SERVICE
+from plugins.services import (
+    AGENT_SERVICE,
+    COMPACT_SURFACE,
+    COMPACTER_SERVICE,
+    LLM_SERVICE,
+)
+
+# ---------------------------------------------------------------------------
+# 界面自述：我产出的事件怎么画、我的端点长什么样
+# ---------------------------------------------------------------------------
+
+_APPLIED_TITLE = "上下文已压缩：折叠 {folded} 条（约 {before_tokens} → {after_tokens} tokens）"
+
+#: 事件的显示规则（壳按 renderer 分派，模板里 `{字段}` 由壳填）。
+#:
+#: `compact/checkpoint` 与 `compact_applied` 是**两种东西**：前者是进日志的会话
+#: 事件（重放历史时也要画），后者是实时的循环事件。界面上长得一样，共用模板——
+#: 但 kind 必须分开登记。
+DISPLAY: tuple[DisplaySpec, ...] = (
+    DisplaySpec("compact/checkpoint", "fold", _APPLIED_TITLE, "summary", order=10),
+    DisplaySpec("compact_applied", "fold", _APPLIED_TITLE, "summary", order=11),
+    DisplaySpec("compact_failed", "warn", "压缩未成功（已跳过本次）：{error}", order=12),
+    DisplaySpec(
+        "__compact_done", "status",
+        "✓ 压缩完成：折叠 {folded} 条（约 {before_tokens} → {after_tokens} tokens）",
+        order=13, terminal=True,
+    ),
+    DisplaySpec(
+        "__compact_noop", "status", "没有可压缩的历史（只有当前一轮）",
+        order=14, terminal=True,
+    ),
+)
+
+
+def _compact_route() -> RouteSpec:
+    """本插件的专属端点：一次手动压缩（NDJSON 流）。
+
+    **handler 完全不碰 HTTP**：参数从 `request.params` 取、帧往 `request.stream()`
+    写——分块传输、CRLF 分帧、终止块都由壳负责（那几处最容易写错，实测踩过三次）。
+    """
+
+    def handler(request: RouteRequest) -> None:
+        session_id = request.params["id"]
+        agent = request.ctx.get(AGENT_SERVICE)
+        if agent is None:
+            request.json({"error": "agent 服务未就绪（agent 插件未激活）"}, status=503)
+            return
+        stream = request.stream()
+        try:
+            try:
+                outcome = agent.compact(session_id)
+            except Exception as exc:      # 手动动作不静默：失败要说给人听
+                stream.frame("__error", {"message": f"压缩失败：{exc}"})
+                return
+            if outcome is None:
+                stream.frame("__compact_noop", {"message": "没有可压缩的历史（只有当前一轮）"})
+            else:
+                stream.frame(
+                    "__compact_done",
+                    {
+                        "folded": outcome.folded,
+                        "before_tokens": outcome.before_tokens,
+                        "after_tokens": outcome.after_tokens,
+                        "summary_tokens": outcome.summary_tokens,
+                    },
+                )
+        finally:
+            stream.close()
+
+    return RouteSpec("POST", "/api/sessions/<id>/compact", handler, order=10)
 
 
 class CompactPlugin:
@@ -55,6 +125,13 @@ class CompactPlugin:
     def setup(self, ctx: Context):
         compactor = Compactor(ctx.require(LLM_SERVICE), self._policy)
         ctx.provide(COMPACTER_SERVICE, compactor)
+        # 界面自述（壳不认识本插件，只读这些声明）：
+        #   display —— 我产出的事件该怎么画（四种通用渲染器之一）
+        #   routes  —— 我的专属端点（壳负责挂载与传输）
+        ctx.provide(
+            COMPACT_SURFACE,
+            Surface(display=DISPLAY, routes=(_compact_route(),)),
+        )
 
         def on_loop_event(**payload) -> None:
             """把压缩的循环事件翻成内核事件（界面据此显示"压缩发生了"）。"""
