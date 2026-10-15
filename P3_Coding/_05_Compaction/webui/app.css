@@ -302,17 +302,17 @@
     white-space:pre-wrap;color:#9fb0c8;max-height:300px;overflow:auto}
   .banner{margin:0 0 14px;padding:8px 12px;border-radius:9px;font-size:12px;
     background:#1c1f17;border:1px solid #3a4227;color:var(--warn)}
-  /* ---------- token 用量面板（token-usage 插件的挂载点） ---------- */
-  #token-panel,#ctx-panel{position:fixed;inset:0;z-index:60;display:flex;align-items:center;
+  /* ---------- 插件面板容器（所有面板共用；内容由插件自述决定） ---------- */
+  #plugin-panel{position:fixed;inset:0;z-index:60;display:flex;align-items:center;
     justify-content:center;padding:26px;background:#05070ad9;backdrop-filter:blur(3px)}
-  #token-panel .tbox,#ctx-panel .tbox{width:min(1080px,100%);height:100%;display:flex;
+  #plugin-panel .tbox{width:min(1080px,100%);height:100%;display:flex;
     flex-direction:column;background:var(--bg);border:1px solid var(--line-2);
     border-radius:14px;overflow:hidden;box-shadow:0 24px 70px #0009}
-  #token-panel .tbar,#ctx-panel .tbar{display:flex;align-items:center;gap:10px;padding:8px 12px;
+  #plugin-panel .tbar{display:flex;align-items:center;gap:10px;padding:8px 12px;
     border-bottom:1px solid var(--line);background:var(--panel-2)}
-  #token-panel .tbar h3,#ctx-panel .tbar h3{margin:0;font-size:13px;font-weight:600}
-  #token-panel .turl,#ctx-panel .turl{font-family:var(--mono);font-size:11px;color:var(--faint);
+  #plugin-panel .tbar h3{margin:0;font-size:13px;font-weight:600}
+  #plugin-panel .turl{font-family:var(--mono);font-size:11px;color:var(--faint);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #token-panel .tbar a,#ctx-panel .tbar a{text-decoration:none;display:inline-block}
-  #token-frame,#ctx-frame{flex:1;width:100%;border:0;background:#12141a}
+  #plugin-panel .tbar a{text-decoration:none;display:inline-block}
+  #pp-frame{flex:1;width:100%;border:0;background:#12141a}
   [hidden]{display:none!important}

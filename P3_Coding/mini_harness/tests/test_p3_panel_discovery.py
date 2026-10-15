@@ -218,3 +218,37 @@ def test_third_panel_plugin_needs_no_shell_change(tmp_path: Path):
     gone = {p["service"] for p in _read(booted.ctx.require(WEBUI_SERVICE).url + "api/ledger")["panels"]}
     assert "demo-panel" not in gone
     booted.close()
+
+
+def test_panel_container_has_matching_css(tmp_path: Path):
+    """**通用面板容器必须有对应的 CSS** —— 这条是踩坑后补的。
+
+    回归背景：改造时把 `index.html` 的 `#ctx-panel` / `#token-panel` 换成了
+    单个 `#plugin-panel`，`app.js` 也跟着改了，**但 `app.css` 里的选择器没改**。
+    结果是：面板元素确实"打开"了（`hidden=false`、iframe 也装了 src），
+    但样式一条都不匹配 → `position` 不是 `fixed`、没有全屏遮罩 → **屏幕上
+    完全看不见**。测试全绿（测试只查元素在不在），只有真在浏览器里点才露馅。
+
+    教训：改元素 id 时，**要同时检查 HTML / JS / CSS 三处**。这条测试盯住
+    "容器有样式且样式能定位它"，就是那个坑的守门人。
+    """
+    booted = _boot(tmp_path)
+    url = booted.ctx.require(WEBUI_SERVICE).url
+    with urllib.request.urlopen(url, timeout=8) as response:
+        html = response.read().decode("utf-8")
+    with urllib.request.urlopen(url + "app.css", timeout=8) as response:
+        css = response.read().decode("utf-8")
+
+    assert 'id="plugin-panel"' in html
+    # 通用容器的样式必须在（定位/遮罩/层级）
+    assert "#plugin-panel{" in css, "面板容器的样式丢了——它会打开但看不见"
+    assert "position:fixed" in css.split("#plugin-panel{")[1][:120]
+    assert "z-index:60" in css
+    assert "#pp-frame{" in css, "iframe 的样式丢了"
+    # 旧的两套写死选择器不许残留（它们指向已不存在的元素）
+    for stale in ("#ctx-panel", "#token-panel", "#ctx-frame", "#token-frame",
+                  "#ctx-url", "#token-url", "#ctx-open", "#token-open",
+                  "#ctx-close", "#token-close", "#ctx-btn", "#token-btn"):
+        assert stale not in css, f"CSS 里残留了旧选择器 {stale}（元素已改名）"
+        assert stale not in html, f"HTML 里残留了旧元素 {stale}"
+    booted.close()
