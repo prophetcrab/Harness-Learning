@@ -58,6 +58,17 @@ P3 第 5 阶段（对应 [PLAN.md](../PLAN.md)）。**本阶段只加一个机�
 | `chat.py` | 入口 | REPL `/compact` 命令 |
 | `plugins/context_meter.py` | 复用 | 估算/拆分改为引用构件（对外 API 不变，测试逐字兼容） |
 
+**`_05` 收尾新增的文件**（四轮收尾，决策 0031–0034；正文见各节）：
+
+| 文件 | 角色 | 内容 |
+|---|---|---|
+| `components/shell/` | 构件（新） | 界面契约：`PanelSpec` / `DisplaySpec` / `RouteSpec` + 统一发现（0032，界面零知识） |
+| `plugins/plugin_admin.py` | 插件（新） | 插件管理：分类策略 + 四个动作 + 路由自述（0033） |
+| `plugins/catalog.py` | 构件（新） | 可安装白名单——模型侧与界面侧**共用一份**（0033） |
+| `components/agent/runner.py` | 构件（新） | **turn 执行器**：后台线程 + 多订阅者（0034，并行 / 接回 / 中断） |
+| `kernel/plugin.py` · `kernel/context.py` | 内核 | `category` 声明（0033）；`disable` / `enable` 与 `disabled` 状态（0033） |
+| `tests/test_s05_plugin_admin.py`、`test_s05_shell_surfaces.py`、`test_s05_panel_discovery.py`、`test_s05_turn_runner.py`、`test_s05_plugin_discipline.py` | 测试 | 收尾四轮各自的专项（含 AST 扫源码的"声明纪律"测试） |
+
 ## 怎么用
 
 ```bash

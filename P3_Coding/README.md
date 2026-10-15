@@ -63,9 +63,14 @@ kernel/      插件内核：ctx（服务 / 事件 / effect）+ 插件生命周�
 |---|---|---|
 | `kernel/` | `context.py` | **Context**：服务槽位（provide/retract/require/get）、事件（on/emit/waterfall）、effect 台账（装载即登记、卸载自动回卷、子先父后）、插件生命周期 |
 | | `plugin.py` | **Plugin** 协议与声明（name / inject / optional / category / setup 的读取） |
-| `components/` | `llm/ session/ prompt/ tools/ fs/ proc/ agent/ rpc/` | P1/P2 的构件原样沉淀（provider 接缝、事件日志、提示词装配、工具管线、能力实现、主循环、JSON-RPC 帧与传输）；`session/projection.py` 合并了 P2 的 `system/message` 遮蔽 |
+| `components/` | `llm/ session/ prompt/ tools/ fs/ proc/ agent/ context/ shell/ rpc/` | P1/P2 的构件原样沉淀（provider 接缝、事件日志、提示词装配、工具管线、能力实现、主循环、JSON-RPC 帧与传输）；`session/projection.py` 合并了 P2 的 `system/message` 遮蔽 |
+| | `agent/runner.py` | **turn 执行器**（`_05` 收尾）：turn 跑在后台线程、HTTP 请求只是订阅者——并行会话 / 刷新接回 / 可中断 |
+| | `context/tokens.py` | token 估算与请求构成拆分（仪表与压缩共用） |
+| | `shell/` | 界面契约：`PanelSpec` / `DisplaySpec` / `RouteSpec` + 统一发现（插件自述"我有个页面 / 我的事件怎么画 / 我的端点"，壳零知识） |
 | `plugins/` | `llm.py fs.py proc.py tools.py sessions.py prompt.py agent.py` | 七个能力插件 + 服务名/事件名常量 + `boot.py` 标准装配 |
-| | `webui.py` + `webui/index.html` | ★ **界面插件**（本机 HTTP 服务 + 零依赖页面）——装载即起、卸载即停 |
+| | `catalog.py` | 可安装白名单（模型侧 `self-tools` 与界面侧 `plugin-admin` **共用同一份**） |
+| | `plugin_admin.py` | ★ 插件管理：分类策略 + 一键 安装/卸载/停用/启用（策略在这里，界面保持哑） |
+| | `webui.py` + `webui/` | ★ **界面插件**（本机 HTTP 服务 + 零依赖页面三件套）——装载即起、卸载即停 |
 | | `rpc.py` | ★ **RPC 插件**（JSON-RPC 服务端：initialize / prompt / follow；stdio 或 TCP）——装载即起、卸载即停 |
 
 `components/` 是本包唯一"搬过来"的部分（来自 P2 冻结基线；只改 import 与两处小升级：
@@ -93,7 +98,13 @@ kernel/      插件内核：ctx（服务 / 事件 / effect）+ 插件生命周�
 **boot**：`boot(plugins=[...])` 装载并检查"没有残留 pending"（依赖写错
 fail loud）；`Booted.close()` 逆序卸载全部插件。
 
-## 4. 十四个标准插件
+## 4. 插件清单
+
+下表的 15 个能力插件 + 1 个示例，是 P3 现有的全部插件。**默认装配装其中 11 个**
+（`boot_offline` / `boot_realtime`：`llm` `fs` `proc` `sessions` `prompt` `tools`
+`token-usage` `plugin-admin` `context-meter` `compact` `agent`）；其余按需装：
+`--self-tools` 加 `self-tools` + `web-approval`，`--web` 加 `webui`，`--rpc` 加 `rpc`，
+`clock` 只在演示里。装哪些都能在页面的插件台账面板里一键改。
 
 | 插件 | 提供 | inject | 说明 |
 |---|---|---|---|
@@ -103,11 +114,11 @@ fail loud）；`Booted.close()` 逆序卸载全部插件。
 | `tools` | `tools` | `fs` | 组装工具面（8 件：calculate + read/write/list/edit + search/find + 可选 shell）；卸载时注销注册表 |
 | `sessions` | `sessions` | — | 打开即恢复 + 崩溃尾行修复 + 列举 + 分叉 |
 | `prompt` | `prompt` | — | section 装配 + `prompt/variables` 瀑布 + 装配单 |
-| `agent` | `agent` | `llm` `tools` `sessions` `prompt` | 会话管理：`ask(text, session_id)` 跑一个 turn |
-| `webui` | `webui` | （可选）`agent` `sessions` | ★ **浏览器界面**：本机 HTTP 服务；**装载即起、卸载即停**（端口释放）；页面看插件台账 / 会话 / 实时事件流 |
+| `agent` | `agent` | `llm` `tools` `sessions` `prompt` | 会话管理：`ask(text, session_id)` 跑一个 turn；**每条会话一把锁**（同会话串行、跨会话并行） |
+| `webui` | `webui` | （可选）`agent` `sessions` | ★ **浏览器界面**：本机 HTTP 服务；**装载即起、卸载即停**（端口释放）；插件台账弹出面板 / 会话 / 实时事件流 |
 | `rpc` | `rpc` | `agent` `sessions` | ★ **JSON-RPC 服务端**：`initialize` / `session.prompt` / `session.follow`（重放+订阅）；stdio 或 TCP（`listen=` 装载即起、卸载即停） |
 | `self-tools` | `self-tools` | `tools` `fs` | `_01`：让模型装卸白名单插件（`install_plugin` 需人工审批） |
-| `web-approval` | （审批策略） | — | `_01`：审批点在浏览器里，问不到人则 fail-closed |
+| `web-approval` | （审批策略） | — | `_01`：审批点在浏览器里，问不到人则 fail-closed；审批**按线程**登记推流通道 |
 | `token-usage` | 账本 + 页面 | `tools` | `_03`：用量账本 + 用量页面（8767） |
 | `context-meter` | 仪表 + 页面 | — | `_04`：上下文构成 / 容量（8768） |
 | `compact` | `compacter` | `llm` | `_05`：上下文压缩（90% 触发、日志只追加折叠声明） |
@@ -129,9 +140,9 @@ ctx.unload_plugin("webui")              # 停服 + 端口释放，零残留
 ```
 
 三条实现纪律（代码注释里也写了）：**生命周期只在主线程做**（内核无锁），
-服务线程只调服务、不改 ctx；**跑 turn 用一把锁串行化**（agent 的会话缓存
-不是线程安全的，多标签页同时提问会踩）；**缺依赖装载期就报错**，而不是
-打开页面才 500。
+服务线程只调服务、不改 ctx；**turn 跑在后台线程里、HTTP 请求只是订阅者**
+（`components/agent/runner.py`：不同会话并行、同会话串行、刷新页面接回同一个
+turn、可中断）；**缺依赖装载期就报错**，而不是打开页面才 500。
 
 RPC 插件把这套语义给了**协议面**（跨进程、多客户端）：
 
@@ -157,10 +168,12 @@ python -m pytest -q                       # 344 个用例（全离线）
 # 离线组合（默认）：离线模型 + MemoryFS + 剧本命令
 python chat.py
 python chat.py --ask "帮我算 2+3"
-python demo.py                            # 七节演示：装配 / 台账 / 对话 / resume / 热插拔 / 回卷 / 界面插件
+python demo.py                            # 八节演示：装配 / 台账 / 对话 / resume / 热插拔 / 回卷 / 界面插件 / RPC
 
 # ★ 界面（离线；装载即起服务、Ctrl+C 卸载退出）
 python chat.py --web                      # 自动开浏览器；--port 0 让系统分配端口
+python chat.py --web --realtime           # 换成真实 DeepSeek（需项目根 .env）
+python chat.py --web --realtime --self-tools   # 再带上自扩展 + 浏览器审批
 ./run.bat web                             # 启动器等价入口
 
 # ★ RPC 服务（stdio JSON-RPC；--listen N 同时开 TCP，多客户端共享会话）
@@ -198,9 +211,15 @@ bash run.sh chat --realtime
 7) RPC 插件：握手门禁 → prompt → follow（重放 + 订阅、跨连接实时推送、from_seq 补齐）
 ```
 
-`python chat.py --web` 打开页面（P3 形态）：左栏是**插件台账**（每个插件的
-status 与 inject 依赖一眼可见），中栏对话（NDJSON 流式推事件，边跑边长），
-右栏是该会话的 **append-only 事件流**（历史由日志投影，与命令行看到的一致）。
+`python chat.py --web` 打开页面（P3 形态）：左栏是**插件台账的入口门卡**
+（显示活跃数，点开是独立弹出面板：按 基础/能力/其他 分组、可筛选、一键
+安装/卸载/停用/启用），中栏对话（NDJSON 流式推事件，边跑边长），右栏是该会话的
+**append-only 事件流**（历史由日志投影，与命令行看到的一致）。
+
+**并行与接回**（`_05` 收尾加的）：不同会话的 turn 真的同时跑——界面左栏的会话名
+前缀一个脉冲绿点表示"运行中"；运行中再发消息不会静默吞掉，而是弹出选择条
+（中断并重新发送 / 等它跑完 / 取消）；**刷新页面不影响运行中的 turn**，页面会
+自动接回并继续显示，正在等待的审批卡片也会补回来。
 
 ## 7. 与 P2 的关系
 
@@ -213,17 +232,41 @@ status 与 inject 依赖一眼可见），中栏对话（NDJSON 流式推事件�
   服务；P3 里 `webui` / `rpc` 两个插件都有完整的装载/卸载语义（含 TCP 端口释放、
   订阅随连接注销）。
 
-## 8. 已知边界（本包**没有**的东西）
+## 8. 已知边界（诚实记录）
 
-- 流式输出（`complete()` 仍是一次性返回）；无重试与错误分类；
-- 没有预算计量、上下文压缩、spill、任务管理（goal/plan/todo）；
-- 事件无优先级/异步；中间件同步串行；单进程单写者（无写锁）；
-- **界面与 RPC 的边界**：只绑本机、无鉴权；webui 的事件流只推给发起 turn 的那个
-  客户端，需要多客户端广播 / 断线补齐请走 `rpc` 插件的 `session.follow`；
+- **没有重试与错误分类**：provider 调用失败直接抛给循环，没有退避重试；
+- **没有 spill**（超大工具结果转存）与 **guard**（重复调用/空转检测）——PLAN 的
+  `_07` / `_08`；
+- **没有任务管理**（goal / plan / todo）——`_06` 曾实现又按用户要求整体回退，
+  见下方"进度说明"；
+- **中断是协作式的**：正在执行的工具调用不会被砍断（半截命令比等几秒更糟），
+  一个 30 秒的 shell 要跑完才响应取消；
+- **turn 不随请求结束而结束**：客户端断开（含刷新）后 turn 会跑完——这正是
+  "刷新不掉进度"的实现方式，代价是"人走了，账单还在涨"（要真停得按中断）；
+- **同会话不排队**：第二条消息要么等它跑完、要么中断它，没有第三条路；
+- **流式请求不复用连接**（`Connection: close`）：每次流式新建一条 TCP，本机可忽略；
+- **界面与 RPC 的边界**：只绑本机、无鉴权；webui 的事件流只推给**当前订阅者**
+  （可多个、可随时来走），需要跨进程断线补齐请走 `rpc` 插件的 `session.follow`；
 - **没有随附 attach 客户端**（P2 的 `attach.py` 未移植）：实时跟随可以直接用
   `chat.py --rpc --listen N` + 任意 JSON-RPC 客户端；
-- **级联重启**：换底层插件（如 fs）会让依赖链上的 `webui` 一并退位重启
-  （端口随之更换）。需要"换底层而不中断界面"时应走稳定门面（RPC 服务），
-  而不是让界面硬依赖 agent；
+- **级联重启**：换底层插件（如 fs）会让依赖链上的插件一并退位；`webui` 因为声明
+  的是 **optional** 依赖而免疫（换模型/装卸插件时界面不断线，见 `_05` 的界面重构）；
 - 插件依赖是"服务名存在性"检查，没有版本约束、没有环形依赖检测
   （环形会成组退位，不会死循环，但语义未定义——见决策记录"后果"）。
+
+## 9. 进度说明：`_06` 的两次回退
+
+`_06` 在 PLAN 里写的是**任务管理**（todo）。实际做过两轮，都按用户要求撤掉了：
+
+1. **goal 模式**（`50921a5` 撤回）：先做了一版持久目标（`/goal` 命令 + 状态进
+   日志），用户判断"还没优化完"，要求回到 PLAN 原本的顺序；
+2. **todo 清单**（`1a86778` 全部 Revert）：按 PLAN 做了 `todo` 工具 + `/todo`
+   人命令，随后用户报告"正常对话功能都无法使用"——回退整个 `_06`。
+
+**代价与教训**：`_06` 的目录已不存在，代码状态 == `_05` 完成态。回退后先做了
+两批"收尾"（`_05` 的三处耦合修复、壳的两条扩展点、插件管理、turn 执行器），
+把地基上的欠账补完，再考虑 `_06` 起的能力。
+
+> 若要重做 `_06`：先按项目纪律把验收标准写细，并**先在 `_05` 的基线上跑通
+> 现有 344 个用例**再动代码；上两轮的问题都出在"机制穿透了既有链路"
+> （todo 的快照写入打乱了正常对话的事件流）。
