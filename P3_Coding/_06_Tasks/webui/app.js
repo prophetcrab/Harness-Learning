@@ -513,8 +513,19 @@ async function streamFrames(url, body, onFrame) {
       const line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1);
       if (!line) continue;
       let frame; try { frame = JSON.parse(line); } catch { continue; }
-      if (String(frame.kind).startsWith("__")) last = { kind: frame.kind, payload: frame.payload };
-      else { onFrame(frame.kind, frame.payload); appendLiveEvent(frame.kind, frame.payload); }
+      if (String(frame.kind).startsWith("__")) {
+        // 收尾帧（__done / __error / __compact_done …）由调用方看返回值；
+        // **但 __approval 必须立刻交给 onFrame** —— 它是"有人在等你点头"，
+        // 吞掉它整个 turn 就卡死在等审批上了（实测：模型调 write_file 后
+        // 页面停在第 2 步"执行工具…"，审批卡片始终不出现）。
+        last = { kind: frame.kind, payload: frame.payload };
+        if (frame.kind === "__approval" || frame.kind === "__repair") {
+          onFrame(frame.kind, frame.payload);
+        }
+      } else {
+        onFrame(frame.kind, frame.payload);
+        appendLiveEvent(frame.kind, frame.payload);
+      }
     }
   }
   return last;
@@ -560,10 +571,33 @@ async function runTodo(line) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || res.status);
+    // `/todo run`：服务端把清单拼成提示词回给我们，**这一步要跑一个真 turn**
+    // （那次花模型的钱）。走既有的 send 流，所以对话、工具卡片、清单面板
+    // 全都照常更新——不新增任何通道。
+    if (data.run_prompt) {
+      refreshTaskPanel();
+      setRunning("把清单交给模型执行…");
+      ensureWorking("模型按清单开始工作…");
+      let done = null;
+      try {
+        const last = await streamFrames(
+          `/api/sessions/${encodeURIComponent(state.current)}/send`,
+          { text: data.run_prompt }, handleFrame,
+        );
+        if (last && last.kind === "__done") done = last.payload;
+      } finally {
+        removeWorking();
+        await openSession(state.current, { silent: true });
+        if (done) setIdle(`清单执行完毕 · turn ${done.turn} · ${done.status}`);
+        refreshTaskPanel();
+      }
+      return;
+    }
     showBanner(String(data.text || "").split("\n").join("  ·  "));
     setIdle(data.summary ? "清单：" + data.summary : "清单已更新");
     if (data.changed) refreshTaskPanel();
   } catch (err) {
+    removeWorking();
     setRunline(`/todo 出错：${esc(err.message)}`, "err");
   }
 }

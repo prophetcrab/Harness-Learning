@@ -190,12 +190,20 @@ def repl(booted: Booted, session_id: str, *, web_port: int = 8766) -> int:
                 print(f"  [{message.role}] {head}")
             continue
         if text == "/todo" or text.startswith("/todo "):
-            # `/todo` 是**人命令**：直接改清单，不走 turn、不花模型的钱。
+            # `/todo` 默认是**人命令**：直接改清单，不走 turn、不花模型的钱。
+            # 唯一例外是 `/todo run`——它要求把清单交给模型执行（那次要花钱）；
+            # 构件层只负责拼出提示词，由这里决定怎么发。
             todos = booted.ctx.get(TODOS_SERVICE)
             if todos is None:
                 print("  [todo] todo 插件未装载（清单服务不可用）")
                 continue
             result = run_todo_command(todos.store(session_id), text[len("/todo"):])
+            if result.run_prompt is not None:
+                print("  [todo] 把清单交给模型执行…")
+                turn = booted.agent.ask(result.run_prompt, session_id=session_id)
+                print(f"助手：{turn.final_text}")
+                print(f"  [todo] {todos.view(session_id)['summary']}")
+                continue
             for line in result.text.splitlines():
                 print(f"  [todo] {line}")
             continue

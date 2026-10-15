@@ -345,12 +345,18 @@ def _make_handler(ctx: Context, lock: threading.Lock, state: dict[str, Any]):
             body = self._read_json()
             line = str(body.get("line") or "")
             result = run_todo_command(todos.store(session_id), line)
-            self._send_json(200, {
+            payload: dict[str, Any] = {
                 "ok": True,
                 "changed": result.changed,
                 "text": result.text,
                 **todos.view(session_id),
-            })
+            }
+            if result.run_prompt is not None:
+                # `/todo run`：把拼好的提示词回给前端，由它走既有的 /send 流去
+                # **真跑一个 turn**（那次花模型的钱）。服务端不在这里自己跑，
+                # 是为了让"执行"复用 send 那一整条已打磨过的流式通道。
+                payload["run_prompt"] = result.run_prompt
+            self._send_json(200, payload)
 
         # ---- 手动压缩（/compact） ----
 

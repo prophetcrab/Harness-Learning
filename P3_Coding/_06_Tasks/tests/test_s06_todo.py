@@ -27,6 +27,7 @@ from components.todo import (
     TodoStore,
     fold_todos,
     format_todos,
+    is_run_request,
     normalize,
     run_todo_command,
     summarize,
@@ -244,6 +245,61 @@ def test_todo_command_accepts_chinese_aliases():
     assert store.current() == []
 
 
+def test_todo_command_is_a_notepad_not_a_start_button():
+    """`/todo` 只是记事本，**不会让模型开工**——这条踩过，钉住它。
+
+    回归背景：用户把一整句需求丢进 `/todo`（"先帮我做个游戏，再写一篇文档"），
+    结果它只把整句话记成**一条任务**，然后什么都不发生。`/todo` 是纯本地操作
+    （不花模型的钱），"开工"必须是另一条显式路径。
+    """
+    store, _ = _store()
+    result = run_todo_command(store, "先帮我做个飞机大战的网页小游戏，再写一篇关于游戏规则的文档")
+    assert result.changed                    # 确实记下了
+    assert result.run_prompt is None         # 但**没有**要求模型执行
+    assert len(store.current()) == 1         # 整句话成了一条（不是拆成两条）
+    # 而且会给一句人话提示，指明正确入口
+    assert "一整句需求" in result.text
+    assert "直接当消息发出去" in result.text
+    assert "/todo rm" in result.text
+
+
+def test_short_entry_gets_no_misuse_warning():
+    """对照：正常长度的条目不该被误报（提示只给"看着像需求"的输入）。"""
+    store, _ = _store()
+    result = run_todo_command(store, "跑一遍测试")
+    assert result.changed
+    assert "一整句需求" not in result.text       # 不误报
+    assert "/todo run" in result.text            # 但仍告诉你怎么让它开工
+
+
+def test_todo_run_builds_prompt_for_model():
+    """`/todo run`：把清单交给模型执行（构件层只拼消息，入口负责发）。"""
+    store, _ = _store()
+    run_todo_command(store, "做游戏")
+    run_todo_command(store, "写文档")
+    result = run_todo_command(store, "run")
+    assert result.run_prompt is not None
+    assert "做游戏" in result.run_prompt and "写文档" in result.run_prompt
+    assert "todo_write" in result.run_prompt       # 要求逐条勾进度
+    assert not result.changed                       # run 本身不改清单
+    # 别名与中文都认
+    for alias in ("run", "start", "开始", "干活"):
+        assert run_todo_command(store, alias).run_prompt is not None
+
+
+def test_todo_run_on_empty_list_is_a_noop():
+    store, _ = _store()
+    result = run_todo_command(store, "run")
+    assert result.run_prompt is None
+    assert "清单是空的" in result.text
+
+
+def test_is_run_request_helper():
+
+    assert is_run_request("run") and is_run_request(" 开始 ") and is_run_request("GO")
+    assert not is_run_request("") and not is_run_request("跑测试") and not is_run_request("done 1")
+
+
 def test_todo_command_never_raises():
     store, _ = _store()
     assert "用法" in run_todo_command(store, "add").text          # 少了内容
@@ -314,6 +370,44 @@ def test_description_tells_model_when_to_use_it_proactively(tmp_path: Path):
     assert "整表替换" in desc                              # 格式约束仍在
     booted = _boot(tmp_path)
     booted.ctx.load_plugin(webui_plugin(port=0))
+    booted.close()
+
+
+def test_missing_todos_argument_is_an_error_not_a_silent_clear(tmp_path: Path):
+    """**漏传 `todos` 不能当成"清空"**——这是个有后果的操作。
+
+    回归背景（浏览器实测）：模型第一次调用时把参数发成 `{"todos": {"todos": [...]}}`
+    （多包了一层），当时的实现 `todos if todos is not None else []` 把它当成了
+    空列表 → **静默清空清单**，日志里只剩一条空 `todo/write`。模型随后自己
+    发现"现在清单显示为空"才重发一次，但那一瞬间用户看到的是清单被抹掉。
+    """
+    script = [tool_call_reply("todo_write", {"todos": [{"content": "甲"}]}),
+              text_reply("先记一条。")]
+    booted = _boot(tmp_path, script=script)
+    booted.agent.ask("记一条", session_id="s1")
+    assert booted.ctx.require(TODOS_SERVICE).current("s1")
+
+    # 直接调工具函数：漏参数
+    fn = booted.ctx.require("tools").resolve("todo_write").func
+    result = fn()
+    assert "error" in result and "缺少 todos" in result["error"]
+    assert booted.ctx.require(TODOS_SERVICE).current("s1"), "漏参数不该清空清单"
+    booted.close()
+
+
+def test_nested_todos_argument_is_flattened(tmp_path: Path):
+    """模型多包一层（`{"todos": {"todos": [...]}}`）时摊平，而不是丢东西。"""
+    booted = _boot(tmp_path)
+    fn = booted.ctx.require("tools").resolve("todo_write").func
+    result = fn(todos={"todos": [{"content": "乙"}]})
+    assert result.get("ok") and [t.content for t in booted.ctx.require(TODOS_SERVICE).current("default")] == ["乙"]
+    booted.close()
+
+
+def test_wrong_type_argument_is_an_error(tmp_path: Path):
+    booted = _boot(tmp_path)
+    fn = booted.ctx.require("tools").resolve("todo_write").func
+    assert "error" in fn(todos="甲")
     booted.close()
 
 

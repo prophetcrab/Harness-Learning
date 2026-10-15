@@ -118,10 +118,31 @@ TODO_WRITE_DESCRIPTION = (
 def _todo_tools(service: TodoService):
     """构造 `todo_write` 的实现（会话现取，见 TodoService 的说明）。"""
 
-    def todo_write(todos: list[dict[str, Any]] | None = None, **_ignored: Any) -> dict[str, Any]:
+    def todo_write(todos: Any = None, **_extra: Any) -> dict[str, Any]:
+        """整表写清单。
+
+        两种参数形态都容忍（实测踩到过）：
+        - 正常：`{"todos": [{"content": "...", "status": "..."}]}`
+        - 模型多发一层：`{"todos": {"todos": [...]}}`——摊平，别丢东西。
+
+        **`todos` 缺失时返回错误，而不是当成"清空"**：清空清单是个有后果的
+        操作，不能因为模型漏了个参数就悄悄把用户的清单抹掉（实测：模型第一次
+        调用漏了包装，清单被静默清空，日志里只剩一条空 todo/write）。
+        真的要清空，必须显式传 `[]`。
+        """
+        payload = todos
+        if isinstance(payload, dict):                    # 摊平多包的一层
+            payload = payload.get("todos", payload)
+        if payload is None:
+            return {
+                "error": "缺少 todos 参数。要写清单请传完整数组（可传 [] 清空）；"
+                         "只改某一条不行——本工具整表替换。"
+            }
+        if not isinstance(payload, list):
+            return {"error": f"todos 必须是数组，收到 {type(payload).__name__}"}
         session = service.session_of_record()
         try:
-            written = service.store(session).write(todos if todos is not None else [])
+            written = service.store(session).write(payload)
         except TodoError as exc:
             return {"error": str(exc)}
         return {"ok": True, **service.view(session), "written": len(written)}

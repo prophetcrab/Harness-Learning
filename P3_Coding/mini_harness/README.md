@@ -54,7 +54,7 @@ plugins/       能力插件（把构件装成 ctx 服务）
   clock.py       ★ 示例可装卸插件（不在默认装配里）
   boot.py        boot / boot_offline / boot_realtime
 webui/         界面插件的静态资源（index.html + app.css + app.js；原生 JS 零依赖）
-tests/         261 个用例（15 个文件；文件名统一 test_p3_*）
+tests/         270 个用例（15 个文件；文件名统一 test_p3_*）
 chat.py demo.py run.bat run.sh conftest.py
 ```
 
