@@ -12,7 +12,7 @@ P3 的**地基**：一个把"能力"全部表达为插件的 mini harness。三�
 
 ```bash
 cd P3_Coding/mini_harness
-python -m pytest -q                    # 206 用例，全离线
+python -m pytest -q                    # 261 用例，全离线
 python demo.py                         # 八节演示（装配 / 台账 / 对话 / resume / 热插拔 / 回卷 / 界面插件 / RPC）
 python chat.py --ask "帮我算 2+3"       # 离线一个 turn
 python chat.py                         # 离线交互（/web 现场装卸界面插件）
@@ -54,7 +54,7 @@ plugins/       能力插件（把构件装成 ctx 服务）
   clock.py       ★ 示例可装卸插件（不在默认装配里）
   boot.py        boot / boot_offline / boot_realtime
 webui/         界面插件的静态资源（index.html + app.css + app.js；原生 JS 零依赖）
-tests/         261 个用例（16 个文件；文件名统一 test_p3_*）
+tests/         261 个用例（15 个文件；文件名统一 test_p3_*）
 chat.py demo.py run.bat run.sh conftest.py
 ```
 
