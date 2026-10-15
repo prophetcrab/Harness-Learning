@@ -293,6 +293,30 @@ def test_model_tool_rejects_bad_list_with_error_not_crash(tmp_path: Path):
     booted.close()
 
 
+def test_description_tells_model_when_to_use_it_proactively(tmp_path: Path):
+    """工具描述要**主动教模型什么时候用**，而不只讲格式。
+
+    背景（实测）：描述里原来只写"多步骤的活儿先列计划"，模型于是基本不会自发
+    调用——用户说"帮我做三件事"（没提"计划"），模型直接闷头做，清单一条没有；
+    只有明说"先列个计划"才会用。补上"用户在要两件以上的事 → 开工前先写清单"
+    这条**触发条件**（并列出反例"单步小事别建"）之后，描述才真正起到引导作用。
+
+    注意：这条测试钉的是**描述里有这条指引**，不是"模型一定会照做"——后者是模型
+    行为，随模型/提示词变化，不该写成硬断言（真有需要时得靠更强的机制，如强制
+    前置步骤或界面提示）。
+    """
+    from plugins.todo import TODO_WRITE_DESCRIPTION as desc
+
+    assert "什么时候该主动用" in desc                     # 有触发条件这一节
+    assert "两件以上的事" in desc                          # 给出可识别的信号
+    assert "别闷头一件件做" in desc                        # 说明不用的后果
+    assert "单步的小事别建" in desc                        # 同时给出反例，防滥用
+    assert "整表替换" in desc                              # 格式约束仍在
+    booted = _boot(tmp_path)
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    booted.close()
+
+
 def test_empty_write_from_model_is_clear(tmp_path: Path):
     script = [
         tool_call_reply("todo_write", {"todos": [{"content": "甲"}]}),
