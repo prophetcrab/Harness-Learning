@@ -790,9 +790,7 @@ def test_command_menu_is_declarative_not_a_dedicated_button(tmp_path: Path):
     assert "function runCommand(" in js         # 执行
     for key in ("ArrowDown", "ArrowUp", "Tab", "Escape"):   # 键盘契约
         assert key in js, f"键盘支持缺少 {key}"
-    assert "COMMANDS.find(" in js and "c.name === text" in js   # 命令名直接执行
-    assert "takesArgs" in js                    # `_06`：带参数的命令（/todo）
-    assert 'name: "/todo"' in js                # 第二条命令已在表里
+    assert "COMMANDS.find((c) => c.name === text)" in js     # 完整命令名直接执行
     booted.close()
 
 

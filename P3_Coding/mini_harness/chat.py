@@ -14,7 +14,6 @@
 
 会话内命令：/plugins 插件台账；/services 服务清单；/tools 工具面；
             /history 历史；/compact 手动压缩上下文（折到最后一轮之前）；
-            /todo 任务清单（看/加/勾/删，不花模型的钱）；
             /web 起/停界面插件；/exit 退出（整体卸载，可见回卷）。
 
 与 P2 的差别：装配不再是"读 YAML 配置树"，而是**直接列插件**——P3 基础包
@@ -29,16 +28,8 @@ import sys
 from pathlib import Path
 
 from components.context.tokens import DEFAULT_CONTEXT_WINDOW
-from components.todo import run_todo_command
 from components.tools import ApprovalPolicy, PromptApprover
-from plugins import (
-    TODOS_SERVICE,
-    TOOLS_SERVICE,
-    WEBUI_SERVICE,
-    Booted,
-    boot_offline,
-    boot_realtime,
-)
+from plugins import TOOLS_SERVICE, WEBUI_SERVICE, Booted, boot_offline, boot_realtime
 
 HERE = Path(__file__).resolve().parent
 PROJECT_ROOT = HERE.parents[1]  # 项目根（.env 所在处）
@@ -164,7 +155,7 @@ def repl(booted: Booted, session_id: str, *, web_port: int = 8766) -> int:
     opened = booted.agent.open(session_id, on_event=print_event)
     if opened.repaired:
         print("[提示] 上次会话被强杀，日志尾部已自动修复。")
-    print(f"会话 {session_id}（{'恢复' if opened.resumed else '新建'}）；/exit 退出，/plugins 看台账，/compact 压缩，/todo 清单。")
+    print(f"会话 {session_id}（{'恢复' if opened.resumed else '新建'}）；/exit 退出，/plugins 看台账，/compact 手动压缩。")
     while True:
         try:
             text = input("\n你：").strip()
@@ -188,24 +179,6 @@ def repl(booted: Booted, session_id: str, *, web_port: int = 8766) -> int:
             for message in opened.messages:
                 head = (message.content or "").replace("\n", " ")[:70]
                 print(f"  [{message.role}] {head}")
-            continue
-        if text == "/todo" or text.startswith("/todo "):
-            # `/todo` 默认是**人命令**：直接改清单，不走 turn、不花模型的钱。
-            # 唯一例外是 `/todo run`——它要求把清单交给模型执行（那次要花钱）；
-            # 构件层只负责拼出提示词，由这里决定怎么发。
-            todos = booted.ctx.get(TODOS_SERVICE)
-            if todos is None:
-                print("  [todo] todo 插件未装载（清单服务不可用）")
-                continue
-            result = run_todo_command(todos.store(session_id), text[len("/todo"):])
-            if result.run_prompt is not None:
-                print("  [todo] 把清单交给模型执行…")
-                turn = booted.agent.ask(result.run_prompt, session_id=session_id)
-                print(f"助手：{turn.final_text}")
-                print(f"  [todo] {todos.view(session_id)['summary']}")
-                continue
-            for line in result.text.splitlines():
-                print(f"  [todo] {line}")
             continue
         if text == "/compact":
             # 手动压缩（`_05` 的 `/compact`）：跳过阈值、保住最后一轮。

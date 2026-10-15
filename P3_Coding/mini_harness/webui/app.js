@@ -306,7 +306,6 @@ function handleFrame(kind, payload) {
       scrollBottom(); break;
     }
     case "turn_end":
-      refreshTaskPanel();                              // `_06`：一轮结束核对一次清单
       removeWorking();
       wrapEl.querySelectorAll(".cursor").forEach((c) => c.remove());
       wrapEl.querySelectorAll(".streaming-live").forEach((n) => n.classList.remove("streaming-live"));
@@ -490,7 +489,6 @@ async function openSession(id, opts = {}) {
   renderChatFromEvents(data.events || []);
   renderEventsFromHistory(data.events || []);
   await loadSessions();
-  refreshTaskPanel();          // `_06`：会话换了，清单也要跟着换
   if (!opts.silent) setIdle(`会话 ${id} · ${(data.events || []).length} 条事件`);
 }
 
@@ -513,19 +511,8 @@ async function streamFrames(url, body, onFrame) {
       const line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1);
       if (!line) continue;
       let frame; try { frame = JSON.parse(line); } catch { continue; }
-      if (String(frame.kind).startsWith("__")) {
-        // 收尾帧（__done / __error / __compact_done …）由调用方看返回值；
-        // **但 __approval 必须立刻交给 onFrame** —— 它是"有人在等你点头"，
-        // 吞掉它整个 turn 就卡死在等审批上了（实测：模型调 write_file 后
-        // 页面停在第 2 步"执行工具…"，审批卡片始终不出现）。
-        last = { kind: frame.kind, payload: frame.payload };
-        if (frame.kind === "__approval" || frame.kind === "__repair") {
-          onFrame(frame.kind, frame.payload);
-        }
-      } else {
-        onFrame(frame.kind, frame.payload);
-        appendLiveEvent(frame.kind, frame.payload);
-      }
+      if (String(frame.kind).startsWith("__")) last = { kind: frame.kind, payload: frame.payload };
+      else { onFrame(frame.kind, frame.payload); appendLiveEvent(frame.kind, frame.payload); }
     }
   }
   return last;
@@ -560,72 +547,6 @@ async function runCompact() {
   }
 }
 
-/** 执行一条 `/todo ...`（人命令，不花模型的钱）：服务端解析 + 排版，这里只显示。 */
-async function runTodo(line) {
-  if (!state.current) state.current = "default";
-  const args = String(line || "").replace(/^\/todo\s*/, "");
-  try {
-    const res = await fetch(`/api/sessions/${encodeURIComponent(state.current)}/todo`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ line: args }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || res.status);
-    // `/todo run`：服务端把清单拼成提示词回给我们，**这一步要跑一个真 turn**
-    // （那次花模型的钱）。走既有的 send 流，所以对话、工具卡片、清单面板
-    // 全都照常更新——不新增任何通道。
-    if (data.run_prompt) {
-      refreshTaskPanel();
-      setRunning("把清单交给模型执行…");
-      ensureWorking("模型按清单开始工作…");
-      let done = null;
-      try {
-        const last = await streamFrames(
-          `/api/sessions/${encodeURIComponent(state.current)}/send`,
-          { text: data.run_prompt }, handleFrame,
-        );
-        if (last && last.kind === "__done") done = last.payload;
-      } finally {
-        removeWorking();
-        await openSession(state.current, { silent: true });
-        if (done) setIdle(`清单执行完毕 · turn ${done.turn} · ${done.status}`);
-        refreshTaskPanel();
-      }
-      return;
-    }
-    showBanner(String(data.text || "").split("\n").join("  ·  "));
-    setIdle(data.summary ? "清单：" + data.summary : "清单已更新");
-    if (data.changed) refreshTaskPanel();
-  } catch (err) {
-    removeWorking();
-    setRunline(`/todo 出错：${esc(err.message)}`, "err");
-  }
-}
-
-/* ---------------- 任务清单面板（右上角常驻） ----------------
-   清单是"模型自己拆的步骤"，用户随时该看得到——所以不做成弹窗，而是常驻
-   在事件轨迹上方；`todo_write` 或 `/todo` 改了就刷新（靠 /api/.../todo 读）。 */
-async function refreshTaskPanel() {
-  const box = $("todo-box");
-  if (!box || !state.current) return;
-  try {
-    const res = await fetch(`/api/sessions/${encodeURIComponent(state.current)}/todo`,
-      { cache: "no-store" });
-    const data = await res.json();
-    if (!res.ok) { box.hidden = true; return; }
-    const todos = data.todos;
-    if (!todos || !todos.length) { box.hidden = true; return; }
-    const mark = { completed: "✓", in_progress: "▸", pending: "○" };
-    box.hidden = false;
-    $("todo-count").textContent = data.summary || "";
-    $("todo-list").innerHTML = todos.map((t) => `
-      <div class="todo-row ${esc(t.status)}">
-        <span class="todo-mark">${mark[t.status] || "○"}</span>
-        <span class="todo-text">${esc(t.content)}</span>
-      </div>`).join("");
-  } catch (err) { box.hidden = true; }
-}
-
 /* ---------------- 快捷命令（斜杠命令面板） ----------------
    一条命令 = 一行声明：名字 + 说明 + 用法（可选）+ 执行函数。
    输入框里敲 "/" 就弹出全表；继续打字即前缀过滤；↑↓ 选、Enter 或 Tab 补全、
@@ -638,12 +559,6 @@ const COMMANDS = [
     usage: "/compact",
     run: runCompact,
   },
-  {
-    name: "/todo",
-    desc: "任务清单：直接写内容即可加一条；勾选用 done <序号>，还有 doing / rm / clear",
-    takesArgs: true,
-    run: (line) => runTodo(line),
-  },
 ];
 
 const cmdMenu = $("cmdmenu");
@@ -653,16 +568,8 @@ let cmdActive = 0;      // 键盘高亮的下标
 /** 取当前应该展示的候选（null = 不展示菜单）。 */
 function cmdCandidates(value) {
   if (state.sending) return null;
-  if (!value.startsWith("/")) return null;
-  // 已经打了空格：只可能是"带参数的命令正在填参数"——把该命令的用法继续
-  // 当提示挂着（人照着打，不用记）。否则空格一出现菜单就消失，
-  // `/todo ` 之后人就得凭记忆敲子命令了。
-  const spaced = /\s/.test(value);
-  if (spaced) {
-    const head = value.split(/\s/)[0];
-    const command = COMMANDS.find((c) => c.name === head && c.takesArgs);
-    return command ? [command] : null;
-  }
+  // 只在"整行是一个还没打完的命令"时提示：以 / 开头且不含空格
+  if (!value.startsWith("/") || /\s/.test(value)) return null;
   return COMMANDS.filter((c) => c.name.startsWith(value));
 }
 
@@ -692,25 +599,21 @@ function hideCmdMenu() { cmdMenu.hidden = true; cmdItems = []; }
 async function runCommand(index) {
   const command = cmdItems[index];
   if (!command) return;
-  const line = ta.value.trim();                  // 原始整行（含子命令与参数）
   hideCmdMenu();
   ta.value = ""; autosize();
-  await command.run(line);
+  await command.run();
 }
 
 $("composer").addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = ta.value.trim();
   if (!text || state.sending) return;
-  // 命中的命令 → 走命令，别当普通消息发给模型。
-  // 两种命中：完全等于命令名，或"命令名 + 空格 + 参数"（带参数的命令）。
-  const exact = COMMANDS.find(
-    (c) => c.name === text || (c.takesArgs && text.startsWith(c.name + " ")),
-  );
+  // 菜单开着且正好是某条完整命令 → 走命令，别当普通消息发出去
+  const exact = COMMANDS.find((c) => c.name === text);
   if (exact && !cmdMenu.hidden) {
     hideCmdMenu();
     ta.value = ""; autosize();
-    await exact.run(text);
+    await exact.run();
     return;
   }
   if (!state.current) state.current = "default";
@@ -757,17 +660,12 @@ ta.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown") { e.preventDefault(); highlightCmd(cmdActive + 1); return; }
     if (e.key === "ArrowUp") { e.preventDefault(); highlightCmd(cmdActive - 1); return; }
     if (e.key === "Tab" || e.key === "Enter") {
-      const command = cmdItems[cmdActive];
-      const typingArgs = /\s/.test(ta.value);      // 已在填参数了
-      if (e.key === "Tab" || command.takesArgs && !typingArgs) {
-        e.preventDefault();
-        // 带参数的命令：补全成 "/todo "（加个空格）把光标交给参数，
-        // 不猜他想 add 还是 done
-        ta.value = command.name + (command.takesArgs ? " " : "");
+      e.preventDefault();
+      if (e.key === "Tab") {                      // Tab = 补全到输入框（还能改）
+        ta.value = cmdItems[cmdActive].name;
         autosize(); renderCmdMenu();
         return;
       }
-      e.preventDefault();
       runCommand(cmdActive);                      // Enter = 直接执行
       return;
     }
@@ -973,6 +871,4 @@ mountPanel({
   setInterval(loadSessions, 5000);
   setInterval(loadLedger, 2500);
 })();
-
-/* 清单面板在会话切换时也要跟着换（openSession 里会调 refreshTaskPanel）。 */
 

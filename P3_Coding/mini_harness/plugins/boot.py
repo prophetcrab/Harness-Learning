@@ -32,7 +32,6 @@ from plugins.prompt import PromptPlugin
 from plugins.self_tools import self_tools_plugin
 from plugins.services import AGENT_SERVICE
 from plugins.sessions import SessionsPlugin
-from plugins.todo import todo_plugin
 from plugins.token_usage import token_usage_plugin
 from plugins.tools import ToolsPlugin
 from plugins.web_approval import web_approval_plugin
@@ -120,7 +119,6 @@ def boot_offline(
     plugins.append(token_usage_plugin())   # `_03`：用量账本 + 用量页面（8767）
     plugins.append(context_meter_plugin(capacity=context_window))  # `_04`：仪表（8768）
     plugins.append(compact_plugin(capacity=context_window))        # `_05`：压缩
-    plugins.append(todo_plugin())                                  # `_06`：任务清单
     if self_tools:
         # 装了自扩展工具就一并装浏览器审批：装卸/安装类操作要有人点头，
         # 没有终端可问时由界面弹卡片（无界面时该策略 fail-closed）。
@@ -164,7 +162,6 @@ def boot_realtime(
     plugins.append(token_usage_plugin())   # `_03`：用量账本 + 用量页面（8767）
     plugins.append(context_meter_plugin(capacity=context_window))  # `_04`：仪表（8768）
     plugins.append(compact_plugin(capacity=context_window))        # `_05`：压缩
-    plugins.append(todo_plugin())                                  # `_06`：任务清单
     if self_tools:
         # 装了自扩展工具就一并装浏览器审批：装卸/安装类操作要有人点头，
         # 没有终端可问时由界面弹卡片（无界面时该策略 fail-closed）。

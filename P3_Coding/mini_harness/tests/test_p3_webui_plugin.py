@@ -143,7 +143,6 @@ def test_ledger_reports_plugins_services_and_tools(tmp_path: Path):
         "token-usage",          # `_03`
         "context-meter",        # `_04`
         "compacter",            # `_05`
-        "todos",                # `_06`
         "agent",
         "webui",
     ]
