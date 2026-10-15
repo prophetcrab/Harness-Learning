@@ -34,6 +34,11 @@ from kernel import Context
 from plugins.events import LLM_RESPONSE
 from plugins.services import TOKEN_USAGE_SERVICE, TOOLS_SERVICE
 
+#: `serve_forever` 的轮询间隔。默认 0.5 秒——**shutdown() 要等它下一次醒来
+#: 才返回**，于是每次卸载服务白等最多半秒（实测：0.449s vs 0.007s）。
+#: 测试里每个用例都装配/卸载，累积非常可观（229 用例曾因此跑 158 秒，
+#: 其中约 100 秒纯粹在等这个）。0.05 秒对这几个轻量只读服务毫无压力。
+POLL_INTERVAL = 0.05
 
 @dataclass
 class UsageRecord:
@@ -304,7 +309,8 @@ class TokenUsagePlugin:
             server = ThreadingHTTPServer((self._host, self._port), handler)
             server.daemon_threads = True
             thread = threading.Thread(
-                target=server.serve_forever, name="token-usage", daemon=True
+                target=lambda: server.serve_forever(poll_interval=POLL_INTERVAL),
+                name="token-usage", daemon=True,
             )
             thread.start()
             bound_host, bound_port = server.server_address[0], server.server_address[1]

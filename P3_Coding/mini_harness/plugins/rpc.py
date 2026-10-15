@@ -66,6 +66,12 @@ METHODS = ("initialize", "session.prompt", "session.follow")
 EVENT_NOTIFICATION = "session.event"
 
 
+#: `serve_forever` 的轮询间隔。默认 0.5 秒——**shutdown() 要等它下一次醒来
+#: 才返回**，于是每次卸载服务白等最多半秒（实测：0.449s vs 0.007s）。
+#: 测试里每个用例都装配/卸载，累积非常可观（229 用例曾因此跑 158 秒，
+#: 其中约 100 秒纯粹在等这个）。0.05 秒对这几个轻量只读服务毫无压力。
+POLL_INTERVAL = 0.05
+
 @dataclass
 class Subscription:
     """一个事件流订阅：向哪个连接（sender）推哪个会话、从哪条之后继续推。"""
@@ -283,7 +289,10 @@ class RpcPlugin:
 
         server = _RpcTcpServer((self._host, self._listen), _ConnectionHandler)
         server.rpc_service = service  # type: ignore[attr-defined]
-        thread = threading.Thread(target=server.serve_forever, name="p3-rpc", daemon=True)
+        thread = threading.Thread(
+            target=lambda: server.serve_forever(poll_interval=POLL_INTERVAL),
+            name="p3-rpc", daemon=True,
+        )
         thread.start()
         # port=0 时由系统分配空闲端口：真实地址以 server_address 为准。
         bound_host, bound_port = server.server_address[0], server.server_address[1]
