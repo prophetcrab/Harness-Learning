@@ -811,7 +811,7 @@ $("toggle-right").addEventListener("click", () => {
    这里是"完全插件化"在界面上的落点：**壳不认识任何插件**。
 
    机制：插件在自己那个服务对象上声明 `panels = (PanelSpec(...),)`（见
-   components/panel/spec.py）→ webui 的 /api/ledger 把它连同服务地址一起交给
+   components/shell/panel.py）→ webui 的 /api/ledger 把它连同服务地址一起交给
    页面 → 本段遍历这个列表，为每个面板生成一个顶栏按钮 + 一个 iframe。
 
    于是"加一个面板插件"**不用改这个文件、也不用改 index.html**：插件自己
