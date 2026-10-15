@@ -44,7 +44,7 @@ class PanelSpec:
 
     #: 服务的名字（= `endpoints` 里的 key；壳靠它找回地址）。
     service: str
-    #: 按钮文字（带图标，如 "📐 上下文"）。
+    #: 按钮文字（如 "上下文"、"Token"）。
     label: str
     #: 面板标题（点开后的框头）。
     title: str

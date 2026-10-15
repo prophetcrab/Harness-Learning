@@ -245,14 +245,14 @@ class UsageEndpoint:
         return (
             PanelSpec(
                 service=TOKEN_USAGE_SERVICE,
-                label="📊 Token",
-                title="📊 Token 用量",
+                label="Token",
+                title="Token 用量",
                 badge_path="api/usage",
                 # 合计 token 在 JSON 的 totals.total_tokens 里——壳只认
                 # "点号路径取字段"这一种规则，不写业务逻辑。
                 badge_field="totals.total_tokens",
                 badge_kind="number",
-                badge_fallback="📊 Token 用量",
+                badge_fallback="Token 用量",
                 order=30,
             ),
         )

@@ -293,13 +293,13 @@ class ContextMeterEndpoint:
         return (
             PanelSpec(
                 service=CONTEXT_METER_SERVICE,
-                label="📐 上下文",          # 📐
-                title="📐 上下文容量",
+                label="上下文",
+                title="上下文容量",
                 badge_path="api/context",
                 badge_field="percent",
                 badge_kind="percent",
                 badge_suffix="%",
-                badge_fallback="📐 上下文",
+                badge_fallback="上下文",
                 order=20,
             ),
         )
