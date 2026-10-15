@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -71,10 +72,19 @@ def boot(
     *,
     plugins: list[Any],
     workspace: str | Path,
+    roles: Mapping[str, str] | None = None,
 ) -> Booted:
-    """按给定插件列表装配（顺序无关；inject 决定激活时机）。"""
+    """按给定插件列表装配（顺序无关；inject 决定激活时机）。
+
+    `roles`：**装配方的角色声明表**（插件名 → base/capability/other），覆盖
+    插件自述的 `category`。同一个插件在不同应用里可以是不同角色——判断权在
+    装配方，见 `kernel/plugin.resolve_category`。
+
+        boot(plugins=[..., webui], roles={"webui": "base"})
+        # 这个组合是"界面即产品"：webui 是地基，台账里不给停用/卸载按钮
+    """
     ctx = Context()
-    ctx.load_plugins(plugins)
+    ctx.load_plugins(plugins, roles=roles)
     pending = ctx.pending_plugins
     if pending:
         # 待激活残留 = 依赖写错了或漏装插件：静默继续会让"服务不存在"
@@ -82,6 +92,17 @@ def boot(
         detail = "；".join(f"{name} 缺 {ctx.missing_dependencies(name)}" for name in pending)
         raise RuntimeError(f"以下插件未能激活（依赖不满足）：{detail}")
     return Booted(ctx=ctx)
+
+
+#: 「界面即产品」的装配角色表：这个组合里，界面不是可选能力而是地基。
+#:
+#: 判断依据是**卸了它应用还成立吗**：在 `--web` 这种组合里，用户拿到的东西
+#: 就是那个网页——没有 webui 就没有入口，"应用"不成立。所以它是 base：
+#: 台账里不给停用/卸载按钮（避免"用页面把承载页面的插件关掉"这种自断路径）。
+#:
+#: 反过来，终端组合（`chat.py` 默认、RPC 组合）不传这张表：那种应用里
+#: "说话"靠终端/RPC，webui 只是多一个观察窗口，关掉照常用 → capability。
+INTERFACE_ROLES: dict[str, str] = {"webui": "base"}
 
 
 def boot_offline(
@@ -94,6 +115,7 @@ def boot_offline(
     self_tools: bool = False,
     token_budget: int | None = None,
     context_window: int = DEFAULT_CONTEXT_WINDOW,
+    roles: Mapping[str, str] | None = None,
 ) -> Booted:
     """全离线装配：离线模型 + 内存文件系统 + 剧本命令。
 
@@ -127,7 +149,7 @@ def boot_offline(
         plugins.append(web_approval_plugin())
         plugins.append(self_tools_plugin())
     plugins.append(AgentPlugin(approval=approval, max_steps=max_steps, token_budget=token_budget))
-    return boot(plugins=plugins, workspace=workspace)
+    return boot(plugins=plugins, workspace=workspace, roles=roles)
 
 
 def boot_realtime(
@@ -142,6 +164,7 @@ def boot_realtime(
     self_tools: bool = False,
     token_budget: int | None = None,
     context_window: int = DEFAULT_CONTEXT_WINDOW,
+    roles: Mapping[str, str] | None = None,
 ) -> Booted:
     """真实组合：DeepSeek + 真实磁盘（local/jail）+ 真实进程（local/无）。
 
@@ -150,7 +173,8 @@ def boot_realtime(
     - self_tools：装上 `_01` 的自扩展工具（模型可装卸白名单插件）；
     - token_budget：单个 turn 的 token 上限（`_03`；None = 不限，超限以
       `budget_exceeded` 收尾）；
-    - context_window：同 boot_offline（默认 1M）。
+    - context_window：同 boot_offline（默认 1M）；
+    - roles：装配方的角色声明表（同 boot；如 `INTERFACE_ROLES` 让 webui 变 base）。
     """
     plugins: list[Any] = [deepseek_llm_plugin(project_root)]
     plugins.append(jail_fs_plugin(workspace) if fs == "jail" else local_fs_plugin(workspace))
@@ -171,7 +195,13 @@ def boot_realtime(
         plugins.append(web_approval_plugin())
         plugins.append(self_tools_plugin())
     plugins.append(AgentPlugin(approval=approval, max_steps=max_steps, token_budget=token_budget))
-    return boot(plugins=plugins, workspace=workspace)
+    return boot(plugins=plugins, workspace=workspace, roles=roles)
 
 
-__all__ = ["Booted", "boot", "boot_offline", "boot_realtime"]
+__all__ = [
+    "INTERFACE_ROLES",
+    "Booted",
+    "boot",
+    "boot_offline",
+    "boot_realtime",
+]

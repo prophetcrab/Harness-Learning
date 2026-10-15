@@ -125,9 +125,12 @@ fail loud）；`Booted.close()` 逆序卸载全部插件。
 | `plugin-admin` | 管理 + 端点 | — | `_05` 收尾：分类台账 + 一键 安装/卸载/停用/启用 |
 | `clock` | — | — | 示例可装卸插件（不在默认装配里） |
 
-> 每个插件都声明 `category`（`base` / `capability` / `other`）：内核只读出来
-> 记进台账，**策略归 `plugin_admin`**（基础插件不给卸载按钮）。见
-> [docs/decisions/0033](../docs/decisions/0033-plugin-admin.md)。
+> **每个插件的角色（`category`：`base` / `capability` / `other`）由装配方定**，
+> 插件自己的声明只是默认值："它是不是地基"是**应用的性质**——`webui` 在终端
+> 组合里是可选的观察窗口（关掉还能用命令行说话），在 `--web`（界面即产品）里
+> 就是入口本身。内核只读出来记进台账，**策略归 `plugin_admin`**（基础插件不给
+> 卸载/停用按钮）。见 [0033](../docs/decisions/0033-plugin-admin.md)（策略）与
+> [0035](../docs/decisions/0035-assembly-declares-role.md)（判断权归谁）。
 
 **界面与 RPC 都是插件**（`plugins/webui.py`、`plugins/rpc.py`）——它比多数能力更能说明 effect 的价值：
 HTTP 服务天然带生命周期（线程 + 端口），P2 时代的页面服务是手工起的、

@@ -32,6 +32,7 @@ from kernel.plugin import (
     plugin_name,
     plugin_optionals,
     plugin_setup,
+    resolve_category,
 )
 
 __all__ = [
@@ -50,6 +51,7 @@ __all__ = [
     "DEFAULT_CATEGORY",
     "PLUGIN_CATEGORIES",
     "plugin_category",
+    "resolve_category",
     "plugin_injects",
     "plugin_name",
     "plugin_optionals",

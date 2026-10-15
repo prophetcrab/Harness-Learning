@@ -58,7 +58,7 @@ P3 第 5 阶段（对应 [PLAN.md](../PLAN.md)）。**本阶段只加一个机�
 | `chat.py` | 入口 | REPL `/compact` 命令 |
 | `plugins/context_meter.py` | 复用 | 估算/拆分改为引用构件（对外 API 不变，测试逐字兼容） |
 
-**`_05` 收尾新增的文件**（四轮收尾，决策 0031–0034；正文见各节）：
+**`_05` 收尾新增的文件**（五轮收尾，决策 0031–0035；正文见各节）：
 
 | 文件 | 角色 | 内容 |
 |---|---|---|
@@ -66,7 +66,7 @@ P3 第 5 阶段（对应 [PLAN.md](../PLAN.md)）。**本阶段只加一个机�
 | `plugins/plugin_admin.py` | 插件（新） | 插件管理：分类策略 + 四个动作 + 路由自述（0033） |
 | `plugins/catalog.py` | 构件（新） | 可安装白名单——模型侧与界面侧**共用一份**（0033） |
 | `components/agent/runner.py` | 构件（新） | **turn 执行器**：后台线程 + 多订阅者（0034，并行 / 接回 / 中断） |
-| `kernel/plugin.py` · `kernel/context.py` | 内核 | `category` 声明（0033）；`disable` / `enable` 与 `disabled` 状态（0033） |
+| `kernel/plugin.py` · `kernel/context.py` | 内核 | `category` 声明（0033）；`disable` / `enable` 与 `disabled` 状态（0033）；**`resolve_category` + `load_plugin(role=)`**：角色由**装配方**定，覆盖插件自述（0035） |
 | `tests/test_s05_plugin_admin.py`、`test_s05_shell_surfaces.py`、`test_s05_panel_discovery.py`、`test_s05_turn_runner.py`、`test_s05_plugin_discipline.py` | 测试 | 收尾四轮各自的专项（含 AST 扫源码的"声明纪律"测试） |
 
 ## 怎么用
@@ -406,6 +406,10 @@ tools 插件时内核不知道要重启它，`usage_stats` **从工具面上永�
       **不粘性**——中断后下一条正常跑完（回归：重发被 0 步取消）
 - [x] **流式响应声明 `Connection: close`**：放弃流不会污染后续请求
       （去掉修复 → 下一次请求拿 501，测试会失败）
+- [x] **角色由装配方定**（0035）：`load_plugin(role=)` / `boot(roles=)` 覆盖插件
+      自述；同一个 webui 在终端组合是 capability、在 `--web`（界面即产品）是 base；
+      `--web` 的台账里 webui 落在基础组且**没有停用/卸载按钮**（浏览器实测）；
+      非法 role 装载期 fail loud 且不留半装
 - [x] 门禁绿（ruff + pytest）
 
 ## 已知边界（诚实记录）

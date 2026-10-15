@@ -32,7 +32,7 @@ from components.context.tokens import (
     measure_parts,
 )
 from plugins.agent import AgentPlugin, AgentService, HarnessSession
-from plugins.boot import Booted, boot, boot_offline, boot_realtime
+from plugins.boot import INTERFACE_ROLES, Booted, boot, boot_offline, boot_realtime
 from plugins.clock import ClockPlugin, ClockService, clock_plugin
 from plugins.compact import CompactPlugin, compact_plugin
 from plugins.context_meter import (
@@ -158,6 +158,7 @@ __all__ = [
     "AgentPlugin",
     "AgentService",
     "Booted",
+    "INTERFACE_ROLES",
     "ClockPlugin",
     "CompactPlugin",
     "ContextMeter",

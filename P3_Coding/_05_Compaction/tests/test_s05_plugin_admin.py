@@ -457,3 +457,117 @@ def test_ledger_is_a_popup_panel_not_an_inline_sidebar(tmp_path: Path):
     assert ".pm-card{" in css
     assert "grid-template-columns:repeat(auto-fill" in css
     booted.close()
+
+
+# ---------------------------------------------------------------------------
+# 装配方的角色声明（role）——"它是不是地基"是应用的性质
+# ---------------------------------------------------------------------------
+
+
+def test_loader_role_overrides_the_plugins_own_declaration(tmp_path: Path):
+    """**装配方可以覆盖插件自述的角色**：同一个 webui，两种应用两种角色。
+
+    背景（用户指出的设计缺口）："它是不是地基"是**应用的性质，不是插件的性质**。
+
+        webui 在终端组合里是可选的界面（关掉还能用命令行说话）→ capability
+        webui 在"界面即产品"的组合里就是地基（没有它应用不成立）      → base
+
+    原先 `category` 只能由插件自己声明，装配方没有话语权——于是
+    `python chat.py --web` 这种"就是那个网页"的应用里，webui 仍被当成可停用的
+    能力插件，用户能用页面把承载页面的插件关掉（实测：点下去页面当场失联，
+    只能回终端装回来）。现在 `load_plugin(role=...)` / `boot(roles=...)` 说了算。
+    """
+    from plugins import WEBUI_SERVICE, webui_plugin
+
+    booted = _boot(tmp_path)
+    # ① 不传 role：沿用插件自述（capability）
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    info = next(p for p in booted.ctx.plugins if p.name == "webui")
+    assert info.category == "capability", "不传 role 时应沿用插件自述"
+    booted.ctx.unload_plugin("webui")
+
+    # ② 传 role="base"：覆盖成地基
+    booted.ctx.load_plugin(webui_plugin(port=0), role="base")
+    info = next(p for p in booted.ctx.plugins if p.name == "webui")
+    assert info.category == "base", "装配方声明应覆盖插件自述"
+    # 服务照常提供（角色只影响策略，不影响能力）
+    assert booted.ctx.require(WEBUI_SERVICE) is not None
+    booted.close()
+
+
+def test_role_is_per_assembly_not_per_plugin_class(tmp_path: Path):
+    """**两次装配可以给出不同的角色**（插件类本身没变）。
+
+    这条防的是"把 role 写到插件类上"这种退化改法：那样两次装配就一样了。
+    """
+    from plugins import webui_plugin
+
+    seen = []
+    for role in (None, "base", "other"):
+        booted = _boot(tmp_path)
+        booted.ctx.load_plugin(webui_plugin(port=0), role=role)
+        seen.append(next(p for p in booted.ctx.plugins if p.name == "webui").category)
+        booted.close()
+    assert seen == ["capability", "base", "other"], f"两次装配的角色应各自独立，实际 {seen}"
+    # 插件类自己的声明没被改坏（默认值仍在）
+    assert webui_plugin().category == "capability"
+
+
+def test_bad_role_fails_loud_at_load_time(tmp_path: Path):
+    """非法 role 装载期就报错——写错一个字母会让角色悄悄降级成别的。"""
+    from plugins import webui_plugin
+
+    booted = _boot(tmp_path)
+    with pytest.raises(ValueError) as excinfo:
+        booted.ctx.load_plugin(webui_plugin(port=0), role="basel")
+    assert "不合法" in str(excinfo.value) and "base" in str(excinfo.value)
+    # fail loud 且不留半装：插件没进台账
+    assert "webui" not in [p.name for p in booted.ctx.plugins]
+    booted.close()
+
+
+def test_interface_assembly_promotes_webui_to_base_and_hides_its_buttons(tmp_path: Path):
+    """**界面即产品**的装配：webui 成为 base → 台账里不给停用/卸载按钮。
+
+    这是本机制要解掉的那个具体问题：`--web` 启动的应用里，用户拿到的东西就是
+    那个网页；让他能一键停掉承载页面的插件（页面当场失联）不合理。
+    """
+    from plugins import INTERFACE_ROLES, webui_plugin
+
+    booted = _boot(tmp_path)
+    # 装配方声明（就是 chat.py --web 走的那条路）
+    booted.ctx.load_plugin(webui_plugin(port=0), role=INTERFACE_ROLES["webui"])
+    admin = booted.ctx.require(PLUGIN_ADMIN_SERVICE)
+    entry = next(
+        p for g in admin.snapshot()["groups"] for p in g["plugins"] if p["name"] == "webui"
+    )
+    assert entry["category"] == "base"
+    assert entry["actions"] == [], f"地基插件不该给按钮，实际 {entry['actions']}"
+    assert "不可卸载" in entry["blocked_reason"]
+
+    # 策略层同样挡住（界面只是不显示按钮，服务端也得拒绝）
+    assert admin.disable("webui")["ok"] is False
+    assert admin.unload("webui")["ok"] is False
+    booted.close()
+
+
+def test_web_entrypoint_declares_the_interface_role(tmp_path: Path):
+    """**`chat.py --web` 那条路真的声明了角色**（端到端接线检查）。
+
+    上面几条验的是机制；这条验的是"那条路确实用了机制"——否则机制写好了却
+    没人调用，用户的问题（能用页面关掉承载页面的插件）照旧存在。
+    """
+    import chat
+
+    booted = _boot(tmp_path)
+    chat.start_webui(booted, port=0, role=chat.INTERFACE_ROLE)
+    info = next(p for p in booted.ctx.plugins if p.name == "webui")
+    assert info.category == "base", "`--web` 是'界面即产品'的组合，webui 应是地基"
+    booted.close()
+
+    # REPL 里的 /web 不传 role（终端组合：界面只是观察窗口）→ 仍是能力插件
+    booted2 = _boot(tmp_path / "second")
+    chat.start_webui(booted2, port=0)
+    info2 = next(p for p in booted2.ctx.plugins if p.name == "webui")
+    assert info2.category == "capability", "/web 是终端组合，webui 只是可选能力"
+    booted2.close()

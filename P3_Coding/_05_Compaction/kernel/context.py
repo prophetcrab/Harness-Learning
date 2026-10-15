@@ -38,17 +38,17 @@ effects / inject）。本实现刻意朴素：同步、无异步 fiber、无事�
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from kernel.plugin import (
     DEFAULT_CATEGORY,
-    plugin_category,
     plugin_injects,
     plugin_name,
     plugin_optionals,
     plugin_setup,
+    resolve_category,
 )
 
 # 装载函数：执行副作用，返回撤销函数（或 None 表示"副作用都走 ctx 自动管理"）。
@@ -317,13 +317,24 @@ class Context:
     # 插件（inject 驱动的生命周期）
     # ------------------------------------------------------------------
 
-    def load_plugin(self, plugin: object) -> Disposer:
+    def load_plugin(self, plugin: object, *, role: str | None = None) -> Disposer:
         """装载一个插件；返回卸载函数（调用即 unload_plugin）。
 
         返回时插件可能处于 active（依赖齐备）或 pending（依赖缺失，等就绪
         自动激活）——**待激活不是错误**；入口脚本应在装载完一批后检查
         `pending_plugins`，有残留说明依赖写错了（fail loud 的责任在调用方）。
         激活失败（setup 抛错）→ 异常直接抛出，且不留半装状态。
+
+        **`role`：装配方对这个插件的角色声明**（覆盖插件自己的 `category`）。
+        为什么要这个参数——"它是不是地基"是**应用的性质，不是插件的性质**：
+
+            webui 在终端组合里是可选的界面（关掉还能用命令行说话）→ capability
+            webui 在"界面即产品"的组合里就是地基（没有它应用不成立）      → base
+
+        同一个插件、两种应用、两个角色——所以判断权在**装配方**。不给 `role`
+        时沿用插件自己的声明（插件声明是**默认值**，不是最终裁决）。运行时装载
+        （模型自扩展、面板里点安装）通常不传它：那不是"装配应用"，没有装配方的
+        立场。非法角色装载期就报错（fail loud，而不是界面里显示个怪值）。
         """
         name = plugin_name(plugin)
         if name in self._plugins:
@@ -333,7 +344,7 @@ class Context:
             setup=plugin_setup(plugin),
             inject=plugin_injects(plugin),
             optional=plugin_optionals(plugin),
-            category=plugin_category(plugin),
+            category=resolve_category(plugin, role),
         )
         self._plugins[name] = record
         try:
@@ -344,14 +355,26 @@ class Context:
             raise
         return lambda: self.unload_plugin(name)
 
-    def load_plugins(self, plugins: Sequence[object]) -> list[Disposer]:
-        """按顺序批量装载；任一失败 → 回卷本次已装成功的部分，再把异常抛出。"""
+    def load_plugins(
+        self,
+        plugins: Sequence[object],
+        *,
+        roles: Mapping[str, str] | None = None,
+    ) -> list[Disposer]:
+        """按顺序批量装载；任一失败 → 回卷本次已装成功的部分，再把异常抛出。
+
+        `roles` 是**装配方的角色声明表**（插件名 → base/capability/other）：
+        随本批生效、覆盖插件自述（见 `load_plugin` 的说明）。表里出现未知名字
+        是**允许**的——同一张表可以喂给不同的插件组合，静默忽略不算错误。
+        """
+        declared = dict(roles or {})
         loaded: list[Disposer] = []
         attempted: list[str] = []
         try:
             for plugin in plugins:
-                attempted.append(plugin_name(plugin))
-                loaded.append(self.load_plugin(plugin))
+                name = plugin_name(plugin)
+                attempted.append(name)
+                loaded.append(self.load_plugin(plugin, role=declared.get(name)))
         except BaseException:
             for name in reversed(attempted):  # 逆序回卷（后装的先撤）
                 record = self._plugins.get(name)

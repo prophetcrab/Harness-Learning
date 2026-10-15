@@ -150,6 +150,35 @@ def plugin_category(plugin: object) -> str:
     return value
 
 
+def resolve_category(plugin: object, role: str | None) -> str:
+    """定下这个插件**在这个应用里**的角色：装配方声明优先，其次插件自述。
+
+    **为什么要有这一层**："它是不是地基"是应用的性质，不是插件的性质：
+
+        webui 在终端组合里是可选的界面（关掉还能用命令行说话）→ capability
+        webui 在"界面即产品"的组合里就是地基（没有它应用不成立）      → base
+
+    同一个插件、两种应用、两个角色。所以判断权在**装配方**（`load_plugin`
+    的 `role` 参数、`boot` 的 `roles` 表），插件自己的 `category` 只是它推荐的
+    **默认值**，不是最终裁决。
+
+    运行时装载（模型自扩展、面板里点安装）不传 `role`——那不是"装配应用"，
+    没有装配方的立场，用插件自述即可。
+
+    非法值照旧 fail loud（理由同 `plugin_category`）：写错一个字母会让角色
+    悄悄降级成"其他"，宁可装载期就炸。
+    """
+    if role is None:
+        return plugin_category(plugin)
+    value = str(role)
+    if value not in PLUGIN_CATEGORIES:
+        raise ValueError(
+            f"给插件 {plugin_name(plugin)} 指定的 role 不合法：{value!r}"
+            f"（可用：{'、'.join(PLUGIN_CATEGORIES)}）"
+        )
+    return value
+
+
 __all__ = [
     "DEFAULT_CATEGORY",
     "PLUGIN_CATEGORIES",
@@ -160,4 +189,5 @@ __all__ = [
     "plugin_name",
     "plugin_optionals",
     "plugin_setup",
+    "resolve_category",
 ]

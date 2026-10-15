@@ -31,6 +31,9 @@ from components.context.tokens import DEFAULT_CONTEXT_WINDOW
 from components.tools import ApprovalPolicy, PromptApprover
 from plugins import TOOLS_SERVICE, WEBUI_SERVICE, Booted, boot_offline, boot_realtime
 
+#: 「界面即产品」装配里 webui 的角色（`--web` 用；见 start_webui 的说明）。
+INTERFACE_ROLE = "base"
+
 HERE = Path(__file__).resolve().parent
 PROJECT_ROOT = HERE.parents[1]  # 项目根（.env 所在处）
 DEFAULT_ROOT = HERE / "sessions"
@@ -94,11 +97,23 @@ def show_ledger(booted: Booted, *, stream=None) -> None:
     print(f"工具面（{len(tools.names)}）：{', '.join(tools.names)}", file=stream)
 
 
-def start_webui(booted: Booted, *, port: int) -> str:
-    """装载界面插件并返回它的 URL（装载即起服务）。"""
+def start_webui(booted: Booted, *, port: int, role: str | None = None) -> str:
+    """装载界面插件并返回它的 URL（装载即起服务）。
+
+    `role` 是**这次装配给 webui 的角色**（覆盖它自述的 capability）：
+
+    - `python chat.py --web` → `role="base"`：这个应用**就是**那个网页，
+      没有它入口就不存在。所以它是地基——台账里不给停用/卸载按钮，
+      免得"用页面把承载页面的插件关掉"（实测过：点下去页面当场失联，
+      只能回终端把它装回来）。
+    - REPL 里敲 `/web` → 不传：那是在**终端应用**上临时开一个观察窗口，
+      关掉照常用命令行说话，所以它只是能力插件。
+
+    判断权在装配方（见 `kernel/plugin.resolve_category`），不在插件自己。
+    """
     from plugins import webui_plugin
 
-    booted.ctx.load_plugin(webui_plugin(port=port))
+    booted.ctx.load_plugin(webui_plugin(port=port), role=role)
     return booted.ctx.require(WEBUI_SERVICE).url
 
 
@@ -108,8 +123,11 @@ def stop_webui(booted: Booted) -> None:
 
 
 def serve_web(booted: Booted, *, port: int, open_browser: bool) -> int:
-    """--web 模式：起界面插件 → 打印地址 → 阻塞到 Ctrl+C → 停服。"""
-    url = start_webui(booted, port=port)
+    """--web 模式：起界面插件 → 打印地址 → 阻塞到 Ctrl+C → 停服。
+
+    **界面即产品**：这个组合里 webui 声明为 `base`（见 `start_webui`）。
+    """
+    url = start_webui(booted, port=port, role=INTERFACE_ROLE)
     print(f"\n界面插件已装载：{url}")
     print("  （插件台账见页面左栏；对话与事件流实时更新；Ctrl+C 停服退出）")
     if open_browser:
