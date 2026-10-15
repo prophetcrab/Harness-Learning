@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -251,3 +253,65 @@ def test_sessions_fork_copies_prefix_and_refuses_overwrite(tmp_path: Path):
 
     with pytest.raises(FileExistsError):
         service.fork("a", "b")
+def test_load_holds_its_lock_so_a_concurrent_append_survives(tmp_path: Path):
+    """**回归：`load()` 的"读→判定→写回截断"必须整段持锁**（真 bug）。
+
+    背景：`JsonlStore.load()` 发现崩溃残尾时会**写回截断**（把文件裁到最后一个
+    完整行）。于是有一个数据丢失窗口：
+
+        reader: 读到 raw（尾部是半行）→ 判定 good_end
+        writer: append 一条新事件（文件变长）      ← 就在这中间
+        reader: 写回 raw[:good_end]                ← 刚追加的那条被裁掉
+
+    串行时代撞不上；`_05` 收尾之后**两件事同时发生**：turn 跑在后台线程里持续
+    append，而界面每 5 秒轮询 `/api/sessions`（对每条会话调 load）——窗口被反复敲。
+
+    **本用例把 append 精确地插进那个窗口**（不是靠运气）：在 load 读完快照、
+    还没写回的那一刻，从另一线程发起 append。
+
+    - 有锁：append 会等 load 做完才落盘 → 落在截断之后 → **存活**；
+    - 无锁：append 立刻写进文件 → 随即被 `raw[:good_end]` 覆盖掉 → **丢失**。
+    """
+    from components.session import Event, JsonlStore
+
+    store = JsonlStore(tmp_path)
+    session_id = "window"
+    for i in range(5):
+        store.append(session_id, Event(seq=i + 1, type="x", data={"i": i}, ts="t"))
+    # 崩溃残尾：半行，没有换行（触发写回截断的条件）
+    with store.path(session_id).open("a", encoding="utf-8") as handle:
+        handle.write('{"seq": 6, "type": "x", "data": {"i": 5')
+
+    read_done = threading.Event()
+    release_reader = threading.Event()
+    original = store._parse_and_repair
+
+    def hooked(target, raw):                     # noqa: ANN001 —— 测试替身
+        read_done.set()                          # 快照已读到手
+        release_reader.wait(timeout=5)           # 停住，等写者来撞窗口
+        return original(target, raw)             # 继续解析 + 写回截断
+
+    store._parse_and_repair = hooked             # type: ignore[method-assign]
+    appended = threading.Event()
+
+    def append_later() -> None:
+        read_done.wait(timeout=5)
+        appended.set()                           # 声明"我要写了"（随后会撞上锁）
+        store.append(session_id, Event(seq=7, type="x", data={"i": 6}, ts="t"))
+
+    writer = threading.Thread(target=append_later)
+    reader = threading.Thread(target=store.load, args=(session_id,))
+    writer.start()
+    reader.start()
+    appended.wait(timeout=5)
+    time.sleep(0.3)                              # 给写者足够时间"撞上锁"
+    release_reader.set()
+    reader.join(timeout=10)
+    writer.join(timeout=10)
+
+    events, _ = store.load(session_id)
+    seqs = [e.seq for e in events]
+    assert 7 in seqs, (
+        f"并发 append 的事件被 load 的写回截断吃掉了：{seqs}"
+        "（说明 load 没有把'读→判定→写回'整段放进锁里）"
+    )

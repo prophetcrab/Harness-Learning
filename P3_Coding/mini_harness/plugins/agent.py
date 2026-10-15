@@ -265,16 +265,30 @@ class AgentService:
     # 对话
     # ------------------------------------------------------------------
 
-    def ask(self, text: str, session_id: str = "default") -> TurnResult:
+    def ask(
+        self,
+        text: str,
+        session_id: str = "default",
+        *,
+        on_started: Callable[[], None] | None = None,
+    ) -> TurnResult:
         """跑一个 turn：打开（或恢复）会话 → 排空输入 → 返回结果。
 
         **只持这条会话自己的锁**（见类文档）：同一会话的 turn 依次跑（历史是
         那一份对象），**不同会话并行**。全局锁只在 `_open_locked` 里短暂持有。
+
+        `on_started` 在**拿到会话锁之后、turn 真正开始之前**调用一次。界面用它
+        在"轮到我跑"的那一刻才挂推流器——提前挂（在锁外挂）会收到**上一个 turn
+        的尾巴**：实测第二个 turn 的流里先冒出前任的 `step_usage / step_response /
+        step_end / turn_end`，然后才是自己的 `turn_start`。那几帧来自上一个 turn
+        的广播，客户端会照着渲染 —— 表现为凭空多出一条 AI 气泡和一个"turn 完成"行。
         """
         with self._lock:
             opened = self._open_locked(session_id)
             turn_lock = self._turn_locks.setdefault(session_id, threading.RLock())
         with turn_lock:
+            if on_started is not None:
+                on_started()
             self._ctx.emit(
                 TURN_START,
                 session=session_id,

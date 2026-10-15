@@ -625,3 +625,77 @@ def test_interrupt_stops_the_running_turn_and_writes_cancelled(tmp_path: Path):
     terminal = next(f for f in frames if f["kind"] == "__done")
     assert terminal["payload"]["status"] == "cancelled", terminal
     booted.close()
+
+
+def test_second_turn_stream_starts_at_its_own_turn_start(tmp_path: Path):
+    """**回归：排队的第二个 turn 不该收到前任的帧**（真 bug）。
+
+    背景：推流器原先在**拿会话锁之前**就挂上。于是当第二个 turn 在门外排队时，
+    它已经"在听"了——上一个 turn 的收尾帧（`step_response` / `turn_end` / …）会
+    先流到它这里，然后才是自己的 `turn_start`。客户端照着渲染，表现为凭空多出
+    一条 AI 气泡和一个"turn 完成"行。
+
+    修法：`AgentService.ask` 接受 `on_started` 回调，在**拿到会话锁之后、turn 开始
+    之前**调用——界面在那里才挂推流器。
+
+    构造方式：停用再启用 webui 插件（执行器是新的、空表），于是同会话能再起一个
+    turn，与仍在跑的第一个并行——正是"排队"的真实触发条件。
+    """
+    gate = threading.Event()
+
+    class GatedFirst:
+        """只卡第一个调用，第二个放行。"""
+
+        def __init__(self) -> None:
+            self.calls = 0
+            self.entered = threading.Event()
+            self._lock = threading.Lock()
+
+        def complete(self, request):
+            with self._lock:
+                self.calls += 1
+                n = self.calls
+            self.entered.set()
+            if n == 1:
+                gate.wait(timeout=10)
+            return LLMResponse(
+                message=Message(role="assistant", content=f"回复{n}"), usage=Usage()
+            )
+
+    llm = GatedFirst()
+    booted = _boot_with(llm, tmp_path)
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    url = booted.ctx.require(WEBUI_SERVICE).url
+
+    streams: dict[str, list[str]] = {}
+
+    def send(key: str, text: str, base: str) -> None:
+        try:
+            status, frames = _post_stream(base + "api/sessions/same/send", {"text": text})
+            streams[key] = [f["kind"] for f in frames]
+        except Exception as exc:                     # noqa: BLE001 —— 记下来供断言
+            streams[key] = [f"错误：{exc}"]
+
+    first = threading.Thread(target=send, args=("one", "甲", url), daemon=True)
+    first.start()
+    assert llm.entered.wait(timeout=10), "第一个 turn 没跑起来"
+
+    # 换一个执行器（模拟 webui 重装）：它不知道第一个 turn 还在跑，于是能再起一个
+    booted.ctx.disable_plugin("webui")
+    booted.ctx.enable_plugin("webui")
+    url2 = booted.ctx.require(WEBUI_SERVICE).url
+
+    second = threading.Thread(target=send, args=("two", "乙", url2), daemon=True)
+    second.start()
+    time.sleep(0.8)                                  # 让第二个挂上（此时在等会话锁）
+    gate.set()
+    first.join(timeout=20)
+    second.join(timeout=20)
+
+    two = streams.get("two", [])
+    assert two, "第二个 turn 没有流回来"
+    assert two[0] == "turn_start", (
+        f"第二个 turn 的第一帧应该是它自己的 turn_start，实际 {two[:4]}"
+        "（说明它收到了前任的收尾帧）"
+    )
+    booted.close()

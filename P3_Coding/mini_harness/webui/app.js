@@ -295,6 +295,59 @@ async function answerApproval(node, approved) {
   }
 }
 
+/** 补看**正在等待**的审批（`GET /api/approvals`）。
+ *
+ *  为什么必须有这一步：审批帧（`__approval`）只在"等待开始"那一刻推给当时的
+ *  订阅者。刷新页面＝换了一个订阅者，那张卡片就永远不回来了——而 turn 还在
+ *  服务端**阻塞等它**（默认 300 秒），到点按 fail-closed 拒绝。于是用户看到的是
+ *  "页面刷新后工具莫名失败"。
+ *
+ *  **按会话区分**（`req.session`）：审批可能属于另一条会话（刷新后页面默认打开
+ *  的是最近一条，未必是它）。画在当前会话里会让人以为"这条对话在等我批准"；
+ *  而且批准之后也看不到结果——那条会话根本没被订阅。所以：
+ *
+ *    - 属于当前会话 → 画卡片（并挂上它的流）；
+ *    - 属于别的会话 → 顶部横幅提示 + 一键切过去。
+ */
+async function recoverApprovals() {
+  let data;
+  try {
+    const res = await fetch("/api/approvals", { cache: "no-store" });
+    if (!res.ok) return;                      // 没装审批插件：正常，什么都不做
+    data = await res.json();
+  } catch (err) {
+    return;                                   // 拉不到就当没有（不打扰用户）
+  }
+  const pending = data.pending || [];
+  if (!pending.length) return;
+
+  const mine = pending.filter((req) => !req.session || req.session === state.current);
+  const others = pending.filter((req) => req.session && req.session !== state.current);
+
+  for (const req of mine) {
+    if (wrapEl.querySelector(`[data-apv="${cssEsc(req.id)}"]`)) continue;
+    removeWorking();
+    wrapEl.appendChild(approvalNode(req));
+    setRunning(`等待你的批准：${req.tool}`);
+    scrollBottom();
+  }
+  // 别的会话在等批准：横幅提示可切过去（擅自切会话会让用户莫名其妙）
+  const b = $("banner");
+  if (others.length) {
+    b.innerHTML = `另一条会话正在等待批准（${others.map((r) => esc(r.session)).join("、")}）`
+      + `<button type="button" class="bc-btn banner-jump">切过去处理</button>`;
+    b.hidden = false;
+    // **用 onclick 赋值而不是 addEventListener**：`recoverApprovals` 会被反复调用
+    // （每次接回/初始化），addEventListener 会一层层叠加，点一下触发 N 次。
+    b.onclick = (event) => {
+      if (!event.target.closest(".banner-jump")) return;
+      b.hidden = true;
+      b.onclick = null;
+      openSession(others[0].session, { silent: true });
+    };
+  }
+}
+
 /* ---------------- live frames ---------------- */
 function setRunline(html, cls) {
   const line = $("runline");
@@ -999,6 +1052,7 @@ async function watchTurn(sessionId, opts = {}) {
   state.sending = true;
   setBusy(true);
   let last = null;
+  let wroteTerminal = false;          // 是否已经按终帧写过状态栏（见 finally）
   try {
     const res = await fetch(
       `/api/sessions/${encodeURIComponent(sessionId)}/turn`,
@@ -1013,9 +1067,25 @@ async function watchTurn(sessionId, opts = {}) {
     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
     setRunning("接回运行中的 turn…");
     ensureWorking("这个会话还在跑，继续跟随…");
+    // **补看正在等待的审批**：审批帧只在"等待开始"那一刻推给当时的订阅者；
+    // 刷新之后卡片不会自己回来，而 turn 还在服务端阻塞等它（到点 fail-closed）。
+    // 放在订阅**已挂上之后**：这样补看与实时之间没有空窗。
+    recoverApprovals();
     last = await readNDJSON(res, handleFrame);
     if (last && last.kind === "__error") {
       setRunline(last.payload.message || "turn 失败", "err");
+      wroteTerminal = true;
+    } else if (last) {
+      // 收尾了：状态栏必须跟着变。`silent` 只压"就绪"以外的噪音，不能压这个——
+      // 否则接回的那条 turn 跑完后，状态栏还停在"第 N 步 · 流式接收中…"骗人
+      // （实测：日志里 turn/end 已经 done，界面仍显示在收流）。
+      const p = last.payload || {};
+      if (last.kind === "__done") {
+        setIdle(`turn ${p.turn} · ${p.status} · ${p.steps} 步 · 最终回答已渲染`);
+      } else {
+        setIdle("完成");
+      }
+      wroteTerminal = true;
     }
   } catch (err) {
     if (err.name !== "AbortError") setRunline(`接回失败：${esc(err.message)}`, "err");
@@ -1026,7 +1096,9 @@ async function watchTurn(sessionId, opts = {}) {
       setBusy(false);
       removeWorking();
       await openSession(sessionId, { silent: true });
-      if (!opts.silent && !$("runline").classList.contains("err")) setIdle("就绪");
+      // 收尾文案已经在上面按终帧写过（`__done` → "turn N · done · …"），
+      // 这里只在"没有终帧"时兜一句，别把有用的信息盖掉。
+      if (!wroteTerminal && !$("runline").classList.contains("err")) setIdle("就绪");
     }
   }
 }
@@ -1392,6 +1464,10 @@ setInterval(refreshPanelBadges, 5000);
     const first = sessionsEl.querySelector(".item");
     if (first) await openSession(first.dataset.id, { silent: true });
     else setIdle("就绪 · 点「＋ 新会话」开始");
+    // 页面一打开就补看一次待审批：如果刷新发生在"等审批"那一刻，卡片要能回来
+    //（正常路径是 watchTurn 里补看，但那条只在会话仍在跑时走；这里兜住"没有
+    //  正在跑的 turn、但服务端还挂着待批"的边角——例如 turn 刚收尾）。
+    await recoverApprovals();
   } catch (err) {
     setRunline(`初始化失败：${esc(err.message)}`, "err");
   }

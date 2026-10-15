@@ -651,28 +651,34 @@ class WebUiPlugin:
         def ask_turn(session_id: str, text: str, sink: Any) -> Any:
             """跑一个 turn。`sink` 是这个 turn 的写帧端（执行器给的）。
 
-            **谁需要它，就在哪里挂上**（两处）：
+            **推流器在"轮到我跑"的那一刻才挂**（`on_started`）：这是会话锁之内、
+            turn 开始之前。提前挂会收到上一个 turn 的尾巴（实测：第二个 turn 的流
+            里先冒出前任的 `step_response / turn_end`，客户端凭空多渲染一条气泡）。
+
+            两处登记（都只在这个 turn 有效，收尾时摘掉）：
 
             - `agent.watch`：主循环事件（step_request / step_delta / …）；
             - `policy.attach_thread_stream`：审批帧——审批是在**这条 turn 的
-              线程**里被调用的，所以按线程登记就能"各问各的人"。
-
-            都挂在**跑 turn 的这条线程**上（本函数就是执行器的线程体），
-            收尾时摘掉。
+              线程**里被调用的，按线程登记就能"各问各的人"。
             """
             agent = ctx.get(AGENT_SERVICE)
             if agent is None:
                 raise RuntimeError("agent 服务未就绪（agent 插件未激活）")
             policy = ctx.get(APPROVAL_SERVICE)
-            unwatch = agent.watch(session_id, lambda kind, payload: sink(kind, payload))
             attached = policy is not None and hasattr(policy, "attach_thread_stream")
-            if attached:
-                policy.attach_thread_stream(sink)
+            unwatch: list[Any] = []          # 挂上之后填，收尾时统一摘
+
+            def on_started() -> None:
+                unwatch.append(agent.watch(session_id, lambda kind, payload: sink(kind, payload)))
+                if attached:
+                    policy.attach_thread_stream(sink, session=session_id)
+
             try:
                 agent.open(session_id)
-                return agent.ask(text, session_id=session_id)
+                return agent.ask(text, session_id=session_id, on_started=on_started)
             finally:
-                unwatch()
+                for stop in unwatch:
+                    stop()
                 if attached:
                     policy.detach_thread_stream()
 

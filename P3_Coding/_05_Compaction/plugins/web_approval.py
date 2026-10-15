@@ -48,6 +48,8 @@ class PendingApproval:
     arguments: dict[str, Any]
     reason: str
     preview: str | None = None
+    #: 发起这次审批的会话（刷新后补看时，界面靠它知道"该看哪条会话"）。
+    session: str = ""
     event: threading.Event = field(default_factory=threading.Event)
     decision: ApprovalDecision | None = None
 
@@ -58,6 +60,7 @@ class PendingApproval:
             "arguments": self.arguments,
             "reason": self.reason,
             "preview": self.preview,
+            "session": self.session,
         }
 
 
@@ -86,6 +89,8 @@ class WebApprovalPolicy:
         self._sender: Sender | None = None
         #: 线程 id → 该线程正在跑的 turn 的写帧端（并行时每人一份）。
         self._thread_senders: dict[int, Sender] = {}
+        #: 线程 id → 那条 turn 的会话 id（审批要标出"我属于哪条会话"）。
+        self._thread_sessions: dict[int, str] = {}
         self._pending: dict[str, PendingApproval] = {}
         self._lock = threading.Lock()
         self._ctx: Context | None = None
@@ -114,15 +119,29 @@ class WebApprovalPolicy:
             if sender is None or self._sender is sender:
                 self._sender = None
 
-    def attach_thread_stream(self, sender: Sender) -> None:
-        """给**当前线程**登记一个推流通道（执行器在跑 turn 的线程里调）。"""
+    def attach_thread_stream(self, sender: Sender, *, session: str = "") -> None:
+        """给**当前线程**登记一个推流通道（执行器在跑 turn 的线程里调）。
+
+        `session` 一并记下：审批要带上"我属于哪条会话"。没有它的话，刷新页面后
+        补看到的审批卡片只能画在**当前打开的会话**里——而那个 turn 可能属于另一条
+        会话，用户看到的是一张"凭空出现在别的对话里"的批准框，批准之后也看不到
+        结果（那条会话没有被订阅）。见 `PendingApproval.session`。
+        """
         with self._lock:
-            self._thread_senders[threading.get_ident()] = sender
+            ident = threading.get_ident()
+            self._thread_senders[ident] = sender
+            self._thread_sessions[ident] = session
 
     def detach_thread_stream(self) -> None:
         """摘掉当前线程的登记（turn 收尾时调，别让线程 id 复用撞上旧通道）。"""
         with self._lock:
-            self._thread_senders.pop(threading.get_ident(), None)
+            ident = threading.get_ident()
+            self._thread_senders.pop(ident, None)
+            self._thread_sessions.pop(ident, None)
+
+    def _session_of_this_thread(self) -> str:
+        with self._lock:
+            return self._thread_sessions.get(threading.get_ident(), "")
 
     def _frames(self) -> Sender | None:
         """当前可用的推流通道：**先看本线程登记的，再看兜底的**。"""
@@ -177,6 +196,7 @@ class WebApprovalPolicy:
             arguments=dict(request.arguments),
             reason=request.reason,
             preview=preview,
+            session=self._session_of_this_thread(),
         )
         with self._lock:
             self._pending[pending.id] = pending

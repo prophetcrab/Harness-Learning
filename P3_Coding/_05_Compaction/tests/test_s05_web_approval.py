@@ -9,8 +9,10 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -372,3 +374,74 @@ def test_detach_without_handle_still_clears():
     policy.detach_stream()
     decision = policy.approve(ApprovalRequest(tool_name="shell", arguments={}, reason="x"))
     assert decision.allowed is False and "fail-closed" in decision.reason
+
+
+def test_pending_approval_survives_a_refresh(tmp_path: Path):
+    """**回归：刷新页面后，正在等待的审批要能补看到**（真 bug）。
+
+    `__approval` 帧只在"等待开始"那一刻推给当时的订阅者。刷新页面＝换了订阅者，
+    那张卡片就永远回不来了——而 turn 还在服务端**阻塞等它**（默认 300 秒），
+    到点按 fail-closed 拒绝。用户看到的是"刷了个新，工具就莫名失败了"。
+
+    修法：前端接回 turn 时调 `GET /api/approvals` 补看（后端这条路径一直有，
+    只是没人调）。本用例验后端那一半：断开第一个订阅者后，待批仍在列表里，
+    并能通过 HTTP 作答让 turn 继续。
+    """
+    from plugins import WEBUI_SERVICE, webui_plugin
+
+    booted = boot_offline(
+        root=tmp_path / "s", workspace=tmp_path / "ws",
+        script=[tool_call_reply("write_file", {"path": "a.txt", "content": "hi"}),
+                text_reply("写好了")],
+    )
+    booted.ctx.load_plugin(web_approval_plugin(timeout=30))
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    url = booted.ctx.require(WEBUI_SERVICE).url
+
+    seen: list[str] = []
+
+    def client_that_leaves() -> None:
+        """读到审批帧就断（= 用户按了刷新）。"""
+        request = urllib.request.Request(
+            url + "api/sessions/apv/send",
+            data=json.dumps({"text": "写个文件"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=60) as response:
+            for line in response:
+                if not line.strip():
+                    continue
+                frame = json.loads(line)
+                seen.append(frame["kind"])
+                if frame["kind"] == "__approval":
+                    response.close()
+                    return
+
+    thread = threading.Thread(target=client_that_leaves, daemon=True)
+    thread.start()
+    thread.join(timeout=20)
+    assert "__approval" in seen, f"没等到审批帧：{seen}"
+
+    # 刷新后的页面：补看
+    with urllib.request.urlopen(url + "api/approvals", timeout=10) as response:
+        pending = json.load(response)["pending"]
+    assert [p["tool"] for p in pending] == ["write_file"], pending
+
+    # 作答 → turn 继续跑完
+    answer = urllib.request.Request(
+        url + f"api/approvals/{pending[0]['id']}",
+        data=json.dumps({"approved": True}).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    with urllib.request.urlopen(answer, timeout=10) as response:
+        assert json.load(response)["ok"] is True
+
+    for _ in range(40):
+        time.sleep(0.25)
+        with urllib.request.urlopen(url + "api/sessions/apv/events", timeout=10) as response:
+            events = json.load(response)["events"]
+        ends = [e["data"]["status"] for e in events if e["type"] == "turn/end"]
+        if ends:
+            break
+    assert ends == ["done"], f"批准后 turn 应正常收尾，实际 {ends}"
+    booted.close()
