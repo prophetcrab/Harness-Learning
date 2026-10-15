@@ -74,37 +74,127 @@
   .mini:hover{border-color:var(--accent);color:var(--accent)}
   .side-empty{color:var(--faint);font-size:12px;padding:6px 2px}
 
-  /* ---------- plugins ---------- */
-  #plugins{display:flex;flex-direction:column}
-  .plug{display:flex;align-items:center;gap:8px;padding:5px 2px;
-    border-bottom:1px dashed #1c212b;font-size:12.5px}
-  .plug:last-child{border-bottom:none}
-  .plug .dot{width:7px;height:7px;border-radius:99px;flex:none}
-  .dot.active{background:var(--ok)} .dot.pending{background:var(--pend)}
-  .dot.failed{background:var(--err)}
-  .plug-n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .plug-i{color:var(--faint);font-size:11px}
-  /* 插件分组（`_05` 收尾）：基础 / 能力 / 其他 */
-  .plug-group{margin-bottom:9px}
-  .plug-group-h{display:flex;align-items:center;gap:6px;font-size:10.5px;
-    color:var(--faint);letter-spacing:.06em;padding:4px 0 3px;
-    border-bottom:1px solid #1a1f28;margin-bottom:3px}
-  .plug-group-n{color:#39414f;font-variant-numeric:tabular-nums}
-  /* 基础标记：不可卸载（策略由 plugin-admin 决定，壳只显示它下发的状态） */
-  .plug-base{color:#7c8798;font-size:9.5px;border:1px solid #2a3140;
-    border-radius:4px;padding:0 4px;flex:none}
-  /* 一键动作按钮 */
-  .plug-actions{display:flex;gap:3px;margin-left:auto;flex:none}
-  .pa-btn{background:#151b24;color:var(--muted);border:1px solid #24303f;
-    border-radius:6px;padding:1px 7px;font-size:10.5px;cursor:pointer;
-    transition:color .12s,border-color .12s}
-  .pa-btn:hover{color:var(--fg);border-color:#37455a}
-  .pa-btn.pa-unload:hover,.pa-btn.pa-disable:hover{color:#fca5a5;border-color:#5b2b2b}
-  .pa-btn.pa-install{color:var(--accent);border-color:#26405f}
+  /* ---------- 插件台账 ---------- */
+  /* 左栏只剩一张"门卡"：台账本身要经常操作，独立成层更顺手 */
+  .ledger-entry{display:flex;align-items:center;gap:8px;width:100%;margin-top:14px;
+    padding:9px 11px;background:linear-gradient(180deg,#151a23,#12161d);
+    border:1px solid var(--line);border-radius:10px;color:var(--muted);
+    font:inherit;font-size:12.5px;cursor:pointer;text-align:left;
+    transition:border-color .15s,color .15s,transform .1s}
+  .ledger-entry:hover{border-color:#31405c;color:var(--fg)}
+  .ledger-entry:active{transform:translateY(1px)}
+  .le-ico{width:8px;height:8px;border-radius:2px;background:var(--accent);
+    box-shadow:0 0 8px #6ea8fe77;flex:none}
+  .le-t{color:var(--fg);font-weight:500}
+  .le-n{color:var(--faint);font-size:11.5px;font-variant-numeric:tabular-nums;
+    margin-left:auto}
+  .le-go{color:var(--accent);font-size:11.5px;flex:none}
+  .ledger-entry:hover .le-go{text-decoration:underline}
 
-  /* 可选依赖缺失（`_05`）：插件还活着，只是暂时用不了那几样服务 */
-  .plug-degraded{color:var(--warn);font-size:10.5px;border:1px solid #4a3a1a;
-    background:#241d0f;border-radius:5px;padding:0 5px;flex:none}
+  /* ---------- 插件管理面板（弹出层） ---------- */
+  #plugin-modal{position:fixed;inset:0;z-index:70;display:flex;
+    align-items:center;justify-content:center;padding:30px;
+    background:#04060ae8;backdrop-filter:blur(6px);
+    animation:pm-fade .16s ease-out}
+  @keyframes pm-fade{from{opacity:0}to{opacity:1}}
+  .pm-box{position:relative;width:min(1200px,100%);max-height:100%;display:flex;
+    flex-direction:column;background:linear-gradient(180deg,#10141b,#0d1016);
+    border:1px solid var(--line-2);border-radius:15px;overflow:hidden;
+    box-shadow:0 26px 70px #000000b8,0 0 0 1px #ffffff08 inset;
+    animation:pm-rise .2s cubic-bezier(.2,.8,.25,1)}
+  @keyframes pm-rise{from{opacity:0;transform:translateY(10px) scale(.985)}
+    to{opacity:1;transform:none}}
+  .pm-head{display:flex;align-items:center;gap:11px;padding:15px 18px;
+    border-bottom:1px solid var(--line);background:#12161e}
+  .pm-head h2{margin:0;font-size:14.5px;font-weight:600;letter-spacing:.2px}
+  .pm-sub{color:var(--faint);font-size:11.5px;font-variant-numeric:tabular-nums}
+  .pm-search{background:#0c0f14;border:1px solid var(--line);border-radius:8px;
+    color:var(--fg);font:inherit;font-size:12.5px;padding:5px 10px;width:190px;
+    transition:border-color .15s,width .18s}
+  .pm-search::placeholder{color:var(--faint)}
+  .pm-search:focus{outline:none;border-color:#31405c;width:230px}
+  .pm-body{padding:16px 18px 6px;overflow-y:auto;flex:1;min-height:0}
+  .pm-foot{padding:11px 18px;border-top:1px solid var(--line);color:var(--faint);
+    font-size:11.5px;background:#0f131a}
+  .pm-foot b{color:var(--muted);font-weight:600}
+
+  /* 分类区块 */
+  .pm-group{margin-bottom:20px}
+  .pm-group-h{display:flex;align-items:baseline;gap:9px;margin:0 2px 10px}
+  .pm-group-t{font-size:12.5px;font-weight:600;letter-spacing:.02em}
+  .pm-group-n{font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .pm-group-hint{font-size:11.5px;color:var(--faint);margin-left:auto}
+  .pm-group[data-cat="base"] .pm-group-t{color:#8fb8ff}
+  .pm-group[data-cat="capability"] .pm-group-t{color:#c4a9ff}
+  .pm-group[data-cat="other"] .pm-group-t{color:#93a0b5}
+  .pm-grid{display:grid;gap:10px;
+    grid-template-columns:repeat(auto-fill,minmax(256px,1fr))}
+
+  /* 插件卡片 */
+  .pm-card{position:relative;display:flex;flex-direction:column;gap:8px;
+    padding:13px 14px 12px;background:linear-gradient(180deg,#151a23,#12161d);
+    border:1px solid var(--line);border-radius:12px;
+    transition:border-color .15s,transform .12s,box-shadow .15s;
+    animation:pm-in .26s cubic-bezier(.2,.8,.25,1) backwards;
+    animation-delay:calc(var(--i,0) * 22ms)}
+  @keyframes pm-in{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+  .pm-card:hover{border-color:#334054;transform:translateY(-2px);
+    box-shadow:0 10px 26px #00000059}
+  .pm-card[data-cat="base"]{border-left:3px solid #3b5c8f}
+  .pm-card[data-cat="capability"]{border-left:3px solid #5b4a8f}
+  .pm-card[data-cat="other"]{border-left:3px solid #3a4353}
+  .pm-card.is-pending{opacity:.82}
+  .pm-card.is-disabled{background:linear-gradient(180deg,#15161b,#111318);
+    border-color:#242832}
+  .pm-card.is-failed{border-color:#5b2b2b}
+  .pm-card.is-new{animation:flash 1.4s ease-out}
+  .pm-card.busy{pointer-events:none;opacity:.6}
+  .pm-top{display:flex;align-items:center;gap:8px}
+  .pm-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
+  .pm-st{margin-left:auto;font-size:10.5px;letter-spacing:.03em;flex:none}
+  .pm-st.active{color:var(--ok)} .pm-st.pending{color:var(--pend)}
+  .pm-st.disabled{color:var(--warn)} .pm-st.failed{color:var(--err)}
+  .pm-dep{font-size:11.5px;color:var(--faint);line-height:1.75;
+    overflow:hidden;text-overflow:ellipsis}
+  .pm-dep .k{color:#6b7488}
+  .pm-dep code{font-family:var(--mono);font-size:11px;color:var(--muted);
+    background:#0d1117;border:1px solid #1d2330;border-radius:4px;padding:0 4px}
+  .pm-tags{display:flex;flex-wrap:wrap;gap:5px}
+  .pm-tag{font-size:10px;letter-spacing:.04em;border-radius:5px;padding:1px 6px;
+    border:1px solid #2a3140;color:#7c8798;flex:none}
+  .pm-tag.warn{color:var(--warn);border-color:#4a3a1a;background:#241d0f}
+  .pm-tag.err{color:var(--err);border-color:#5b2b2b;background:#1f1414}
+  .pm-note{font-size:11px;color:var(--faint);line-height:1.6}
+  .pm-acts{display:flex;gap:6px;margin-top:auto;padding-top:10px;
+    border-top:1px solid #1c212b}
+  .pm-btn{background:#161c26;color:var(--muted);border:1px solid #26303f;
+    border-radius:7px;padding:4px 12px;font:inherit;font-size:11.5px;cursor:pointer;
+    transition:color .12s,border-color .12s,background .12s}
+  .pm-btn:hover{color:var(--fg);border-color:#3a4a61;background:#1b222d}
+  .pm-btn.danger:hover{color:#fca5a5;border-color:#5b2b2b;background:#1f1414}
+  .pm-btn.go{color:var(--accent);border-color:#26405f;background:#131c29}
+  .pm-btn.go:hover{background:#16233399;border-color:#3a6091}
+
+  /* 可安装：虚线"空位"卡片 */
+  .pm-card.ghost{background:#0f131a;border-style:dashed;border-color:#28313f;
+    border-left:3px solid #28313f}
+  .pm-card.ghost:hover{border-color:#3a4a61}
+  .pm-empty{color:var(--faint);font-size:12.5px;padding:14px 2px}
+  .pm-hr{height:1px;background:var(--line);margin:6px 0 20px}
+
+  /* 面板内的操作回执（顶端横幅会被遮罩挡住，所以在面板里自己说） */
+  .pm-toast{position:absolute;top:60px;left:50%;transform:translateX(-50%);
+    max-width:80%;padding:8px 15px;border-radius:9px;font-size:12.5px;
+    background:#1b2130;border:1px solid #33405c;color:var(--fg);
+    box-shadow:0 10px 30px #000000a6;z-index:2;animation:pm-toast-in .18s ease-out}
+  .pm-toast.bad{border-color:#5b2b2b;background:#221618;color:#fca5a5}
+  @keyframes pm-toast-in{from{opacity:0;transform:translate(-50%,-6px)}
+    to{opacity:1;transform:translate(-50%,0)}}
+
+  /* 只读降级提示 */
+  .pm-ro{margin:0 0 16px;padding:9px 13px;border-radius:9px;font-size:12px;
+    color:var(--warn);background:#1c1f17;border:1px solid #3a4227}
 
   /* ---------- chat ---------- */
   #chat{flex:1;overflow-y:auto;padding:26px 22px 12px;scroll-behavior:smooth;
@@ -253,9 +343,7 @@
   .apv-done{font-size:12px;padding:9px 12px}
   .apv-done.ok{color:var(--ok)} .apv-done.no{color:var(--err)}
   .apv-wait{color:var(--muted);font-size:12px}
-  .plug-new{animation:flash 1.4s ease-out}
   @keyframes flash{0%{background:#1e2c44}100%{background:transparent}}
-  .dot.new{background:var(--ok);box-shadow:0 0 9px var(--ok)}
 
   /* ---------- runline + composer ---------- */
   .runline{display:flex;align-items:center;gap:8px;padding:7px 22px;

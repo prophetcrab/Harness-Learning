@@ -2,7 +2,7 @@
 /* ---------------- utils ---------------- */
 const $ = (id) => document.getElementById(id);
 const chatEl = $("chat"), wrapEl = chatEl.querySelector(".wrap");
-const sessionsEl = $("sessions"), pluginsEl = $("plugins"), eventsEl = $("events");
+const sessionsEl = $("sessions"), eventsEl = $("events");
 const state = { current: null, sending: false, follow: true, display: [] };
 window.addEventListener("error", (e) => { window.__lastError = String(e.message || e); });
 
@@ -473,28 +473,242 @@ async function api(path, opts) {
   return res.json();
 }
 let knownPlugins = null;
-/* ---------------- 插件台账（分组 + 一键开关） ----------------
+/* ---------------- 插件台账（独立弹出面板 + 一键开关） ----------------
 
    **壳不知道"哪些动作该出现"**：每个插件该有哪些按钮（安装/卸载/停用/启用）
    由 plugin-admin 插件按策略算好，随快照一起下发（`snapshot.actions` 是动作名
-   → 中文文案的映射）。壳只做两件事：分组渲染、点按钮 POST 回去。
+   → 中文文案的映射）。壳只做三件事：画卡片、筛选、点按钮 POST 回去。
 
    没装 plugin-admin 时（能力插件，允许被关掉）自动退化为**只读**：仍显示
    分组与状态，但没有按钮——界面不会因为缺了它而报错或空白。 */
 
+/** 最近一次快照/台账（重渲染与筛选都靠它，避免每次翻数据）。 */
+const ledger = { plugins: [], snapshot: null, added: [], stamp: "" };
+
+function ledgerOpen() {
+  return !$("plugin-modal").hidden;
+}
+
+function openLedger() {
+  $("plugin-modal").hidden = false;
+  ledger.stamp = "";                       // 重新打开：允许走一次入场动画
+  renderLedgerModal();
+  const box = $("pm-search");
+  if (box) box.focus();
+}
+
+function closeLedger() {
+  $("plugin-modal").hidden = true;
+  const box = $("pm-search");
+  if (box) box.value = "";                 // 下次打开是干净的全量视图
+}
+
+/** 面板内的一条回执（顶端横幅被遮罩挡住，所以自己说一句）。 */
+let toastTimer = null;
+function ledgerToast(text, bad) {
+  const el = $("pm-toast");
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle("bad", !!bad);
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 2800);
+}
+
 /** 一次管理动作（安装/卸载/停用/启用）。 */
-async function pluginAction(name, action) {
+async function pluginAction(name, action, card) {
+  if (card) card.classList.add("busy");
   try {
     const res = await fetch(`/api/plugins/${encodeURIComponent(name)}/${action}`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || res.status);
-    showBanner(data.message || "完成");          // 成败都有话（人点的操作不静默）
-    await loadLedger();
+    ledgerToast(data.message || "完成", !data.ok);
+    if (data.ok) setIdle(data.message || "完成");
+    await loadLedger();                     // 面板与左栏计数一起刷新
   } catch (err) {
-    showBanner(`操作失败：${err.message}`);
+    ledgerToast(`操作失败：${err.message}`, true);
+  } finally {
+    if (card) card.classList.remove("busy");
   }
+}
+
+/** 状态的中文与配色（壳只翻译内核给的状态词，不含任何插件知识）。 */
+const STATUS_TEXT = {
+  active: "运行中", pending: "等待依赖", disabled: "已停用", failed: "激活失败",
+};
+
+/** 依赖行：必需 / 可选 / 当前缺（有则显示，没有就整行不画）。 */
+function ledgerDepHtml(p) {
+  const bits = [];
+  if (p.inject && p.inject.length) bits.push(`<span class="k">必需</span> ${p.inject.map((d) => `<code>${esc(d)}</code>`).join(" ")}`);
+  if (p.optional && p.optional.length) bits.push(`<span class="k">可选</span> ${p.optional.map((d) => `<code>${esc(d)}</code>`).join(" ")}`);
+  return bits.length ? `<div class="pm-dep">${bits.join(" · ")}</div>` : "";
+}
+
+/** 一张插件卡片（含它的动作按钮）。 */
+function ledgerCard(p, actionLabels, index) {
+  const tags = [];
+  // 基础插件只给一个短标记（"不可卸载"）——整组 7 张卡片都写同一句长解释
+  // 是噪音，而组头与页脚已经把"为什么不能卸"说清楚了。
+  if (p.category === "base") tags.push(`<span class="pm-tag">不可卸载</span>`);
+  if (p.missing_optionals && p.missing_optionals.length) {
+    tags.push(`<span class="pm-tag warn" title="可选依赖缺失：${esc(p.missing_optionals.join("、"))}">降级运行</span>`);
+  }
+  if (p.error) tags.push(`<span class="pm-tag err" title="${esc(p.error)}">错误</span>`);
+  const notes = [];
+  // 说明只在**它没能正常跑起来**时才写：正常运行的插件不需要解释自己。
+  // （pending 的"等待依赖：x"、failed 的报错都属于"有事发生"这一类。）
+  if (p.blocked_reason && p.status !== "active") notes.push(p.blocked_reason);
+  if (p.error) notes.push(String(p.error));
+  const acts = (p.actions || []).map((a) => {
+    const cls = a === "unload" || a === "disable" ? "pm-btn danger" : "pm-btn go";
+    return `<button type="button" class="${cls}" data-name="${esc(p.name)}"
+      data-action="${esc(a)}">${esc((actionLabels && actionLabels[a]) || a)}</button>`;
+  }).join("");
+  const isNew = ledger.added.includes(p.name) ? " is-new" : "";
+  return `
+  <div class="pm-card${isNew} is-${esc(p.status)}" data-name="${esc(p.name)}" data-cat="${esc(p.category || "other")}"
+       data-search="${esc([p.name, (p.inject || []).join(" "), (p.optional || []).join(" ")].join(" ").toLowerCase())}"
+       style="--i:${index}">
+    <div class="pm-top">
+      <span class="pm-name">${esc(p.name)}</span>
+      <span class="pm-st ${esc(p.status)}" title="${esc(STATUS_TEXT[p.status] || p.status)}">${esc(STATUS_TEXT[p.status] || p.status)}</span>
+    </div>
+    ${ledgerDepHtml(p)}
+    ${tags.length ? `<div class="pm-tags">${tags.join("")}</div>` : ""}
+    ${notes.map((n) => `<div class="pm-note">${esc(n)}</div>`).join("")}
+    ${acts ? `<div class="pm-acts">${acts}</div>` : ""}
+  </div>`;
+}
+
+/** 可安装的白名单项——虚线"空位"卡片，一眼看出还能装什么。 */
+function ledgerGhostCard(x, index) {
+  return `
+  <div class="pm-card ghost" data-name="${esc(x.name)}" data-cat="install"
+       data-search="${esc(x.name.toLowerCase())}" style="--i:${index}">
+    <div class="pm-top">
+      <span class="pm-name">${esc(x.name)}</span>
+      <span class="pm-st" style="color:var(--faint)">未装载</span>
+    </div>
+    <div class="pm-note">在白名单里，可随时装入</div>
+    <div class="pm-acts">
+      <button type="button" class="pm-btn go" data-name="${esc(x.name)}"
+        data-action="install">安装</button>
+    </div>
+  </div>`;
+}
+
+/** 把一份快照画进面板（首次打开、刷新、筛选都走这里）。
+ *
+ *  **刷新时保留滚动位置**：面板每 2.5 秒随 loadLedger 刷新，若直接重写 innerHTML
+ *  会把用户读到一半的位置顶回顶部。这里先存后恢复；内容没变时调用方根本不调本函数。
+ */
+function renderLedgerModal() {
+  const body = $("pm-body"), sub = $("pm-sub"), foot = $("pm-foot");
+  if (!body) return;
+  const keepScroll = body.scrollTop;
+  const snapshot = ledger.snapshot;
+  const plugins = ledger.plugins;
+
+  if (!snapshot) {                          // 没装 plugin-admin：只读降级
+    sub.textContent = "";
+    body.innerHTML = `<div class="pm-ro">插件管理未装载（plugin-admin）——下面只读展示，
+      点按钮不会有反应。可在插件还能操作时装回它。</div>`
+      + renderReadonlyGroups(plugins);
+    foot.innerHTML = "只读视图：插件管理未装载";
+    applyLedgerFilter();
+    body.scrollTop = keepScroll;
+    return;
+  }
+
+  const counts = snapshot.counts || {};
+  const installable = snapshot.installable || [];
+  sub.textContent = `${counts.total || 0} 个插件 · ${counts.active || 0} 运行中`
+    + (counts.disabled ? ` · ${counts.disabled} 已停用` : "")
+    + (installable.length ? ` · 可安装 ${installable.length}` : "");
+
+  const labels = snapshot.actions || {};
+  let idx = 0;
+  const groups = (snapshot.groups || []).filter((g) => g.plugins.length).map((g) => `
+    <div class="pm-group" data-cat="${esc(g.category)}">
+      <div class="pm-group-h">
+        <span class="pm-group-t">${esc(g.label)}</span>
+        <span class="pm-group-n">${g.plugins.length}</span>
+        <span class="pm-group-hint">${esc(g.hint)}</span>
+      </div>
+      <div class="pm-grid">
+        ${g.plugins.map((p) => ledgerCard(p, labels, idx++)).join("")}
+      </div>
+    </div>`).join("");
+
+  const ghost = installable.length ? `
+    <div class="pm-group" data-cat="install">
+      <div class="pm-group-h">
+        <span class="pm-group-t">可安装</span>
+        <span class="pm-group-n">${installable.length}</span>
+        <span class="pm-group-hint">白名单里有、当前没装</span>
+      </div>
+      <div class="pm-grid">
+        ${installable.map((x, i) => ledgerGhostCard(x, idx + i)).join("")}
+      </div>
+    </div>` : "";
+
+  body.innerHTML = groups + ghost + `<div class="pm-empty pm-none" hidden>没有匹配的插件</div>`;
+  foot.innerHTML = "<b>人点按钮不需要审批</b>——审批拦的是模型发起的那条路径；"
+    + "这里的一下由你自己负责。带蓝条的是<b>基础插件</b>：应用成立的最小集合，不可卸载。";
+  applyLedgerFilter();
+  body.scrollTop = keepScroll;
+  ledger.stamp = JSON.stringify({
+    p: ledger.plugins, s: ledger.snapshot, a: ledger.added,
+  });
+}
+
+/** 无 plugin-admin 时的只读分组（壳内自带的降级渲染，同样只按分类画）。 */
+function renderReadonlyGroups(plugins) {
+  const meta = {
+    base: ["基础插件", "当前应用的最小集合"],
+    capability: ["能力插件", "可按需开关的额外能力"],
+    other: ["其他插件", "演示与示例"],
+  };
+  let idx = 0;
+  return ["base", "capability", "other"].map((cat) => {
+    const group = plugins.filter((p) => (p.category || "other") === cat);
+    if (!group.length) return "";
+    return `
+    <div class="pm-group" data-cat="${cat}">
+      <div class="pm-group-h">
+        <span class="pm-group-t">${meta[cat][0]}</span>
+        <span class="pm-group-n">${group.length}</span>
+        <span class="pm-group-hint">${meta[cat][1]}</span>
+      </div>
+      <div class="pm-grid">
+        ${group.map((p) => ledgerCard({ ...p, actions: [] }, null, idx++)).join("")}
+      </div>
+    </div>`;
+  }).join("") + `<div class="pm-empty pm-none" hidden>没有匹配的插件</div>`;
+}
+
+/** 筛选：按名字/依赖过滤卡片；整组都没匹配就把组头也收起来。 */
+function applyLedgerFilter() {
+  const box = $("pm-search");
+  const term = (box ? box.value : "").trim().toLowerCase();
+  const body = $("pm-body");
+  if (!body) return;
+  let visible = 0;
+  for (const group of body.querySelectorAll(".pm-group")) {
+    let shown = 0;
+    for (const card of group.querySelectorAll(".pm-card")) {
+      const hit = !term || (card.dataset.search || "").includes(term);
+      card.hidden = !hit;
+      if (hit) shown += 1;
+    }
+    group.hidden = shown === 0;
+    visible += shown;
+  }
+  const none = body.querySelector(".pm-none");
+  if (none) none.hidden = visible > 0;
 }
 
 async function loadLedger() {
@@ -523,100 +737,42 @@ async function loadLedger() {
   const removed = knownPlugins ? knownPlugins.filter((n) => !names.includes(n)) : [];
   knownPlugins = names;
 
-  pluginsEl.innerHTML = snapshot
-    ? renderGroupedPlugins(snapshot, added)
-    : renderReadonlyPlugins(plugins, added);      // 无 admin：只读
-  if (!snapshot) {
-    pluginsEl.insertAdjacentHTML("beforeend",
-      `<div class="side-empty">插件管理未装载（只读展示）</div>`);
-  }
+  ledger.plugins = plugins;
+  ledger.snapshot = snapshot;
+  ledger.added = added;
+
+  // 左栏"门卡"：一行说清状态（活跃数 + 可安装数）
+  const active = plugins.filter((p) => p.status === "active").length;
+  const installable = snapshot ? (snapshot.installable || []).length : 0;
+  $("plugin-count").textContent = `${active}/${plugins.length} 活跃`;
+  const go = $("ledger-entry-go");
+  if (go) go.textContent = installable ? `管理 · 可装 ${installable} ›` : "管理 ›";
+
   if (added.length) setIdle(`插件台账更新：新增 ${added.join("、")}`
     + (removed.length ? `；移除 ${removed.join("、")}` : ""));
-  $("plugin-count").textContent =
-    `${plugins.filter((p) => p.status === "active").length}/${plugins.length} 活跃`;
+  // 面板开着就地刷新，但**只有内容真的变了才重画**：
+  // 每 2.5 秒无脑重写 innerHTML 会让卡片反复播入场动画、并把滚动位置顶回顶部。
+  if (ledgerOpen()) {
+    const stamp = JSON.stringify({ p: ledger.plugins, s: ledger.snapshot, a: ledger.added });
+    if (stamp !== ledger.stamp) renderLedgerModal();
+  }
 }
 
-function pluginDepsTip(p) {
-  const missingOpt = p.missing_optionals || [];
-  return [
-    `必需：${p.inject.length ? p.inject.join(", ") : "无"}`,
-    (p.optional || []).length ? `可选：${p.optional.join(", ")}` : "",
-    missingOpt.length ? `当前缺：${missingOpt.join(", ")}` : "",
-    p.blocked_reason || "",
-  ].filter(Boolean).join(" · ");
-}
-
-/** 一个插件行 + 它的动作按钮。 */
-function pluginRow(p, added, actionLabels) {
-  const missingOpt = p.missing_optionals || [];
-  const actions = (p.actions || []).map((a) => `
-    <button type="button" class="pa-btn pa-${esc(a)}" data-name="${esc(p.name)}"
-            data-action="${esc(a)}" title="${esc((actionLabels && actionLabels[a]) || a)}"
-      >${esc((actionLabels && actionLabels[a]) || a)}</button>`).join("");
-  return `
-  <div class="plug ${added.includes(p.name) ? "plug-new" : ""}" title="依赖：${esc(pluginDepsTip(p))}">
-    <span class="dot ${esc(p.status)}${added.includes(p.name) ? " new" : ""}"></span>
-    <span class="plug-n">${esc(p.name)}</span>
-    ${missingOpt.length ? `<span class="plug-degraded" title="可选依赖缺失：${esc(missingOpt.join(", "))}">降级</span>` : ""}
-    ${p.category === "base" ? `<span class="plug-base" title="基础插件：当前应用的最小集合">基础</span>` : ""}
-    ${actions ? `<span class="plug-actions">${actions}</span>` : ""}
-  </div>`;
-}
-
-/** 分组渲染（插件管理在时）：按 base / capability / other 三组。 */
-function renderGroupedPlugins(snapshot, added) {
-  const labels = snapshot.actions || {};
-  const html = (snapshot.groups || []).filter((g) => g.plugins.length).map((g) => `
-    <div class="plug-group">
-      <div class="plug-group-h" title="${esc(g.hint)}">${esc(g.label)}
-        <span class="plug-group-n">${g.plugins.length}</span></div>
-      ${g.plugins.map((p) => pluginRow(p, added, labels)).join("")}
-    </div>`).join("");
-  const installable = snapshot.installable || [];
-  const installHtml = installable.length ? `
-    <div class="plug-group">
-      <div class="plug-group-h" title="可安装：白名单里有、当前没装的插件">可安装
-        <span class="plug-group-n">${installable.length}</span></div>
-      ${installable.map((x) => `
-        <div class="plug">
-          <span class="dot pending"></span>
-          <span class="plug-n">${esc(x.name)}</span>
-          <span class="plug-actions">
-            <button type="button" class="pa-btn pa-install" data-name="${esc(x.name)}"
-                    data-action="install" title="安装">安装</button>
-          </span>
-        </div>`).join("")}
-    </div>` : "";
-  return (html + installHtml) || `<div class="side-empty">（无）</div>`;
-}
-
-/** 只读渲染（没装 plugin-admin 时）：仍按分类显示，但没有按钮。 */
-function renderReadonlyPlugins(plugins, added) {
-  const order = ["base", "capability", "other"];
-  const labels = { base: "基础插件", capability: "能力插件", other: "其他插件" };
-  const hints = {
-    base: "当前应用的最小集合",
-    capability: "可按需开关的额外能力",
-    other: "演示与示例",
-  };
-  return order.map((cat) => {
-    const group = plugins.filter((p) => (p.category || "other") === cat);
-    if (!group.length) return "";
-    return `
-    <div class="plug-group">
-      <div class="plug-group-h" title="${esc(hints[cat])}">${esc(labels[cat])}
-        <span class="plug-group-n">${group.length}</span></div>
-      ${group.map((p) => pluginRow(p, added, null)).join("")}
-    </div>`;
-  }).join("") || `<div class="side-empty">（无）</div>`;
-}
-
-/* 插件按钮的事件委托：一次绑定，重渲染后依然有效。 */
-pluginsEl.addEventListener("click", (e) => {
-  const btn = e.target.closest(".pa-btn");
+/* 面板交互：入口按钮 / 关闭 / Esc / 点遮罩 / 筛选 / 动作按钮（事件委托）。 */
+$("ledger-entry").addEventListener("click", openLedger);
+$("pm-close").addEventListener("click", closeLedger);
+$("plugin-modal").addEventListener("click", (e) => {
+  if (e.target.id === "plugin-modal") closeLedger();     // 点遮罩关闭
+});
+$("pm-search").addEventListener("input", applyLedgerFilter);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && ledgerOpen()) closeLedger();
+});
+$("pm-body").addEventListener("click", (e) => {
+  const btn = e.target.closest(".pm-btn");
   if (!btn) return;
-  e.preventDefault();                       // 防误触表单提交
-  pluginAction(btn.dataset.name, btn.dataset.action);
+  e.preventDefault();
+  pluginAction(btn.dataset.name, btn.dataset.action, btn.closest(".pm-card"));
 });
 
 async function loadSessions() {

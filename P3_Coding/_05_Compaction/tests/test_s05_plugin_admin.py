@@ -350,6 +350,11 @@ def _read(url: str) -> dict:
         return json.load(response)
 
 
+def _get_text(url: str) -> tuple[int, str]:
+    with urllib.request.urlopen(url, timeout=8) as response:
+        return response.status, response.read().decode("utf-8")
+
+
 def test_admin_routes_served_by_the_shell(tmp_path: Path):
     booted = _boot_with_shell(tmp_path)
     url = booted.ctx.require(WEBUI_SERVICE).url
@@ -415,3 +420,40 @@ def test_plugin_admin_plugin_needs_no_other_service():
     plugin = plugin_admin_plugin()
     assert getattr(plugin, "inject", ()) == ()
     assert plugin.category == "capability"
+
+
+def test_ledger_is_a_popup_panel_not_an_inline_sidebar(tmp_path: Path):
+    """台账是**独立弹出层**（用户要求），不是侧栏里的一坨列表。
+
+    壳仍然零知识：面板只负责画卡片、筛选、POST——每个插件该有哪些按钮照旧
+    由 plugin-admin 的策略下发（见 test_base_plugins_cannot_be_unloaded_or_disabled）。
+    """
+    booted = _boot_with_shell(tmp_path)
+    url = booted.ctx.require(WEBUI_SERVICE).url
+    _, html = _get_text(url)
+    _, js = _get_text(url + "app.js")
+    _, css = _get_text(url + "app.css")
+
+    # 骨架：入口门卡 + 弹出层容器（含关闭、筛选、正文、回执）
+    for ident in ("ledger-entry", "plugin-modal", "pm-body", "pm-search",
+                  "pm-close", "pm-toast", "plugin-count"):
+        assert f'id="{ident}"' in html, f"面板骨架缺 {ident}"
+    # 侧栏里那套内联列表的元素已经拆掉（否则就是搬了没搬干净）
+    for stale in ('id="plugins"', "plug-group-h", "pa-btn"):
+        assert stale not in html, f"index.html 还留着旧内联列表 {stale}"
+
+    # 行为：弹层开合 / Esc / 遮罩 / 筛选 / 卡片动作全部走事件委托
+    assert "function openLedger()" in js and "function closeLedger()" in js
+    assert 'e.key === "Escape"' in js
+    assert 'e.target.id === "plugin-modal"' in js          # 点遮罩关闭
+    assert "function applyLedgerFilter()" in js
+    assert 'closest(".pm-btn")' in js                      # 动作按钮委托
+    assert "function ledgerCard(" in js and "ledgerGhostCard" in js
+    # 壳依然不认识具体插件：连"可安装"也是快照下发的
+    assert "snapshot.installable" in js
+
+    # 样式：弹出层的定位与卡片网格（`#plugin-panel` 的教训：改 id 别漏 CSS）
+    assert "#plugin-modal{" in css and "position:fixed" in css.split("#plugin-modal{")[1][:120]
+    assert ".pm-card{" in css
+    assert "grid-template-columns:repeat(auto-fill" in css
+    booted.close()

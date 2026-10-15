@@ -12,7 +12,7 @@ P3 的**地基**：一个把"能力"全部表达为插件的 mini harness。三�
 
 ```bash
 cd P3_Coding/mini_harness
-python -m pytest -q                    # 321 用例，全离线
+python -m pytest -q                    # 322 用例，全离线
 python demo.py                         # 八节演示（装配 / 台账 / 对话 / resume / 热插拔 / 回卷 / 界面插件 / RPC）
 python chat.py --ask "帮我算 2+3"       # 离线一个 turn
 python chat.py                         # 离线交互（/web 现场装卸界面插件）
@@ -56,7 +56,7 @@ plugins/       能力插件（把构件装成 ctx 服务）
   clock.py       ★ 示例可装卸插件（不在默认装配里）
   boot.py        boot / boot_offline / boot_realtime
 webui/         界面插件的静态资源（index.html + app.css + app.js；原生 JS 零依赖）
-tests/         321 个用例（18 个文件；文件名统一 test_p3_*）
+tests/         322 个用例（18 个文件；文件名统一 test_p3_*）
 chat.py demo.py run.bat run.sh conftest.py
 ```
 
@@ -120,8 +120,9 @@ ctx.require("webui").url               # → http://127.0.0.1:<port>/
 ctx.unload_plugin("webui")             # 卸载：shutdown + join + 端口释放，零残留
 ```
 
-页面三栏：**插件台账**（按 基础/能力/其他 分组，可一键 安装/卸载/停用/启用）、
-对话（NDJSON 流式推事件）、**append-only 事件流**。API：`/api/ledger`、
+页面三栏：**插件台账**（左栏门卡点开独立面板：按 基础/能力/其他 分组，
+可一键 安装/卸载/停用/启用 + 筛选）、对话（NDJSON 流式推事件）、
+**append-only 事件流**。API：`/api/ledger`、
 `/api/sessions`、`/api/sessions/<id>/events`、`POST /api/sessions/<id>/send`、
 `/api/plugins`（分类台账）、`POST /api/plugins/<name>/<action>`（一键操作）。
 
