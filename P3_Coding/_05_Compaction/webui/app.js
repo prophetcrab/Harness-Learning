@@ -493,6 +493,14 @@ async function openSession(id, opts = {}) {
 }
 
 /* ---------------- send ---------------- */
+/** 只推给调用方、不显示的控制帧（流的**收尾**）。
+ *
+ *  为什么要把这些列出来，而不是"凡 __ 开头都算收尾"：`__approval` 也是
+ *  `__` 开头，但它是**有人在等你点头**——吞掉它整个 turn 会卡死在等审批上
+ *  （实测：模型调 write_file 后页面停在第 2 步"执行工具…"，审批卡片始终
+ *  不出现，等 300 秒超时后按 fail-closed 拒绝 → 表现成"工具莫名失败"）。 */
+const TERMINAL_FRAMES = new Set(["__done", "__error", "__compact_done", "__compact_noop"]);
+
 /** 读一条 NDJSON 流：逐帧交给 onFrame；返回末帧（__done / __compact_done …）。 */
 async function streamFrames(url, body, onFrame) {
   const res = await fetch(url, {
@@ -511,8 +519,14 @@ async function streamFrames(url, body, onFrame) {
       const line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1);
       if (!line) continue;
       let frame; try { frame = JSON.parse(line); } catch { continue; }
-      if (String(frame.kind).startsWith("__")) last = { kind: frame.kind, payload: frame.payload };
-      else { onFrame(frame.kind, frame.payload); appendLiveEvent(frame.kind, frame.payload); }
+      if (TERMINAL_FRAMES.has(frame.kind)) {
+        last = { kind: frame.kind, payload: frame.payload };
+        if (frame.kind === "__error") onFrame(frame.kind, frame.payload);  // 错误要显示
+        continue;
+      }
+      // 其余一律当事件显示——包括 `__approval` / `__repair` 这类"要人看见"的帧。
+      onFrame(frame.kind, frame.payload);
+      if (!String(frame.kind).startsWith("__")) appendLiveEvent(frame.kind, frame.payload);
     }
   }
   return last;

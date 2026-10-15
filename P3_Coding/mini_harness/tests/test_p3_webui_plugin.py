@@ -354,6 +354,38 @@ def test_static_route_refuses_path_traversal(tmp_path: Path):
     booted.close()
 
 
+def test_stream_frames_forwards_approval_to_the_page(tmp_path: Path):
+    """`__approval` 必须送到页面渲染——**否则整个 turn 卡死在等审批上**。
+
+    回归背景（真实故障，三处症状同一个根因）：拆页面时把"所有 `__` 开头的帧
+    都当收尾帧留在 `last` 里、不交给 handleFrame"，于是：
+      · 审批卡片永远不出现（用户看不到要点批准）；
+      · 服务端等 300 秒超时后按 fail-closed 拒绝 → 表现为"工具莫名失败"；
+      · turn 结束前页面不刷新 → "要手动刷新才看到进度"。
+    测试直接读 app.js 的源码约定：只有**明确列出的收尾帧**才跳过渲染。
+    """
+    booted = _boot(tmp_path, [text_reply("好")])
+    booted.ctx.load_plugin(webui_plugin(port=0))
+    url = booted.ctx.require(WEBUI_SERVICE).url
+    _, js = _get_text(url + "app.js")
+
+    assert "TERMINAL_FRAMES" in js, "应有显式的收尾帧清单，而不是按前缀一刀切"
+    # 解析出白名单本身，逐项检查（比"字符串在不在文件里"精确得多——
+    # `"__approval"` 也会出现在 handleFrame 的 case 里，那是**渲染**它的地方）
+    import re
+
+    match = re.search(r"const TERMINAL_FRAMES = new Set\(\[(.*?)\]\)", js)
+    assert match, "应由 TERMINAL_FRAMES 显式列出收尾帧"
+    terminals = set(re.findall(r'"([^"]+)"', match.group(1)))
+    assert terminals == {"__done", "__error", "__compact_done", "__compact_noop"}
+    # 关键：审批 / 修复**不在**白名单里（它们必须被渲染出来）
+    assert "__approval" not in terminals, "__approval 被当成收尾帧吞掉了"
+    assert "__repair" not in terminals, "__repair 被当成收尾帧吞掉了"
+    # 而页面确实有渲染它们的处理分支
+    assert 'case "__approval"' in js and 'case "__repair"' in js
+    booted.close()
+
+
 def test_index_page_includes_rich_renderer(tmp_path: Path):
     """页面自带富渲染：Markdown 表格/标题/引用 + HTML/CSS 代码块沙箱预览。
 
