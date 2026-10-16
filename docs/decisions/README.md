@@ -83,3 +83,5 @@
 - [0039 用户报告的三处修复：端口争抢、面板闪烁、被截断的日志](0039-port-panel-and-log-robustness.md)（P3 `_06`）
 - [0040 P3 收尾：交付清单、与 dsh 的三处差距、将来接着做的地方](0040-p3-wrap-up-vs-dsh.md)（P3 收官）
 - [0041 P4 定调：实质化 —— 自有最小插件底座 + 三类插件 + 一个项目](0041-p4-substantiation.md)（P4 目标）
+- [0042 P4 基座边界：支持「everything is plugins」的最小底座](0042-p4-base-boundary.md)（P4 基座，**草案**）
+- [0043 P4 全部重写：不搬 P3 代码，逐个小步写](0043-p4-rewrite-from-scratch.md)（P4 方法）

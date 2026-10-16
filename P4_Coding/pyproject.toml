@@ -1,0 +1,33 @@
+[project]
+name = "p4-harness"
+version = "0.4.0"
+description = "P4：插件化 harness 的实质化 —— 最小插件底座 + 三类插件 → 一个可用产品"
+requires-python = ">=3.13"
+
+# P4 是一个真实项目（不是 P2/P3 那样的阶段副本）：依赖等用到时再加，
+# 现在只有开发工具（pytest / ruff，由环境提供）。
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["sessions", "workspace"]
+
+[tool.ruff.lint]
+# E/W pycodestyle、F pyflakes、I import 排序、UP pyupgrade、B bugbear
+select = ["E", "W", "F", "I", "UP", "B"]
+ignore = [
+    "E501",   # 行长由 line-length 约束，不逐行报
+    "B008",   # 允许在默认参数里调用（如 Field(...)）
+]
+
+[tool.ruff.lint.isort]
+# P4 的顶层包：core（框架）/ plugins（插件）/ components（纯构件）/ app（启动器）。
+known-first-party = ["core", "plugins", "components", "app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# 顶层包就在本目录（core/plugins/...）：pytest 从任意位置跑都把项目根放进 sys.path。
+pythonpath = ["."]
