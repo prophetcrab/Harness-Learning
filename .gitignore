@@ -10,6 +10,11 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
+# 打包产物
+build/
+dist/
+*.whl
+
 # 练习运行时产物（demo 写入的工作区 / 会话日志 / 后台服务日志）
 demo_workspace/
 demo_run/

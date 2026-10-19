@@ -18,7 +18,8 @@ P4 是**一个项目**（不再是 P2/P3 那样的阶段副本目录）：插件
 | `plugins/base/` | 基础插件（默认 role=base）：`loader`、`llm`、`prompt`、`sessions`、`workspace`、`project`、`fs`、`proc`、`tools_admin`（tool-admin）、`agent`（+ capability 组的 `agent/loop`、`agent/admin`） | ✅ |
 | `plugins/capability/` | 能力插件，按功能域分二级目录：`llm/`（provider / retry / tokens_usages / fake）、`agent/`（loop / admin）、`prompt/`（character_admin / system_prompt_admin）、`session/`（store_jsonl）、`fs/`（sandbox / observation_policy）、`proc/`（backends）、`workspace/`（admin）、`tools/`（math / fs / shell / fs_search / web_search / ask_user） | ✅ |
 | `plugins/application/` | 应用化插件（换掉它产品形态变了）：`web` / `cli` / `sdk` | M4 才长出 |
-| `tests/` | 逐个机制的验收（先写验收，再写实现） | 500 用例 |
+| `harness/` | **公开门面**（`pip install p4-harness` 后的 `import harness`）：纯 re-export，不加载插件 | ✅ |
+| `tests/` | 逐个机制的验收（先写验收，再写实现） | 506 用例 |
 | `manifests/` | 装配单（产品形态就是数据）：`minimal.py`（离线）/ `realtime.py`（真实模型）/ `minimal.yaml`（YAML 版，同一形状） | ✅ |
 | `docs/` | 图解：[ctx 如何管理插件](docs/ctx-plugin-management.html)（15 步交互演示，直接用浏览器打开） | ✅ |
 
@@ -35,3 +36,25 @@ P4 是**一个项目**（不再是 P2/P3 那样的阶段副本目录）：插件
 YAML 装配单只是**数据**：插件工厂仍来自 `manifests/minimal.py` 的
 `catalog()` 白名单；`--manifest` 与 `--realtime` 互斥，因为 YAML 里两条
 路由（`fake` / `deepseek`）都已装好，用 `--provider` 选即可。
+
+## 作为库使用
+
+启动器在 core 里，可以打包分发（决策
+[0056](../docs/decisions/0056-packaging-and-public-surface.md)）：
+
+    pip wheel . -w dist          # 构建
+    pip install p4_harness-*.whl
+
+    import harness
+
+    entries = harness.load_manifest("app.yaml", variables={"workspace": "ws"})
+    runtime = harness.boot(entries, catalog={"my-plugin": MyPlugin})
+    try:
+        runtime.ctx.require("my-service")
+    finally:
+        runtime.close()
+
+`import harness` 不会加载任何插件；插件按鸭子类型书写
+（`name` / `inject` / `optional` / `requires` / `setup`），不需要 import
+这个包。`boot()` 只依赖随包分发的 `loader`，其余插件全由调用方的 `catalog`
+决定。

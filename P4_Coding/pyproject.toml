@@ -4,13 +4,25 @@ version = "0.4.0"
 description = "P4：插件化 harness 的实质化 —— 最小插件底座 + 三类插件 → 一个可用产品"
 requires-python = ">=3.13"
 
-# P4 是一个真实项目（不是 P2/P3 那样的阶段副本）：依赖等用到时再加。
-# 唯一的运行时依赖是 PyYAML（`manifests/load.py` 读 YAML 装配单）；
-# 其余是开发工具（pytest / ruff，由环境提供）。
+# 未来分发形态：`pip install p4-harness` 后 `import harness`。
+# 分发单元是 core + 随包 loader；其余插件由使用方的 catalog 提供（0056）。
 dependencies = ["PyYAML>=6"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+# core（框架 + 引导）/ plugins（插件）/ manifests（装配单）/ harness（公开门面）。
+include = ["core*", "plugins*", "manifests*", "harness*"]
+exclude = ["tests*", "docs*"]
+
+[tool.setuptools.package-data]
+# YAML 装配单随 manifests 包分发；它只是数据，不参与 import。
+manifests = ["*.yaml"]
 
 [tool.ruff]
 line-length = 100
@@ -26,8 +38,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-# P4 的顶层包：core（框架 + 引导）/ plugins（插件）/ manifests（装配单）/ app（入口）。
-known-first-party = ["core", "plugins", "manifests", "app"]
+# P4 的顶层包：core（框架 + 引导）/ plugins（插件）/ manifests（装配单）/
+# harness（公开门面）/ app（入口）。
+known-first-party = ["core", "plugins", "manifests", "harness", "app"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
