@@ -38,6 +38,8 @@ loader，已装配的树照常运行，只是不能再变。
 
 from __future__ import annotations
 
+import functools
+import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -63,6 +65,21 @@ EntryStatus = Literal[
 
 class AssemblyError(RuntimeError):
     """装配 / 树操作失败（fail loud）：结构非法、名字不在目录、构造 / 装载失败。"""
+
+
+def _serialized(method: Callable[..., Any]) -> Callable[..., Any]:
+    """把树操作串行化：loader 自己的 `_nodes` 也需要一把锁。
+
+    core 的锁保护的是插件台账；这里保护的是**树**（父子链、开关、句柄）。
+    同一把可重入锁、包在公共入口上——两个线程同时装配 / 开关时不会撕裂树。
+    """
+
+    @functools.wraps(method)
+    def wrapper(self: LoaderService, *args: Any, **kwargs: Any) -> Any:
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 @dataclass(frozen=True)
@@ -233,15 +250,26 @@ class LoaderService:
         assemble(manifest)      整批装配（失败**整批回滚**——世界不留半截树）
         unload(path)            卸载子树（深的先退；条目离开树）
         disable(path) / enable(path)   开关子树（继承；登记保留，一键恢复）
+        load(entry, parent=None)       往树里加一条（运行中热插拔）
+        update(path, config)           换一份 config 重装**这一条**（原子）
+        replace(path, entry)           用另一条条目顶替（原子；子树跟着走）
 
     这是**唯一装配路径**：启动器（步 8）、管理面、模型侧工具将来都走它——
     "两处各写一份装配逻辑"是明确的禁止项（P3 的白名单漂移教训）。
+
+    **热插拔的原子性**（与整批装配的"失败整批回滚"相对）：
+
+        先造新的、装成功，**才**动旧的；构造 / 装载 / 依赖检查任何一步失败
+        → 新实例撤掉，旧的原样还在、服务不断档。成功之后才卸旧的——这样
+        "换 llm 实现"的瞬间不会有"服务暂时不存在"的空窗。
     """
 
     def __init__(self, ctx: Context, catalog: Mapping[str, Callable[..., object]]) -> None:
         self._ctx = ctx
         self._catalog = dict(catalog)
         self._nodes: dict[str, _Node] = {}
+        #: 树的锁（见 `_serialized`）；可重入——load / enable 内部会互相调用。
+        self._lock = threading.RLock()
 
     @property
     def catalog_names(self) -> tuple[str, ...]:
@@ -252,6 +280,7 @@ class LoaderService:
     # 装配（整批）
     # ------------------------------------------------------------------
 
+    @_serialized
     def assemble(self, manifest: Sequence[Entry | Mapping[str, Any]]) -> tuple[EntryState, ...]:
         """按一份装配单整批装配；成功返回装配后的快照，失败**整批回滚**并抛错。
 
@@ -314,6 +343,7 @@ class LoaderService:
     # 树操作（按路径，作用于子树）
     # ------------------------------------------------------------------
 
+    @_serialized
     def unload(self, path: str) -> tuple[str, ...]:
         """卸载一棵子树：条目连同后代一起离开树（返回被卸载的路径，装配顺序）。
 
@@ -346,6 +376,7 @@ class LoaderService:
             ) from exc
         return tuple(node.path for node in nodes)
 
+    @_serialized
     def disable(self, path: str) -> tuple[str, ...]:
         """停用一棵子树（返回实际被停用的路径，**深的先退**的顺序）。
 
@@ -379,6 +410,7 @@ class LoaderService:
             ) from exc
         return tuple(affected)
 
+    @_serialized
     def enable(self, path: str) -> tuple[str, ...]:
         """启用一棵子树（返回被重新装载 / 恢复的路径，**浅的先来**的顺序）。
 
@@ -420,9 +452,194 @@ class LoaderService:
         return tuple(affected)
 
     # ------------------------------------------------------------------
+    # 热插拔（运行中加一条 / 换配置 / 换条目）
+    # ------------------------------------------------------------------
+
+    @_serialized
+    def load(self, entry: Entry | Mapping[str, Any], *, parent: str | None = None) -> str:
+        """往树里加一条条目并装载它（运行中热插拔，返回它的路径）。
+
+        与 `assemble` 的区别：这是**单条**操作，失败就失败在这一次装载本身
+        （新装的撤掉、树恢复原样），不牵连其它条目；`assemble` 是"一整个
+        世界"，失败才整批回滚。
+
+        新条目默认关着不冲突，但若路径已被占用 → AssemblyError（先 unload）。
+        它的祖先（parent 指向的条目）必须已在树里；父关着 → 新条目照样进树
+        但**不运行**（开关继承，快照显示 skipped），打开父时它才跑。
+
+        `parent=None` 表示挂在顶层。
+        """
+        item = entry_from_dict(entry) if isinstance(entry, Mapping) else entry
+        _check_entry(item, parent or "装配单顶层")
+        if parent is not None and parent not in self._nodes:
+            known = "、".join(self._nodes) or "（树是空的）"
+            raise AssemblyError(f"父条目不存在：{parent!r}（当前：{known}）")
+
+        path = f"{parent}:{item.id}" if parent else item.id
+        if path in self._nodes:
+            raise AssemblyError(f"条目路径已被占用：{path!r}（先 unload 再装）")
+        if item.children:
+            raise AssemblyError(
+                f"热插拔一次只加一条：{path!r} 带子树——先用 assemble 装它，"
+                "或把子树拆成多次 load"
+            )
+
+        node = _Node(path=path, entry=item, parent=parent, own_enabled=item.enabled)
+        pending_nodes = [node]  # 一起回滚（本步只允许单条，留成列表便于将来扩展）
+        self._nodes[path] = node
+        if parent is not None:
+            self._nodes[parent].children.append(path)
+        try:
+            self._assemble_one(node)
+            self._ensure_no_new_pending([node])
+        except BaseException:
+            self._rollback(pending_nodes)
+            self._detach_nodes(pending_nodes)
+            raise
+        return path
+
+    @_serialized
+    def update(self, path: str, config: Mapping[str, Any]) -> None:
+        """换一份 config 重新装载这一条（原子：**造新成功才拆旧**）。
+
+        语义是"**整份替换**"（不做字段合并，沿 dsh 的 patch 语义）：新配置 =
+        新实例 = 新的一次装载。因此它也是"重装"——同一个插件名在旧实例退位
+        之前不能装第二份，所以顺序是：先卸旧的、再装新的。为了让失败不动现场，
+        顺序实际是：
+
+            1. 记住旧条目快照 → 2. 卸旧（登记在树里，节点不动）
+            → 3. 按新 config 造并装 → 4. 失败则按旧 config 重装（回滚）
+            → 5. 成功则节点换上新记录
+
+        第 3 步与第 4 步之间世界的服务会短暂缺席（这是"同名插件不能同时存在
+        两份"的必然结果，不是 bug）；对外表现为依赖它的插件短暂退位、随即
+        自动复活。
+
+        分组条目 / 从没装载过的条目 / 关着的条目：直接改 config 并（若该运行）
+        装载——**不会**先卸什么。
+        """
+        node = self._nodes.get(path)
+        if node is None:
+            known = "、".join(self._nodes) or "（树是空的）"
+            raise AssemblyError(f"条目不存在：{path!r}（当前：{known}）")
+        if not isinstance(config, Mapping):
+            raise AssemblyError(f"update({path!r}) 的 config 必须是字典")
+        old_config = dict(node.entry.config)
+        old_name = node.entry.name
+        old_role = node.entry.role
+        old_enabled = node.entry.enabled
+        new_entry = Entry(
+            id=node.entry.id,
+            name=node.entry.name,
+            config=dict(config),
+            role=node.entry.role,
+            enabled=node.entry.enabled,
+            children=node.entry.children,
+        )
+
+        was_running = self._record_of(node) is not None
+        if was_running:
+            # 先卸旧的（同一个插件名不能有两份实例）。
+            try:
+                self._ctx.unload_plugin(node.plugin_name)  # type: ignore[arg-type]
+            except BaseException as exc:
+                raise AssemblyError(
+                    f"更新 {path!r} 失败：卸下旧实例时清理报错：{exc}"
+                ) from exc
+            node.handle = None
+            node.name_unload = False
+
+        node.entry = new_entry
+        try:
+            self._assemble_one(node)
+            self._ensure_no_new_pending([node])
+        except BaseException as exc:
+            rollback_error: BaseException | None = None
+            if was_running:
+                # 回滚：按旧 config 重新装上（旧实例已经卸了，只能新造一个）。
+                node.entry = Entry(
+                    id=node.entry.id,
+                    name=old_name,
+                    config=old_config,
+                    role=old_role,
+                    enabled=old_enabled,
+                    children=node.entry.children,
+                )
+                try:
+                    self._assemble_one(node)
+                except BaseException as again:
+                    rollback_error = again
+            if rollback_error is not None:
+                raise AssemblyError(
+                    f"更新 {path!r} 失败，且回滚（恢复旧 config）也失败："
+                    f"{exc}；回滚错误：{rollback_error}"
+                ) from exc
+            raise AssemblyError(f"更新 {path!r} 失败，已恢复旧 config：{exc}") from exc
+
+    @_serialized
+    def replace(self, path: str, entry: Entry | Mapping[str, Any]) -> None:
+        """用另一条条目顶替树上的这一条（原子；路径不变，子树跟着走）。
+
+        典型用途：换实现（同 id、换 name / config / role）——树的位置与子条目
+        不动，只换这个节点自己。新条目必须是**同一 id**、且**不带子树**
+        （子树属于树，不属于条目；要改子树请 unload 后重装或重新 assemble）。
+
+        顺序与 `update` 相同（先拆旧、再装新；失败按旧条目回滚）。
+        """
+        node = self._nodes.get(path)
+        if node is None:
+            known = "、".join(self._nodes) or "（树是空的）"
+            raise AssemblyError(f"条目不存在：{path!r}（当前：{known}）")
+        item = entry_from_dict(entry) if isinstance(entry, Mapping) else entry
+        _check_entry(item, path)
+        if item.id != node.entry.id:
+            raise AssemblyError(
+                f"replace({path!r}) 的新条目 id 必须是 {node.entry.id!r}，收到 {item.id!r}"
+                "（id 即地址：换位置请 unload 后 load，不做 reparent——0042）"
+            )
+        if item.children:
+            raise AssemblyError(
+                f"replace({path!r}) 的新条目不能带子树（子树属于树，不属于条目）"
+            )
+
+        old_entry = node.entry
+        was_running = self._record_of(node) is not None
+        if was_running:
+            try:
+                self._ctx.unload_plugin(node.plugin_name)  # type: ignore[arg-type]
+            except BaseException as exc:
+                raise AssemblyError(
+                    f"替换 {path!r} 失败：卸下旧实例时清理报错：{exc}"
+                ) from exc
+            node.handle = None
+            node.name_unload = False
+
+        node.entry = item
+        node.own_enabled = item.enabled
+        try:
+            self._assemble_one(node)
+            self._ensure_no_new_pending([node])
+        except BaseException as exc:
+            role_rollback_error: BaseException | None = None
+            if was_running:
+                node.entry = old_entry
+                node.own_enabled = old_entry.enabled
+                try:
+                    self._assemble_one(node)
+                except BaseException as again:
+                    role_rollback_error = again
+            if role_rollback_error is not None:
+                raise AssemblyError(
+                    f"替换 {path!r} 失败，且回滚（恢复旧条目）也失败："
+                    f"{exc}；回滚错误：{role_rollback_error}"
+                ) from exc
+            raise AssemblyError(f"替换 {path!r} 失败，已恢复旧条目：{exc}") from exc
+
+    # ------------------------------------------------------------------
     # 快照
     # ------------------------------------------------------------------
 
+    @_serialized
     def snapshot(self) -> tuple[EntryState, ...]:
         """全部条目的当前状态（按装配顺序，**实时**从核心台账读）。
 
@@ -507,6 +724,22 @@ class LoaderService:
             return ""
         names = "、".join(info.name for info in failed)
         return f"（当前处于 failed 的插件：{names}——常是被这次装配解开的依赖在激活时失败）"
+
+    def _ensure_no_new_pending(self, nodes: list[_Node]) -> None:
+        """这些节点里不许有人停在 pending（装配期的 fail loud；单条热插拔同款）。
+
+        只查本次涉及的插件：别处（装配单外）本来就有的 pending 与这次操作无关。
+        """
+        for node in nodes:
+            if node.plugin_name is None:
+                continue
+            info = self._record_of(node)
+            if info is not None and info.status == "pending":
+                missing = self._ctx.missing_dependencies(info.name)
+                raise AssemblyError(
+                    f"条目 {node.path!r}（{info.name}）装配后仍在等待依赖：{missing}"
+                    "（装配单缺了提供者，或依赖名写错）"
+                )
 
     def _label_of(self, plugin_name_: str) -> str:
         """插件名 → 它在装配单里的位置（报错文案用）。"""

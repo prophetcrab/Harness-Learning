@@ -23,6 +23,9 @@
 
 ### 非插件只有 core 一处：框架（物理定律）+ 引导（自带启动器）
 
+> **状态（2026-10-16）**：M1 八步全部落地、165 用例全绿——本表已由代码与
+> 纯度测试（`tests/test_purity.py` 的三级扫描）钉住。
+
 | 层 | 角色 | 内容 |
 |---|---|---|
 | **core · 框架**（非插件） | 插件世界的「物理定律」 | 服务槽位（provide / require / get）、事件（emit / waterfall）、effect 回卷、**单插件**生命周期（load / unload / disable / enable + 依赖驱动的 settle 稳定化）、一把可重入变更锁、快照原语 |
@@ -77,9 +80,9 @@
 | 1 | **服务槽位** | provide / get / require / retract；重名与缺失 fail loud；拒绝原子（原值不被动）；没有 set——换实现是显式 retract + provide ✅ 已绿（M1 步 1） |
 | 2 | **事件总线** | `on`（返回退订）/ `emit`（广播，注册序）/ `waterfall`（中间件链：`handler(value, **ctx)` 返回非 None 即替换）；handler 抛错 fail loud（吞错是消费方的策略，不是总线的）；装载期订阅随 effect 回卷 |
 | 3 | **effect 回卷** | `ctx.effect(install)`：装载期一切登记（服务、订阅、嵌套 effect、插件自己的资源）自动撤销；回卷"子先父后、同级后进先出"；一个 disposer 抛错不打断其余（最后重抛第一个）；装载失败不留半装 |
-| 4 | **单插件生命周期** | 插件协议（name / inject / optional / setup）；状态 pending / active / disabled / failed；settle 稳定化——依赖齐自动激活、提供者走了自动退位、**装载顺序无关**；load / unload / disable / enable；退位顺序"深的先退"（依赖者清理期间服务仍可用）；台账快照（missing / missing_optionals / error） |
-| 5 | **变更串行化** | 一把可重入变更锁：所有改变世界的操作串行；**重入合法**（插件在 setup / dispose 里装卸别的插件）；每次有效变更 revision + 1 |
-| 6 | **快照原语** | services / plugins / revision / 最近一次稳定化报告（谁退位、谁激活）——loader、管理面、测试、启动器共用同一个读取面 |
+| 4 | **单插件生命周期** | 插件协议（name / inject / optional / setup）；状态 pending / active / disabled / failed；settle 稳定化——依赖齐自动激活、提供者走了自动退位、**装载顺序无关**；load / unload / disable / enable；退位顺序"深的先退"（依赖者清理期间服务仍可用）；台账快照（missing / missing_optionals / error）✅ |
+| 5 | **变更串行化** | 一把可重入变更锁：所有改变世界的操作串行；**重入合法**（插件在 setup / dispose 里装卸别的插件）**且嵌套并入最外层**（一次用户动作 = 一个 revision）；每次有效变更 revision + 1（用前后签名判定——报错但世界确实变了也 +1，彻底回滚的失败不加）✅ |
+| 6 | **快照原语** | services / plugins / effects / revision / `last_change`（谁退位、谁激活）——loader、管理面、测试、启动器共用同一个读取面 ✅ |
 
 （引导 / 启动器不在这张表：它是组合根，不是机制——见上表「core · 引导」一行。）
 

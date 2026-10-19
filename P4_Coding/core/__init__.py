@@ -17,11 +17,14 @@
     步 2  插件装载与依赖驱动 ✅    inject / optional；pending / active / disabled / failed
     步 3  effect 回卷 ✅          注册即回卷：子先父后、一个失败不打断其余、失败不留半装
     步 4  事件 ✅                 on / emit（广播）/ waterfall（中间件链）；订阅随 effect 回卷
-    （条目 / 树 / 装配单 / 热插拔都是 loader 插件的事，不在 core。）
+    步 7  变更锁 + revision ✅    公共操作串行化；每次有效变更 revision +1 + 变更报告
+    步 8  引导（launcher）✅      自带启动器：boot(装配单) → Runtime；产品政策检查
+    （条目 / 树 / 装配单 / 热插拔都是 loader 插件的事，不在 core 的框架部分。）
 """
 
 from core.context import (
     PLUGIN_EFFECT_PREFIX,
+    ChangeReport,
     Context,
     DuplicateEffectError,
     DuplicatePluginError,
@@ -34,6 +37,16 @@ from core.context import (
     PluginInfo,
     PluginStatus,
 )
+from core.launcher import (
+    APPLICATION_ROLE,
+    ROLES,
+    BootError,
+    PolicyError,
+    Runtime,
+    boot,
+    check_product_policy,
+    dump,
+)
 from core.plugin import (
     Disposer,
     Plugin,
@@ -44,7 +57,11 @@ from core.plugin import (
 )
 
 __all__ = [
+    "APPLICATION_ROLE",
     "PLUGIN_EFFECT_PREFIX",
+    "ROLES",
+    "BootError",
+    "ChangeReport",
     "Context",
     "Disposer",
     "DuplicateEffectError",
@@ -58,6 +75,11 @@ __all__ = [
     "Plugin",
     "PluginInfo",
     "PluginStatus",
+    "PolicyError",
+    "Runtime",
+    "boot",
+    "check_product_policy",
+    "dump",
     "plugin_injects",
     "plugin_name",
     "plugin_optionals",

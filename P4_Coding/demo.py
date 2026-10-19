@@ -336,9 +336,118 @@ def main() -> None:
     show_tree("卸载 app 之后的树（条目离开树）：")
     print("     树空了吗？", tree_loader.snapshot() == ())
 
+    # ------------------------------------------------------------------
+    # 步 7：热插拔
+    # ------------------------------------------------------------------
+
+    section("步 7：热插拔 —— 运行中加一条 / 换配置 / 换实现")
+    hot = Ctx()
+    hot.load_plugin(
+        loader_plugin(
+            {
+                "greeter": tree_factory("greeter", ("greeting",)),
+                "polite": tree_factory("polite", ("farewell",), ("greeting",)),
+            }
+        )
+    )
+    hot_loader = hot.require(LOADER_SERVICE)
+    hot_loader.assemble([{"id": "hello", "name": "greeter"}])
+    print("初始 services =", [s for s in hot.services if s != "loader"])
+
+    rev = hot.revision
+    hot_loader.load({"id": "bye", "name": "polite"})   # 运行中加一条
+    print("load 一条后 services =", [s for s in hot.services if s != "loader"])
+    print("revision：", rev, "→", hot.revision, "；变更报告：",
+          f"退位={hot.last_change.retired} 激活={hot.last_change.activated}")
+
+    # 换配置：用同一件插件、不同参数（演示里用一个 flag 让新实例提供不同的值）
+    section("步 7 之二：update —— 造新失败时旧世界原样还在")
+    from plugins.loader import AssemblyError as LoaderError
+
+    def make_shop(label="旧店", boom=False):
+        class Shop:
+            name = "shop"
+
+            def setup(self, ctx):
+                if boom:
+                    raise RuntimeError("新配置的 setup 炸了")
+                ctx.provide("shop", label)
+
+        return Shop()
+
+    shop_ctx = Ctx()
+    shop_ctx.load_plugin(loader_plugin({"shop": make_shop}))
+    shop_loader = shop_ctx.require(LOADER_SERVICE)
+    shop_loader.assemble([{"id": "shop", "name": "shop", "config": {"label": "旧店"}}])
+    print("更新前：shop =", shop_ctx.require("shop"))
+
+    try:
+        shop_loader.update("shop", {"label": "新店", "boom": True})
+    except LoaderError as exc:
+        print("update 抛了 AssemblyError：", exc)
+    print("失败之后：shop =", shop_ctx.require("shop"), "（旧世界原样还在）")
+
+    shop_loader.update("shop", {"label": "新店"})
+    print("成功更新：shop =", shop_ctx.require("shop"))
+
+    # ------------------------------------------------------------------
+    # 步 8：启动器（core · 引导）+ 产品政策
+    # ------------------------------------------------------------------
+
+    section("步 8：启动器 —— boot(装配单) 一条命令起树")
+    from core import BootError, PolicyError, boot
+
+    catalog = {
+        "store": tree_factory("store", ("store",)),
+        "ui": tree_factory("ui", ("ui",), ("store",)),
+        "clock": tree_factory("clock", ("clock",)),
+    }
+    runtime = boot(
+        [
+            {"id": "store", "name": "store", "role": "base"},
+            {"id": "ui", "name": "ui", "role": "application"},
+        ],
+        catalog=catalog,
+        product=True,   # 这是"起产品"：要检查角色与应用化插件
+    )
+    try:
+        print("boot 成功，--dump：")
+        for line in runtime.dump().splitlines():
+            print("    ", line)
+        print("services =", [s for s in runtime.ctx.services if s != "loader"])
+    finally:
+        runtime.close()
+    print("close 之后 plugins =", runtime.ctx.plugins)
+
+    section("步 8 之二：产品政策 fail loud —— 没有应用化插件")
+    try:
+        boot(
+            [{"id": "store", "name": "store", "role": "base"}],
+            catalog=catalog,
+            product=True,
+        )
+    except PolicyError as exc:
+        print("抛了 PolicyError：", exc)
+
+    section("步 8 之三：空装配单也能起（基座自足）；裸装配不查产品政策")
+    bare = boot([], catalog=catalog)
+    print("空装配单 →", bare.dump())
+    bare.close()
+
+    plain = boot([{"id": "store", "name": "store"}], catalog=catalog)  # 没 role
+    print("裸装配（product=False）→ 起来了，条目数：", len(plain.snapshot()))
+    plain.close()
+
+    try:
+        boot([{"id": "x", "name": "不存在"}], catalog=catalog)
+    except BootError as exc:
+        print("装配失败抛 BootError：", exc)
+
 
 if __name__ == "__main__":
     main()
+
+
 
 
 

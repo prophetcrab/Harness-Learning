@@ -36,12 +36,20 @@ fail loud**（名字是地址，写错地址必须报出来）。两者的分工
     inject    必需：缺了 → pending（依赖齐的那一刻自动激活）；提供者走了 → 自动退位
     optional  可选：缺了 → 照常激活（用 ctx.get 容错）；来了 → 不重装
 
-还没做的（按 PLAN 的 M1 拆步表）：变更锁与 revision（步 7）。现在假定单线程。
+**变更串行化**（M1 步 7）：所有改变世界的操作走同一把**可重入**锁——
+并发请求（两个 HTTP 线程、模型工具线程、界面轮询）不会撕裂台账；重入是
+合法的（插件在自己的 setup / 清理里装卸别的插件）。每次**有效的**变更
+（服务表 / 插件状态 / effect 表真的变了）revision +1，并留下 `last_change`
+报告（谁退位、谁激活）——界面轮询与测试据此判断"变过没有"。
+
+还没做的（按 PLAN 的 M1 拆步表）：启动器（步 8）。
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -104,6 +112,19 @@ class PluginInfo:
     error: BaseException | None = None
 
 
+@dataclass(frozen=True)
+class ChangeReport:
+    """一次**有效变更**的报告（revision 与它一一对应）。
+
+    retired / activated 是插件名，按发生顺序；同一个插件在一次变更里先退位
+    又激活（重启）时，会同时出现在两边。
+    """
+
+    revision: int
+    retired: tuple[str, ...]
+    activated: tuple[str, ...]
+
+
 @dataclass
 class _PluginRecord:
     """台账里的一条记录：这个插件的生命周期状态只有一个事实来源，就是它。"""
@@ -164,11 +185,73 @@ class Context:
         #: 事件订阅表：事件名 → [(令牌, handler)]；令牌让退订精确到"哪一次订阅"。
         self._handlers: dict[str, list[tuple[int, EventHandler]]] = {}
         self._handler_seq = 0
+        #: 变更串行化：可重入（插件在 setup / 清理里装卸别的插件是合法的）。
+        self._lock = threading.RLock()
+        #: 变更嵌套深度 + 最外层变更开始时的状态签名（见 `_change`）。
+        self._change_depth = 0
+        self._change_before: tuple[Any, ...] | None = None
+        self._revision = 0
+        self._last_change: ChangeReport | None = None
+        self._report_retired: list[str] = []
+        self._report_activated: list[str] = []
         #: settle 重入保护（见 _settle）：稳定化过程中不再嵌套稳定化。
         self._settling = False
         #: 退位级联期间被抑制的插件名：它们刚被停用，但提供者的服务还没撤——
         #: 不抑制的话，级联途中触发的 settle 会看到它们"依赖齐备"又立刻复活。
         self._suppressed: set[str] = set()
+
+    # ------------------------------------------------------------------
+    # 变更串行化 / revision
+    # ------------------------------------------------------------------
+
+    @property
+    def revision(self) -> int:
+        """世界版本号：每次**有效变更** +1（失败且没留下痕迹的变更不加）。"""
+        with self._lock:
+            return self._revision
+
+    @property
+    def last_change(self) -> ChangeReport | None:
+        """最近一次有效变更的报告（谁退位、谁激活）；还没变过则为 None。"""
+        with self._lock:
+            return self._last_change
+
+    def _signature(self) -> tuple[Any, ...]:
+        """当前世界的"变没变"签名：服务表 + 插件状态 + effect 表。"""
+        return (
+            tuple(self._slots),
+            tuple((record.name, record.status) for record in self._plugins.values()),
+            tuple(self._effects),
+        )
+
+    @contextmanager
+    def _change(self) -> Iterator[None]:
+        """把一个公共操作包成"一次变更"：串行化 + 结束时判定 revision。
+
+        嵌套调用（插件 setup 里的 provide / load_plugin …）并入最外层那一次：
+        一次用户动作只产生一个 revision。判定用**前后签名对比**——操作报错但
+        世界确实变了（例如清理失败）也要 +1；彻底回滚干净的失败则不加。
+        """
+        with self._lock:
+            outermost = self._change_depth == 0
+            if outermost:
+                self._change_before = self._signature()
+                self._report_retired = []
+                self._report_activated = []
+            self._change_depth += 1
+            try:
+                yield
+            finally:
+                self._change_depth -= 1
+                if outermost:
+                    before, self._change_before = self._change_before, None
+                    if before != self._signature():
+                        self._revision += 1
+                        self._last_change = ChangeReport(
+                            revision=self._revision,
+                            retired=tuple(self._report_retired),
+                            activated=tuple(self._report_activated),
+                        )
 
     # ------------------------------------------------------------------
     # 服务（命名单槽）
@@ -190,14 +273,15 @@ class Context:
         """
         if not isinstance(key, str) or not key:
             raise ValueError(f"服务名必须是非空字符串，收到：{key!r}")
-        if key in self._slots:
-            raise DuplicateSlotError(
-                f"服务已提供：{key}（重复注册直接报错，不静默覆盖；要换实现先 retract）"
-            )
-        self._slots[key] = value
-        if self._stack:  # 装载期：登记自动回卷（卸载时把它撤掉）
-            self._stack[-1].disposers.append(lambda k=key: self._slots.pop(k, None))
-        self._settle()
+        with self._change():
+            if key in self._slots:
+                raise DuplicateSlotError(
+                    f"服务已提供：{key}（重复注册直接报错，不静默覆盖；要换实现先 retract）"
+                )
+            self._slots[key] = value
+            if self._stack:  # 装载期：登记自动回卷（卸载时把它撤掉）
+                self._stack[-1].disposers.append(lambda k=key: self._slots.pop(k, None))
+            self._settle()
 
     def retract(self, key: str) -> Any:
         """撤掉一项服务并返回原值；不存在 → MissingServiceError。
@@ -210,9 +294,10 @@ class Context:
         """
         if key not in self._slots:
             raise MissingServiceError(f"服务不存在：{key}（无法撤掉）")
-        value = self._slots.pop(key)
-        self._settle()
-        return value
+        with self._change():
+            value = self._slots.pop(key)
+            self._settle()
+            return value
 
     def get(self, key: str, default: Any = None) -> Any:
         """取一项服务；缺失返回 default（"可选依赖"的取法）。
@@ -231,7 +316,8 @@ class Context:
     @property
     def services(self) -> list[str]:
         """当前已提供的服务名（**按提供顺序**的快照：调用方改它不影响容器）。"""
-        return list(self._slots)
+        with self._lock:
+            return list(self._slots)
 
     # ------------------------------------------------------------------
     # effect（注册即回卷）
@@ -258,7 +344,8 @@ class Context:
 
         `name` 以 `plugin:` 开头 → ValueError（那是插件自己的命名空间）。
         """
-        return self._effect(name, install, internal=False)
+        with self._change():
+            return self._effect(name, install, internal=False)
 
     def unload_effect(self, name: str) -> None:
         """卸载一个 effect（连同它的子 effect）；不存在 → MissingEffectError。
@@ -276,7 +363,8 @@ class Context:
     @property
     def effects(self) -> list[str]:
         """当前装载的 effect 名（按装载顺序；含插件自己的 `plugin:<名>`）。"""
-        return list(self._effects)
+        with self._lock:
+            return list(self._effects)
 
     # ------------------------------------------------------------------
     # 事件（广播 / 瀑布）
@@ -379,18 +467,20 @@ class Context:
             inject=plugin_injects(plugin),
             optional=plugin_optionals(plugin),
         )
-        self._plugins[name] = record
-        try:
-            self._settle()
-        except BaseException:
-            if record.status == "failed":
-                self._plugins.pop(name, None)
-            raise
+        with self._change():
+            self._plugins[name] = record
+            try:
+                self._settle()
+            except BaseException:
+                if record.status == "failed":
+                    self._plugins.pop(name, None)
+                raise
 
         def handle() -> None:
             # 认"这一次装载"（记录身份），不是名字（见模块开头的「句柄语义」）。
-            if self._plugins.get(name) is record:
-                self.unload_plugin(name)
+            with self._lock:
+                if self._plugins.get(name) is record:
+                    self.unload_plugin(name)
 
         return handle
 
@@ -407,17 +497,18 @@ class Context:
         record = self._plugins.pop(name, None)
         if record is None:
             raise MissingPluginError(f"插件不存在：{name}（无法卸载）")
-        dependents = list(reversed(self._dependent_records(record)))
-        errors: list[BaseException] = []
-        self._suppressed.update(dep.name for dep in dependents)
-        try:
-            for dependent in dependents:
-                self._deactivate_into(dependent, errors)
-            self._deactivate_into(record, errors)
-        finally:
-            for dependent in dependents:
-                self._suppressed.discard(dependent.name)
-        self._settle()
+        with self._change():
+            dependents = list(reversed(self._dependent_records(record)))
+            errors: list[BaseException] = []
+            self._suppressed.update(dep.name for dep in dependents)
+            try:
+                for dependent in dependents:
+                    self._deactivate_into(dependent, errors)
+                self._deactivate_into(record, errors)
+            finally:
+                for dependent in dependents:
+                    self._suppressed.discard(dependent.name)
+            self._settle()
         if errors:
             raise errors[0]
 
@@ -440,18 +531,19 @@ class Context:
         if record.status == "disabled":
             raise ValueError(f"插件已处于停用状态：{name}")
         dependents = list(reversed(self._dependent_records(record)))
-        # 先改自己的状态：回卷途中若触发 settle，它不能把自己当作 pending 复活。
-        record.status = "disabled"
-        self._suppressed.update(dep.name for dep in dependents)
-        errors: list[BaseException] = []
-        try:
-            for dependent in dependents:
-                self._deactivate_into(dependent, errors)
-            self._deactivate_into(record, errors, status="disabled")
-        finally:
-            for dependent in dependents:
-                self._suppressed.discard(dependent.name)
-        self._settle()
+        with self._change():
+            # 先改自己的状态：回卷途中若触发 settle，它不能把自己当作 pending 复活。
+            record.status = "disabled"
+            self._suppressed.update(dep.name for dep in dependents)
+            errors: list[BaseException] = []
+            try:
+                for dependent in dependents:
+                    self._deactivate_into(dependent, errors)
+                self._deactivate_into(record, errors, status="disabled")
+            finally:
+                for dependent in dependents:
+                    self._suppressed.discard(dependent.name)
+            self._settle()
         if errors:
             raise errors[0]
         return [record.name, *(dep.name for dep in dependents)]
@@ -469,43 +561,48 @@ class Context:
             raise ValueError(
                 f"插件当前是 {record.status}，不需要启用（只有 disabled / failed 可以）"
             )
-        record.status = "pending"
-        record.error = None
-        self._settle()
+        with self._change():
+            record.status = "pending"
+            record.error = None
+            self._settle()
 
     @property
     def plugins(self) -> list[PluginInfo]:
         """全部插件的状态快照（按装载顺序）。"""
-        return [
-            PluginInfo(
-                name=record.name,
-                status=record.status,
-                inject=record.inject,
-                missing=tuple(dep for dep in record.inject if dep not in self._slots),
-                optional=record.optional,
-                missing_optionals=tuple(
-                    dep for dep in record.optional if dep not in self._slots
-                ),
-                provided=record.provided,
-                error=record.error,
-            )
-            for record in self._plugins.values()
-        ]
+        with self._lock:
+            return [
+                PluginInfo(
+                    name=record.name,
+                    status=record.status,
+                    inject=record.inject,
+                    missing=tuple(dep for dep in record.inject if dep not in self._slots),
+                    optional=record.optional,
+                    missing_optionals=tuple(
+                        dep for dep in record.optional if dep not in self._slots
+                    ),
+                    provided=record.provided,
+                    error=record.error,
+                )
+                for record in self._plugins.values()
+            ]
 
     @property
     def active_plugins(self) -> list[str]:
         """运行中的插件名（按装载顺序）。"""
-        return [rec.name for rec in self._plugins.values() if rec.status == "active"]
+        with self._lock:
+            return [rec.name for rec in self._plugins.values() if rec.status == "active"]
 
     @property
     def pending_plugins(self) -> list[str]:
         """等待依赖的插件名（按装载顺序）——启动器检查残留用的就是它。"""
-        return [rec.name for rec in self._plugins.values() if rec.status == "pending"]
+        with self._lock:
+            return [rec.name for rec in self._plugins.values() if rec.status == "pending"]
 
     @property
     def disabled_plugins(self) -> list[str]:
         """被停用的插件名（按装载顺序）。"""
-        return [rec.name for rec in self._plugins.values() if rec.status == "disabled"]
+        with self._lock:
+            return [rec.name for rec in self._plugins.values() if rec.status == "disabled"]
 
     def missing_dependencies(self, name: str) -> list[str]:
         """某个插件当前缺失的必需依赖（用于 fail-loud 文案 / 观测）。"""
@@ -565,8 +662,9 @@ class Context:
 
     def _unload_named(self, name: str) -> None:
         """按名字回卷 + 稳定化 + 重抛第一个清理异常（公共入口与句柄共用）。"""
-        errors = self._unload_effect(name)
-        self._settle()
+        with self._change():
+            errors = self._unload_effect(name)
+            self._settle()
         if errors:
             raise errors[0]
 
@@ -636,6 +734,7 @@ class Context:
         record.provided = tuple(key for key in self._slots if key not in before)
         record.status = "active"
         record.error = None
+        self._report_activated.append(record.name)
 
     def _deactivate(self, record: _PluginRecord, *, status: PluginStatus = "pending") -> None:
         """回卷一个插件：卸载它的 effect（子先父后、服务自动撤销）。
@@ -648,6 +747,7 @@ class Context:
         record.provided = ()
         effect_name, record.effect = record.effect, None
         if effect_name is not None:
+            self._report_retired.append(record.name)
             errors = self._unload_effect(effect_name)
             if errors:
                 raise errors[0]  # 清理失败 fail loud（其余回卷照常完成）

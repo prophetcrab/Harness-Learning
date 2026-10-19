@@ -26,7 +26,7 @@
 - [P1_Coding/README.md](P1_Coding/README.md) —— M1–M3 练习路线（简介 / 模块 / 用法）
 - [P2_Coding/README.md](P2_Coding/README.md) —— M4–M7 的 11 个最小扩展阶段
 - [P3_Coding/README.md](P3_Coding/README.md) —— 插件化基础包（三层结构 / 二十个插件 / 运行方法 / **与 dsh 的同形度核对**）；阶段计划见 [P3_Coding/PLAN.md](P3_Coding/PLAN.md)
-- [P4_Coding/PLAN.md](P4_Coding/PLAN.md) —— P4 目标：**插件底座 + 三类插件 → 一个可用产品**（🏗️ 基座开工：M1 步 1–6 已绿；**全部从零重写、不搬 P3**，逐个小步；入口 [P4_Coding/README.md](P4_Coding/README.md)）
+- [P4_Coding/PLAN.md](P4_Coding/PLAN.md) —— P4 目标：**插件底座 + 三类插件 → 一个可用产品**（🏗️ **M1 基座完成**（8 步 165 用例）；**全部从零重写、不搬 P3**；入口 [P4_Coding/README.md](P4_Coding/README.md)）
 
 **核心纪律**：无验收不开始、无笔记（决策记录）不算完成、门禁不绿不前进。
 
