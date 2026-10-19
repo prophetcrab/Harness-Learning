@@ -2,7 +2,7 @@
 
 - 日期：2026-10-16
 - 阶段：P4_Coding（目标已定，未开工；本记录定基座边界）
-- 状态：草案（与用户确认后转「已采纳」）
+- 状态：已采纳（M1 按此边界完成；2026-10-19 补记：动态 `ctx.inject` 已落地、插件级 `requires` 已加入）
 
 ## 背景
 
@@ -73,18 +73,25 @@
    `base / application / capability` 这套词表与「至少一个应用化插件」的断言属于
    产品政策，在启动器执行。
 
-### core · 框架的职责清单（六件；2026-10-16 收束）
+### core · 框架的职责清单（六件 + 一个补丁；2026-10-16 收束）
 
 | # | 职责 | 关键语义（验收钉的点） |
 |---|---|---|
 | 1 | **服务槽位** | provide / get / require / retract；重名与缺失 fail loud；拒绝原子（原值不被动）；没有 set——换实现是显式 retract + provide ✅ 已绿（M1 步 1） |
 | 2 | **事件总线** | `on`（返回退订）/ `emit`（广播，注册序）/ `waterfall`（中间件链：`handler(value, **ctx)` 返回非 None 即替换）；handler 抛错 fail loud（吞错是消费方的策略，不是总线的）；装载期订阅随 effect 回卷 |
 | 3 | **effect 回卷** | `ctx.effect(install)`：装载期一切登记（服务、订阅、嵌套 effect、插件自己的资源）自动撤销；回卷"子先父后、同级后进先出"；一个 disposer 抛错不打断其余（最后重抛第一个）；装载失败不留半装 |
-| 4 | **单插件生命周期** | 插件协议（name / inject / optional / setup）；状态 pending / active / disabled / failed；settle 稳定化——依赖齐自动激活、提供者走了自动退位、**装载顺序无关**；load / unload / disable / enable；退位顺序"深的先退"（依赖者清理期间服务仍可用）；台账快照（missing / missing_optionals / error）✅ |
+| 4 | **单插件生命周期** | 插件协议（name / inject / optional / **requires** / setup）；状态 pending / active / disabled / failed；settle 稳定化——依赖齐自动激活、提供者走了自动退位、**装载顺序无关**；load / unload / disable / enable；退位顺序"深的先退"（依赖者清理期间服务仍可用）；台账快照（missing / missing_optionals / missing_requires / error）✅ |
 | 5 | **变更串行化** | 一把可重入变更锁：所有改变世界的操作串行；**重入合法**（插件在 setup / dispose 里装卸别的插件）**且嵌套并入最外层**（一次用户动作 = 一个 revision）；每次有效变更 revision + 1（用前后签名判定——报错但世界确实变了也 +1，彻底回滚的失败不加）✅ |
 | 6 | **快照原语** | services / plugins / effects / revision / `last_change`（谁退位、谁激活）——loader、管理面、测试、启动器共用同一个读取面 ✅ |
 
 （引导 / 启动器不在这张表：它是组合根，不是机制——见上表「core · 引导」一行。）
+
+**第 7 件（2026-10-16 补）：动态依赖 `ctx.inject(deps, callback)`**——与静态
+`inject` 是一对，解决"注册型副作用"：插件主体照常跑，**这一块**等依赖齐了才
+运行；依赖走了自动拆（回调的登记挂在子 effect 下）、回来重跑。`optional` 表达
+不了它（"来了不重装"），静态 inject 也表达不了（会拖住整个插件）。dsh 里 57 处
+用法全是这个形状（挂拦截器、加提示词段、注册变量）。订阅本身在装载期注册时
+随外层 effect 回卷；回调抛错标 failed、**不原地重试**（依赖变化后才重试）。
 
 **为什么事件必须是第二件"实权"机制**（dsh 实证）：72 个 harness 事件全走总线，且在
 主路径上——`agent/pre-step` 有 14 个消费者、工具管线四段 `tools/*-execute` 全是
@@ -112,7 +119,7 @@ waterfall、连 `llm/stream` 也是 waterfall。**循环不"调用"插件，而�
 | **日志服务** | 不进 core：dsh 里 `ctx.logger` 用量很大（142 个文件），是因为 TS 侧没有环境自带的日志设施；Python 有 stdlib `logging`，插件直接用它就是"谁都有的日志"。触发条件：需要**可替换的日志**（如把日志送进网页）时，做成一条订阅事件总线的能力插件 |
 | 定时器 / HMR / 配置 schema 框架 / 变更事件 | 不做或后置：各自等真实使用者（dsh 里 timer、HMR 是独立可选包；isolate / intercept / check 在 dsh 使用 0 次） |
 | `parallel` / `serial` / `bail` 分发模式 | 不加：dsh 72 个事件里 parallel 3、serial 2、bail 0；真要加是**新增方法**，不改已有 API |
-| 动态 `inject(deps, cb)` | 后置：触发条件 = 第一个真实需要"订阅式依赖"的插件（预计是 guard 类） |
+| ~~动态 `inject(deps, cb)`~~ | **已补（2026-10-16）**：`ctx.inject(deps, callback)` 进 core——依赖齐了跑一块、走了自动拆、回来重跑；回调的登记挂在子 effect 下，订阅在装载期注册时随外层 effect 回卷。理由：dsh 用了 57 处，且它解决的是 `optional`（来了不重装）与静态 inject（整插件等依赖）都表达不了的"注册型副作用" |
 
 ### 两条立场（沿前轮讨论）
 

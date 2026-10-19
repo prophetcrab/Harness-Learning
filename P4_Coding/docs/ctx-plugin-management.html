@@ -1,0 +1,1534 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ctx 如何管理插件 · P4 Harness</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f6f8;
+    --panel: #ffffff;
+    --panel-soft: #f8f9fb;
+    --text: #1b1f24;
+    --muted: #5d6672;
+    --border: #e1e5ea;
+    --border-strong: #cbd2da;
+    --active: #1f9254;
+    --active-bg: rgba(31, 146, 84, 0.08);
+    --pending: #a8700f;
+    --pending-bg: rgba(168, 112, 15, 0.08);
+    --disabled: #747e8c;
+    --disabled-bg: rgba(116, 126, 140, 0.08);
+    --failed: #c53030;
+    --failed-bg: rgba(197, 48, 48, 0.08);
+    --dynamic: #2563eb;
+    --code-bg: #eef1f4;
+    --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.06);
+    --radius: 12px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", monospace;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216;
+      --panel: #171b21;
+      --panel-soft: #1b2027;
+      --text: #e8eaed;
+      --muted: #9aa4b2;
+      --border: #2a3038;
+      --border-strong: #3a424d;
+      --active: #4ade80;
+      --active-bg: rgba(74, 222, 128, 0.10);
+      --pending: #fbbf24;
+      --pending-bg: rgba(251, 191, 36, 0.10);
+      --disabled: #94a3b8;
+      --disabled-bg: rgba(148, 163, 184, 0.10);
+      --failed: #f87171;
+      --failed-bg: rgba(248, 113, 113, 0.10);
+      --dynamic: #60a5fa;
+      --code-bg: #1e242c;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 40px 24px 64px;
+  }
+
+  header { margin-bottom: 28px; }
+
+  .eyebrow {
+    margin: 0 0 6px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+
+  h1 {
+    margin: 0 0 10px;
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .lede {
+    max-width: 760px;
+    margin: 0;
+    color: var(--muted);
+  }
+
+  .lede strong { color: var(--text); font-weight: 500; }
+
+  .sim {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 20px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-soft);
+  }
+
+  .toolbar-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  .btn {
+    appearance: none;
+    border: 1px solid var(--border-strong);
+    background: var(--panel);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+
+  .btn:hover:not(:disabled) {
+    background: var(--panel-soft);
+    border-color: var(--muted);
+  }
+
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  .step-counter {
+    min-width: 62px;
+    text-align: center;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .revision {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .revision strong {
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .timeline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .timeline button {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .timeline button:hover {
+    border-color: var(--muted);
+    color: var(--text);
+  }
+
+  .timeline button[aria-current="step"] {
+    border-color: var(--text);
+    background: var(--text);
+    color: var(--panel);
+  }
+
+  .sim-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr);
+    gap: 0;
+  }
+
+  .stage-column {
+    padding: 22px;
+    border-right: 1px solid var(--border);
+    min-width: 0;
+  }
+
+  .stage {
+    position: relative;
+    min-height: 420px;
+    padding: 6px;
+  }
+
+  .edges {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .nodes {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      "store reporter tools"
+      "llm router tools"
+      "approval metrics flaky";
+    gap: 18px 22px;
+    align-items: start;
+  }
+
+  .node {
+    grid-area: var(--area);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: 100%;
+    margin: 0;
+    padding: 11px 12px 10px 14px;
+    text-align: left;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--state-color, var(--border-strong));
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease;
+  }
+
+  .node[data-state="active"] { --state-color: var(--active); }
+  .node[data-state="pending"] { --state-color: var(--pending); }
+  .node[data-state="disabled"] { --state-color: var(--disabled); }
+  .node[data-state="failed"] { --state-color: var(--failed); }
+  .node[data-state="absent"] {
+    --state-color: var(--border-strong);
+    background: var(--panel-soft);
+    opacity: 0.55;
+    box-shadow: none;
+  }
+
+  .node[data-state="active"] { background: var(--active-bg); }
+  .node[data-state="pending"] { background: var(--pending-bg); }
+  .node[data-state="failed"] { background: var(--failed-bg); }
+  .node[data-state="disabled"] { background: var(--disabled-bg); }
+
+  .node:hover { border-color: var(--muted); }
+
+  .node[aria-pressed="true"] {
+    outline: 2px solid var(--text);
+    outline-offset: 1px;
+  }
+
+  .node-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 8px;
+  }
+
+  .node-name {
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+  }
+
+  .node-role {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+  }
+
+  .node-state {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--state-color, var(--muted));
+  }
+
+  .node-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 5px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .node-meta-label { color: var(--muted); }
+
+  .node-meta code {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text);
+    background: var(--code-bg);
+    padding: 0 4px;
+    border-radius: 4px;
+  }
+
+  .node-effect {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: var(--state-color, var(--muted));
+    flex: none;
+  }
+
+  .swatch.line {
+    width: 22px;
+    height: 0;
+    border-radius: 0;
+    border-top: 2px solid var(--line-color);
+  }
+
+  .swatch.line.dashed { border-top-style: dashed; }
+  .swatch.line.dotted { border-top-style: dotted; }
+
+  .panel {
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-width: 0;
+  }
+
+  .panel-block { min-width: 0; }
+
+  .panel-label {
+    margin: 0 0 5px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .step-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .step-note {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .report {
+    font-size: 13px;
+    line-height: 1.7;
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 10px 12px;
+  }
+
+  .report-tag {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 0 6px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--code-bg);
+    color: var(--text);
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--code-bg);
+    color: var(--text);
+  }
+
+  .empty-hint {
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .selection {
+    font-size: 13.5px;
+    line-height: 1.7;
+    border-left: 2px solid var(--border-strong);
+    padding-left: 11px;
+    color: var(--muted);
+  }
+
+  .selection strong { color: var(--text); font-weight: 500; }
+
+  .selection code {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--code-bg);
+    padding: 0 3px;
+    border-radius: 3px;
+  }
+
+  .mechanics {
+    margin-top: 34px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    box-shadow: var(--shadow);
+    min-width: 0;
+  }
+
+  .card h2 {
+    margin: 0 0 6px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .card p {
+    margin: 0 0 12px;
+    color: var(--muted);
+    font-size: 13.5px;
+  }
+
+  .card p:last-child { margin-bottom: 0; }
+
+  pre {
+    margin: 0;
+    padding: 12px 14px;
+    background: var(--code-bg);
+    border-radius: 8px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.65;
+    color: var(--text);
+  }
+
+  code.inline {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  .state-machine {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 12px;
+  }
+
+  .pill {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+  }
+
+  .pill.active { color: var(--active); border-color: var(--active); }
+  .pill.pending { color: var(--pending); border-color: var(--pending); }
+  .pill.disabled { color: var(--disabled); border-color: var(--disabled); }
+  .pill.failed { color: var(--failed); border-color: var(--failed); }
+
+  .arrow { color: var(--muted); font-size: 12px; }
+
+  .source-note {
+    margin-top: 26px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+
+  .source-note code {
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  @media (max-width: 900px) {
+    .sim-body { grid-template-columns: 1fr; }
+    .stage-column { border-right: 0; border-bottom: 1px solid var(--border); }
+    .mechanics { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 680px) {
+    .page { padding: 26px 14px 48px; }
+    h1 { font-size: 24px; }
+    .stage { min-height: 0; }
+    .nodes {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        "store"
+        "reporter"
+        "llm"
+        "router"
+        "tools"
+        "metrics"
+        "approval"
+        "flaky";
+      gap: 10px;
+    }
+    .edges { display: none; }
+    .toolbar { padding: 12px 14px; }
+    .timeline { padding: 10px 14px; }
+    .stage-column, .panel { padding: 16px 14px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <p class="eyebrow">P4_Coding / core/context.py</p>
+    <h1>ctx 如何管理插件</h1>
+    <p class="lede">
+      一次操作（装载、卸载、停用、提供一项服务）不会只改一个插件。它把世界推到
+      <strong>稳定态</strong>：依赖不满足的活动插件退位，依赖满足的等待插件激活，
+      相关 effect 逐层回卷。下面的 15 步重演了这套机制，点击任意插件可以看它此刻的
+      状态与回卷内容。
+    </p>
+  </header>
+
+  <section class="sim" aria-label="插件世界模拟器">
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <button class="btn" type="button" id="prev">← 上一步</button>
+        <span class="step-counter"><span id="step-index">0</span> / 15</span>
+        <button class="btn" type="button" id="next">下一步 →</button>
+        <button class="btn" type="button" id="replay">从头重放</button>
+      </div>
+      <div class="revision">revision <strong id="revision">0</strong></div>
+    </div>
+
+    <div class="timeline" id="timeline" role="group" aria-label="跳到某一步"></div>
+
+    <div class="sim-body">
+      <div class="stage-column">
+        <div class="stage" id="stage">
+          <svg class="edges" id="edges" aria-hidden="true" focusable="false">
+            <defs>
+              <marker id="arrow-satisfied" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path class="marker-satisfied" d="M0,0 L8,4 L0,8 Z"></path>
+              </marker>
+              <marker id="arrow-blocked" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path class="marker-blocked" d="M0,0 L8,4 L0,8 Z"></path>
+              </marker>
+              <marker id="arrow-optional" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path class="marker-optional" d="M0,0 L8,4 L0,8 Z"></path>
+              </marker>
+              <marker id="arrow-dynamic" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path class="marker-dynamic" d="M0,0 L8,4 L0,8 Z"></path>
+              </marker>
+            </defs>
+            <g id="edge-layer"></g>
+          </svg>
+
+          <div class="nodes" id="nodes">
+            <button class="node" type="button" data-id="store" style="--area: store" aria-pressed="false">
+              <span class="node-top"><span class="node-name">store</span><span class="node-role">base</span></span>
+              <span class="node-state"></span>
+              <span class="node-meta"><span class="node-meta-label">提供</span><code class="node-provides"></code></span>
+              <span class="node-meta"><span class="node-meta-label">依赖</span><span class="node-deps"></span></span>
+              <span class="node-effect"></span>
+            </button>
+
+            <button class="node" type="button" data-id="reporter" style="--area: reporter" aria-pressed="false">
+              <span class="node-top"><span class="node-name">reporter</span><span class="node-role">capability</span></span>
+              <span class="node-state"></span>
+              <span class="node-meta"><span class="node-meta-label">提供</span><code class="node-provides"></code></span>
+              <span class="node-meta"><span class="node-meta-label">依赖</span><span class="node-deps"></span></span>
+              <span class="node-effect"></span>
+            </button>
+
+            <button class="node" type="button" data-id="llm" style="--area: llm" aria-pressed="false">
+              <span class="node-top"><span class="node-name">llm</span><span class="node-role">base</span></span>
+              <span class="node-state"></span>
+              <span class="node-meta"><span class="node-meta-label">提供</span><code class="node-provides"></code></span>
+              <span class="node-meta"><span class="node-meta-label">依赖</span><span class="node-deps"></span></span>
+              <span class="node-effect"></span>
+            </button>
+
+            <button class="node" type="button" data-id="router" style="--area: router" aria-pressed="false">
+              <span class="node-top"><span class="node-name">router</span><span class="node-role">capability</span></span>
+              <span class="node-state"></span>
+              <span class="node-meta"><span class="node-meta-label">提供</span><code class="node-provides"></code></span>
+              <span class="node-meta"><span class="node-meta-label">依赖</span><span class="node-deps"></span></span>
+              <span class="node-effect"></span>
+            </button>
+
+            <button class="node" type="button" data-id="tools" style="--area: tools" aria-pressed="false">
+              <span class="node-top"><span class="node-name">tools</span><span class="node-role">capability</span></span>
+              <span class="node-state"></span>
+              <span class="node-meta"><span class="node-meta-label">提供</span><code class="node-provides"></code></span>
+              <span class="node-meta"><span class="node-meta-label">依赖</span><span class="node-deps"></span></span>
+              <span class="node-effect"></span>
+            </button>
+
+            <button class="node" type="button" data-id="metrics" style="--area: metrics" aria-pressed="false">
+              <span class="node-top"><span class="node-name">metrics</span><span class="node-role">capability</span></span>
+              <span class="node-state"></span>
+              <span class="node-meta"><span class="node-meta-label">提供</span><code class="node-provides"></code></span>
+              <span class="node-meta"><span class="node-meta-label">依赖</span><span class="node-deps"></span></span>
+              <span class="node-effect"></span>
+            </button>
+
+            <button class="node" type="button" data-id="approval" style="--area: approval" aria-pressed="false">
+              <span class="node-top"><span class="node-name">approval</span><span class="node-role">capability</span></span>
+              <span class="node-state"></span>
+              <span class="node-meta"><span class="node-meta-label">提供</span><code class="node-provides"></code></span>
+              <span class="node-meta"><span class="node-meta-label">依赖</span><span class="node-deps"></span></span>
+              <span class="node-effect"></span>
+            </button>
+
+            <button class="node" type="button" data-id="flaky" style="--area: flaky" aria-pressed="false">
+              <span class="node-top"><span class="node-name">flaky</span><span class="node-role">capability</span></span>
+              <span class="node-state"></span>
+              <span class="node-meta"><span class="node-meta-label">提供</span><code class="node-provides"></code></span>
+              <span class="node-meta"><span class="node-meta-label">依赖</span><span class="node-deps"></span></span>
+              <span class="node-effect"></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="legend" aria-label="图例">
+          <span class="legend-item"><span class="swatch" style="--state-color: var(--active)"></span>运行中</span>
+          <span class="legend-item"><span class="swatch" style="--state-color: var(--pending)"></span>等待依赖</span>
+          <span class="legend-item"><span class="swatch" style="--state-color: var(--disabled)"></span>已停用</span>
+          <span class="legend-item"><span class="swatch" style="--state-color: var(--failed)"></span>激活失败</span>
+          <span class="legend-item"><span class="swatch" style="--state-color: var(--border-strong)"></span>未装载</span>
+          <span class="legend-item"><span class="swatch line" style="--line-color: var(--active)"></span>必需依赖已满足</span>
+          <span class="legend-item"><span class="swatch line dashed" style="--line-color: var(--pending)"></span>等待必需依赖</span>
+          <span class="legend-item"><span class="swatch line dotted" style="--line-color: var(--dynamic)"></span>动态注入</span>
+        </div>
+      </div>
+
+      <aside class="panel" aria-live="polite">
+        <div class="panel-block">
+          <p class="panel-label">当前步骤</p>
+          <h2 class="step-title" id="step-title">空世界</h2>
+          <p class="step-note" id="step-note">台账为空，服务槽为空。</p>
+        </div>
+
+        <div class="panel-block">
+          <p class="panel-label">本次变化</p>
+          <div class="report" id="report">没有状态变化。</div>
+        </div>
+
+        <div class="panel-block">
+          <p class="panel-label">服务槽</p>
+          <div class="chips" id="services"></div>
+        </div>
+
+        <div class="panel-block">
+          <p class="panel-label">选中详情</p>
+          <div class="selection" id="selection">
+            点击左侧任意插件，查看它在当前步骤的状态、依赖与 effect。
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="mechanics" aria-label="机制速查">
+    <article class="card">
+      <h2>一、生命周期只有四种状态</h2>
+      <div class="state-machine">
+        <span class="pill pending">pending</span>
+        <span class="arrow">→ 依赖齐</span>
+        <span class="pill active">active</span>
+        <span class="arrow">→ 依赖走</span>
+        <span class="pill pending">pending</span>
+      </div>
+      <div class="state-machine">
+        <span class="pill active">active</span>
+        <span class="arrow">→ disable</span>
+        <span class="pill disabled">disabled</span>
+        <span class="arrow">→ enable</span>
+        <span class="pill pending">pending</span>
+      </div>
+      <div class="state-machine">
+        <span class="pill pending">pending</span>
+        <span class="arrow">→ setup 抛错</span>
+        <span class="pill failed">failed</span>
+        <span class="arrow">→ enable</span>
+        <span class="pill pending">pending</span>
+      </div>
+      <p>
+        <code class="inline">load_plugin</code> 返回时插件可能还在
+        <code class="inline">pending</code>——这不是错误，而是“等依赖”。真正的判断在
+        <code class="inline">settle()</code>：把世界反复推到稳定态。
+      </p>
+    </article>
+
+    <article class="card">
+      <h2>二、settle 是一个循环</h2>
+      <p>每次 provide / retract / load / unload / disable / enable 之后都会调用它。</p>
+<pre>while True:
+    活动插件里依赖不再满足的 → 退回 pending
+    pending 里依赖已经齐的   → 激活
+    动态注入：先停不满足的，再启动已齐的
+    if 这一轮没有任何变化:
+        break</pre>
+      <p>
+        激活永远发生在干净的顶层：若当前正在装载某个 effect（<code class="inline">_stack</code>
+        非空）或已经在 settle 中，本次直接返回，由外层收尾时再扫一遍。
+      </p>
+    </article>
+
+    <article class="card">
+      <h2>三、卸载是“深的先退”</h2>
+      <p>
+        提供者离开时，先算出依赖它的活动插件（服务闭包，按层扩展），反转顺序后逐个退位，
+        最后才回卷提供者自己。这样每个插件跑清理代码时，它依赖的服务都还在。
+      </p>
+<pre>plugin:tools
+  └─ effect 子节点（动态注入 / 嵌套）
+  └─ 退订事件
+  └─ 撤销提供的服务
+  └─ setup 返回的清理
+
+回卷顺序：子 effect 先；同级 LIFO。
+某个清理抛错不打断其余回卷，最后重抛第一个。</pre>
+      <p>
+        停用（disable）与卸载的区别只有一个：登记留在台账，<code class="inline">enable</code>
+        用同一个实例重跑 setup，配置与身份都不丢。
+      </p>
+    </article>
+
+    <article class="card">
+      <h2>四、两种协作通道，一种回卷纪律</h2>
+      <p>
+        插件之间只有服务与事件两条行为通道；类型与纯函数可以单向依赖基座
+        （capability → base），兄弟能力之间不互相 import。
+      </p>
+<pre>class Reporter:
+    name = "reporter"
+    inject = ("sessions",)      # 必需：缺了 → pending
+    optional = ("approval",)    # 可选：缺了 → 照常激活
+
+    def setup(self, ctx):
+        ctx.provide("report", ...)    # 注册即回卷
+        ctx.on("session/event", ...)  # 注册即回卷
+        ctx.inject(["llm"], self.attach_llm)
+        # 依赖出现才运行；依赖消失自动拆</pre>
+      <p>
+        三条不变式：fail loud、不留半装、回卷干净。每次有效变更 revision +1，
+        判定方式是操作前后的状态签名对比。
+      </p>
+    </article>
+  </section>
+
+  <p class="source-note">
+    演示按 <code>core/context.py</code> 的真实语义模拟：<code>load_plugin()</code>、
+    <code>_settle()</code>、<code>_unwind()</code>、<code>ctx.inject()</code>。
+    这里用 8 个示意插件（store / reporter / llm / router / tools / metrics / approval / flaky），
+    其中 flaky 用来演示 setup 抛错后的 failed 状态。
+  </p>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const PLUGINS = {
+    store: {
+      role: "base",
+      provides: ["sessions"],
+      inject: [],
+      optional: [],
+      teardown: ["撤销 sessions"]
+    },
+    reporter: {
+      role: "capability",
+      provides: ["report"],
+      inject: ["sessions"],
+      optional: [],
+      teardown: ["setup 清理", "退订 session/event", "撤销 report"]
+    },
+    llm: {
+      role: "base",
+      provides: ["llm"],
+      inject: [],
+      optional: [],
+      teardown: ["撤销 llm"]
+    },
+    router: {
+      role: "capability",
+      provides: ["route"],
+      inject: ["llm"],
+      optional: ["approval"],
+      teardown: ["setup 清理", "退订 llm/call", "撤销 route"]
+    },
+    tools: {
+      role: "capability",
+      provides: ["tool-admin"],
+      inject: ["route"],
+      optional: [],
+      teardown: ["撤销 tool-admin"]
+    },
+    metrics: {
+      role: "capability",
+      provides: [],
+      inject: [],
+      optional: [],
+      teardown: ["退订 llm/finish"]
+    },
+    approval: {
+      role: "capability",
+      provides: ["approval"],
+      inject: [],
+      optional: [],
+      teardown: ["撤销 approval"]
+    },
+    flaky: {
+      role: "capability",
+      provides: ["flaky-svc"],
+      inject: ["report"],
+      optional: [],
+      teardown: ["撤销 flaky-svc"]
+    }
+  };
+
+  const DISPLAY_ORDER = ["store", "reporter", "llm", "router", "tools", "metrics", "approval", "flaky"];
+  const LEDGER_ORDER = ["reporter", "store", "metrics", "llm", "router", "tools", "approval", "flaky"];
+
+  const EDGES = [
+    { from: "store", to: "reporter", label: "sessions", kind: "inject" },
+    { from: "llm", to: "router", label: "llm", kind: "inject" },
+    { from: "approval", to: "router", label: "approval ?", kind: "optional" },
+    { from: "router", to: "tools", label: "route", kind: "inject" },
+    { from: "llm", to: "metrics", label: "ctx.inject", kind: "dynamic" },
+    { from: "reporter", to: "flaky", label: "report", kind: "inject" }
+  ];
+
+  const STATUS_LABEL = {
+    absent: "未装载",
+    pending: "等待依赖",
+    active: "运行中",
+    disabled: "已停用",
+    failed: "激活失败"
+  };
+
+  const STEPS = [
+    {
+      title: "空世界",
+      note: "台账为空，服务槽为空。",
+      apply() {}
+    },
+    {
+      title: "装载 reporter",
+      note: "声明 inject = sessions；依赖缺失 → pending，setup 一行都没跑。",
+      apply(world, events) { load(world, "reporter", events); }
+    },
+    {
+      title: "装载 store",
+      note: "提供 sessions。同一次 settle 里 reporter 自动激活——装载顺序无关。",
+      apply(world, events) { load(world, "store", events); }
+    },
+    {
+      title: "装载 metrics",
+      note: "本体立即 active；ctx.inject([\"llm\"]) 先登记为 pending 订阅。",
+      apply(world, events) { load(world, "metrics", events); }
+    },
+    {
+      title: "装载 llm",
+      note: "动态订阅的依赖齐了：回调放进子 effect 里运行，metrics 本体不重装。",
+      apply(world, events) { load(world, "llm", events); }
+    },
+    {
+      title: "装载 router",
+      note: "必需依赖 llm 就绪；optional 的 approval 还不在。",
+      apply(world, events) { load(world, "router", events); }
+    },
+    {
+      title: "装载 tools",
+      note: "route 就绪 → 级联激活。",
+      apply(world, events) { load(world, "tools", events); }
+    },
+    {
+      title: "装载 approval",
+      note: "optional 从缺失变就绪；router 不会因此重装——optional 只在激活那一刻看一次。",
+      apply(world, events) { load(world, "approval", events); }
+    },
+    {
+      title: "卸载 store",
+      note: "依赖者 reporter 先退位（pending），再回卷 store 的 effect——清理代码运行时依赖的服务还在。",
+      apply(world, events) { unload(world, "store", events); }
+    },
+    {
+      title: "重新装载 store",
+      note: "同一份数据再装一次；reporter 自动复活。",
+      apply(world, events) { load(world, "store", events); }
+    },
+    {
+      title: "停用 llm",
+      note: "tools → router → llm 深的先退；动态注入停止，但订阅保留。",
+      apply(world, events) { disable(world, "llm", events); }
+    },
+    {
+      title: "启用 llm",
+      note: "同一批插件自动恢复；动态注入重新安装。",
+      apply(world, events) { enable(world, "llm", events); }
+    },
+    {
+      title: "停用 store",
+      note: "reporter 退回 pending；store 的登记还在台账（enable 可恢复）。",
+      apply(world, events) { disable(world, "store", events); }
+    },
+    {
+      title: "装载 flaky",
+      note: "它注入 report，而 reporter 正在 pending → flaky 也停在 pending。",
+      apply(world, events) { load(world, "flaky", events); }
+    },
+    {
+      title: "启用 store",
+      note: "reporter 激活；flaky 的 setup 随后抛错 → failed 留在台账，错误从触发方抛出。",
+      apply(world, events) { enable(world, "store", events); }
+    },
+    {
+      title: "启用 flaky",
+      note: "同一实例重跑 setup → active；失败的 effect 已回卷，不会留下半装。",
+      apply(world, events) { enable(world, "flaky", events); }
+    }
+  ];
+
+  function emptyEvents() {
+    return {
+      loaded: [],
+      retired: [],
+      activated: [],
+      injectionsStarted: [],
+      injectionsStopped: [],
+      failed: []
+    };
+  }
+
+  function freshWorld() {
+    const status = {};
+    for (const id of DISPLAY_ORDER) status[id] = "absent";
+    return { status, dynamic: false, flakyFails: 1, revision: 0, lastEvents: emptyEvents() };
+  }
+
+  function hasService(world, name) {
+    return DISPLAY_ORDER.some(
+      (id) => world.status[id] === "active" && PLUGINS[id].provides.includes(name)
+    );
+  }
+
+  function signature(world) {
+    return JSON.stringify({ status: world.status, dynamic: world.dynamic });
+  }
+
+  function dependentClosure(world, providerId) {
+    const going = new Set(PLUGINS[providerId].provides);
+    const selected = [];
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const id of LEDGER_ORDER) {
+        if (id === providerId || selected.includes(id)) continue;
+        if (world.status[id] !== "active") continue;
+        if (PLUGINS[id].inject.some((dep) => going.has(dep))) {
+          selected.push(id);
+          for (const service of PLUGINS[id].provides) going.add(service);
+          changed = true;
+        }
+      }
+    }
+    return selected;
+  }
+
+  function settle(world, events) {
+    let guard = 0;
+    while (guard++ < 50) {
+      let changed = false;
+
+      if (world.dynamic && (world.status.metrics !== "active" || !hasService(world, "llm"))) {
+        world.dynamic = false;
+        events.injectionsStopped.push("inject:1");
+        changed = true;
+      }
+
+      for (const id of LEDGER_ORDER) {
+        if (
+          world.status[id] === "active" &&
+          PLUGINS[id].inject.some((dep) => !hasService(world, dep))
+        ) {
+          world.status[id] = "pending";
+          events.retired.push(id);
+          changed = true;
+        }
+      }
+
+      for (const id of LEDGER_ORDER) {
+        if (world.status[id] !== "pending") continue;
+        if (!PLUGINS[id].inject.every((dep) => hasService(world, dep))) continue;
+        if (id === "flaky" && world.flakyFails > 0) {
+          world.flakyFails -= 1;
+          world.status[id] = "failed";
+          events.failed.push(id);
+          return;
+        }
+        world.status[id] = "active";
+        events.activated.push(id);
+        changed = true;
+      }
+
+      if (!world.dynamic && world.status.metrics === "active" && hasService(world, "llm")) {
+        world.dynamic = true;
+        events.injectionsStarted.push("inject:1");
+        changed = true;
+      }
+
+      if (!changed) return;
+    }
+  }
+
+  function load(world, id, events) {
+    if (world.status[id] !== "absent") return;
+    world.status[id] = "pending";
+    events.loaded.push(id);
+    settle(world, events);
+  }
+
+  function unload(world, id, events) {
+    if (world.status[id] === "absent") return;
+    const dependents = dependentClosure(world, id);
+    for (const dependent of dependents.slice().reverse()) {
+      world.status[dependent] = "pending";
+      events.retired.push(dependent);
+    }
+    world.status[id] = "absent";
+    events.retired.push(id);
+    settle(world, events);
+  }
+
+  function disable(world, id, events) {
+    if (world.status[id] !== "active") return;
+    const dependents = dependentClosure(world, id);
+    for (const dependent of dependents.slice().reverse()) {
+      world.status[dependent] = "pending";
+      events.retired.push(dependent);
+    }
+    world.status[id] = "disabled";
+    events.retired.push(id);
+    settle(world, events);
+  }
+
+  function enable(world, id, events) {
+    if (world.status[id] !== "disabled" && world.status[id] !== "failed") return;
+    world.status[id] = "pending";
+    settle(world, events);
+  }
+
+  const nodeEls = {};
+  const nodeList = document.querySelectorAll(".node");
+  nodeList.forEach((el) => {
+    nodeEls[el.dataset.id] = el;
+    el.addEventListener("click", () => {
+      selectedId = selectedId === el.dataset.id ? null : el.dataset.id;
+      render();
+    });
+  });
+
+  const stage = document.getElementById("stage");
+  const edgeLayer = document.getElementById("edge-layer");
+  const prevBtn = document.getElementById("prev");
+  const nextBtn = document.getElementById("next");
+  const replayBtn = document.getElementById("replay");
+  const stepIndex = document.getElementById("step-index");
+  const stepTitle = document.getElementById("step-title");
+  const stepNote = document.getElementById("step-note");
+  const revisionEl = document.getElementById("revision");
+  const reportEl = document.getElementById("report");
+  const servicesEl = document.getElementById("services");
+  const selectionEl = document.getElementById("selection");
+  const timelineEl = document.getElementById("timeline");
+
+  let current = 0;
+  let selectedId = null;
+  let world = freshWorld();
+  let edgeFrame = 0;
+
+  STEPS.forEach((step, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = String(index);
+    button.setAttribute("aria-label", `第 ${index} 步：${step.title}`);
+    button.title = `${index}. ${step.title}`;
+    timelineEl.appendChild(button);
+  });
+  const timelineButtons = Array.from(timelineEl.children);
+
+  function rebuild() {
+    world = freshWorld();
+    let revision = 0;
+    let lastEvents = emptyEvents();
+    for (let index = 0; index <= current; index += 1) {
+      const before = signature(world);
+      const events = emptyEvents();
+      STEPS[index].apply(world, events);
+      if (signature(world) !== before) revision += 1;
+      lastEvents = events;
+    }
+    world.revision = revision;
+    world.lastEvents = lastEvents;
+    render();
+  }
+
+  function render() {
+    const step = STEPS[current];
+    stepIndex.textContent = String(current);
+    stepTitle.textContent = step.title;
+    stepNote.textContent = step.note;
+    revisionEl.textContent = String(world.revision);
+
+    prevBtn.disabled = current === 0;
+    nextBtn.disabled = current === STEPS.length - 1;
+    timelineButtons.forEach((button, index) => {
+      if (index === current) {
+        button.setAttribute("aria-current", "step");
+      } else {
+        button.removeAttribute("aria-current");
+      }
+    });
+
+    for (const id of DISPLAY_ORDER) {
+      const el = nodeEls[id];
+      const state = world.status[id];
+      el.dataset.state = state;
+      el.setAttribute("aria-pressed", selectedId === id ? "true" : "false");
+      el.setAttribute(
+        "aria-label",
+        `${id}，${STATUS_LABEL[state]}，提供 ${PLUGINS[id].provides.join("、") || "无"}`
+      );
+      el.querySelector(".node-state").textContent = STATUS_LABEL[state];
+      el.querySelector(".node-provides").textContent =
+        PLUGINS[id].provides.length > 0 ? PLUGINS[id].provides.join("、") : "—";
+
+      let deps = PLUGINS[id].inject.length > 0 ? PLUGINS[id].inject.join("、") : "—";
+      if (PLUGINS[id].optional.length > 0) {
+        const ready = PLUGINS[id].optional.every((dep) => hasService(world, dep));
+        deps += ` · 可选 ${PLUGINS[id].optional.join("、")} ${ready ? "就绪" : "缺失"}`;
+      }
+      el.querySelector(".node-deps").textContent = deps;
+      el.querySelector(".node-effect").textContent = effectLine(id, state);
+    }
+
+    renderServices();
+    renderReport();
+    renderSelection();
+    scheduleEdges();
+  }
+
+  function effectLine(id, state) {
+    if (state === "absent") return "未装载";
+    if (state === "pending") return "effect · 尚未创建";
+    if (state === "disabled") return "effect · 已回卷，登记保留";
+    if (state === "failed") return "effect · 已回卷，错误保留";
+    if (id === "metrics") {
+      return world.dynamic ? "动态注入 · 生效" : "动态注入 · 等待 llm";
+    }
+    return `effect · ${PLUGINS[id].teardown.length} 项登记`;
+  }
+
+  function renderServices() {
+    servicesEl.textContent = "";
+    const services = [];
+    for (const id of DISPLAY_ORDER) {
+      if (world.status[id] !== "active") continue;
+      for (const service of PLUGINS[id].provides) services.push(service);
+    }
+    if (services.length === 0) {
+      const empty = document.createElement("span");
+      empty.className = "empty-hint";
+      empty.textContent = "（空）";
+      servicesEl.appendChild(empty);
+      return;
+    }
+    for (const service of services) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = service;
+      servicesEl.appendChild(chip);
+    }
+  }
+
+  function reportText(events) {
+    const groups = [
+      ["装入", events.loaded],
+      ["退位", events.retired],
+      ["激活", events.activated],
+      ["注入开始", events.injectionsStarted],
+      ["注入停止", events.injectionsStopped],
+      ["失败", events.failed]
+    ];
+    const parts = [];
+    for (const [label, values] of groups) {
+      const unique = [...new Set(values)];
+      if (unique.length === 0) continue;
+      const tag = document.createElement("span");
+      tag.className = "report-tag";
+      tag.textContent = label;
+      parts.push(tag, document.createTextNode(unique.join("、") + "  "));
+    }
+    return parts;
+  }
+
+  function renderReport() {
+    reportEl.textContent = "";
+    const parts = reportText(world.lastEvents);
+    if (parts.length === 0) {
+      reportEl.textContent = "没有状态变化（revision 不变）。";
+      return;
+    }
+    parts.forEach((part) => reportEl.appendChild(part));
+  }
+
+  function detailFor(id) {
+    const state = world.status[id];
+    if (state === "absent") {
+      return `台账里没有 ${id} 的记录。load_plugin("${id}") 会先把它放成 pending，再由 settle 决定是否激活。`;
+    }
+    if (state === "pending") {
+      const missing = [
+        ...PLUGINS[id].inject.filter((dep) => !hasService(world, dep)),
+        ...PLUGINS[id].optional.filter((dep) => !hasService(world, dep))
+      ];
+      return missing.length > 0
+        ? `缺少 ${missing.join("、")}。setup 尚未运行，台账里只有登记，没有 effect。`
+        : "依赖已经齐备，等待下一次 settle 激活。";
+    }
+    if (state === "disabled") {
+      return `effect 已经回卷，但登记保留。enable_plugin("${id}") 会用同一个实例重跑 setup，配置与身份都不丢。`;
+    }
+    if (state === "failed") {
+      return "setup 抛错 → effect 已回卷，记录以 failed 留在台账；enable_plugin 可以重试。";
+    }
+    if (id === "metrics") {
+      return world.dynamic
+        ? "本体 active；动态注入的子 effect 生效：订阅 llm/finish。llm 消失时只回卷这一块，订阅保留。"
+        : "本体 active；动态注入在等 llm。订阅已登记，llm 出现时回调自动运行。";
+    }
+    return `effect 回卷顺序：${PLUGINS[id].teardown.join(" → ")}。`;
+  }
+
+  function renderSelection() {
+    selectionEl.textContent = "";
+    if (selectedId === null) {
+      selectionEl.textContent = "点击左侧任意插件，查看它在当前步骤的状态、依赖与 effect。";
+      return;
+    }
+    const strong = document.createElement("strong");
+    strong.textContent = `${selectedId}：`;
+    const state = document.createElement("span");
+    state.textContent = `${STATUS_LABEL[world.status[selectedId]]}。`;
+    const detail = document.createElement("span");
+    detail.textContent = detailFor(selectedId);
+    selectionEl.append(strong, state, document.createTextNode(" "), detail);
+  }
+
+  function nodeRect(el) {
+    const base = stage.getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
+    return {
+      left: rect.left - base.left,
+      top: rect.top - base.top,
+      right: rect.right - base.left,
+      bottom: rect.bottom - base.top,
+      width: rect.width,
+      height: rect.height
+    };
+  }
+
+  function edgeClass(edge) {
+    if (edge.kind === "dynamic") {
+      return world.dynamic ? "edge-dynamic" : "edge-optional";
+    }
+    const providerActive = world.status[edge.from] === "active";
+    const consumerActive = world.status[edge.to] === "active";
+    if (edge.kind === "optional") {
+      return providerActive && consumerActive ? "edge-satisfied" : "edge-optional";
+    }
+    return providerActive && consumerActive ? "edge-satisfied" : "edge-blocked";
+  }
+
+  function markerFor(className) {
+    if (className === "edge-satisfied") return "url(#arrow-satisfied)";
+    if (className === "edge-blocked") return "url(#arrow-blocked)";
+    if (className === "edge-dynamic") return "url(#arrow-dynamic)";
+    return "url(#arrow-optional)";
+  }
+
+  function drawEdges() {
+    edgeLayer.textContent = "";
+    if (window.matchMedia("(max-width: 680px)").matches) return;
+
+    for (const edge of EDGES) {
+      if (world.status[edge.from] === "absent" || world.status[edge.to] === "absent") continue;
+      const sourceEl = nodeEls[edge.from];
+      const targetEl = nodeEls[edge.to];
+      if (!sourceEl || !targetEl) continue;
+
+      const source = nodeRect(sourceEl);
+      const target = nodeRect(targetEl);
+      const sourceCenter = { x: source.left + source.width / 2, y: source.top + source.height / 2 };
+      const targetCenter = { x: target.left + target.width / 2, y: target.top + target.height / 2 };
+      const dx = targetCenter.x - sourceCenter.x;
+      const dy = targetCenter.y - sourceCenter.y;
+      const horizontal = Math.abs(dx) >= Math.abs(dy) * 0.9;
+
+      const start = horizontal
+        ? { x: dx >= 0 ? source.right : source.left, y: sourceCenter.y }
+        : { x: sourceCenter.x, y: dy >= 0 ? source.bottom : source.top };
+      const end = horizontal
+        ? { x: dx >= 0 ? target.left : target.right, y: targetCenter.y }
+        : { x: targetCenter.x, y: dy >= 0 ? target.top : target.bottom };
+
+      const bend = Math.max(24, Math.min(70, Math.hypot(dx, dy) * 0.3));
+      const c1 = horizontal
+        ? { x: start.x + Math.sign(dx || 1) * bend, y: start.y }
+        : { x: start.x, y: start.y + Math.sign(dy || 1) * bend };
+      const c2 = horizontal
+        ? { x: end.x - Math.sign(dx || 1) * bend, y: end.y }
+        : { x: end.x, y: end.y - Math.sign(dy || 1) * bend };
+
+      const className = edgeClass(edge);
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute(
+        "d",
+        `M ${start.x} ${start.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${end.x} ${end.y}`
+      );
+      path.setAttribute("class", `edge ${className}`);
+      path.setAttribute("marker-end", markerFor(className));
+      edgeLayer.appendChild(path);
+
+      if (stage.clientWidth >= 560) {
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        const midX = 0.125 * start.x + 0.375 * c1.x + 0.375 * c2.x + 0.125 * end.x;
+        const midY = 0.125 * start.y + 0.375 * c1.y + 0.375 * c2.y + 0.125 * end.y;
+        label.setAttribute("x", String(midX));
+        label.setAttribute("y", String(midY - 6));
+        label.setAttribute("text-anchor", "middle");
+        label.setAttribute("class", "edge-label");
+        label.textContent = edge.label;
+        edgeLayer.appendChild(label);
+      }
+    }
+  }
+
+  function scheduleEdges() {
+    cancelAnimationFrame(edgeFrame);
+    edgeFrame = requestAnimationFrame(drawEdges);
+  }
+
+  function readHashStep() {
+    const match = /(?:^|[#&])step=(\d+)/.exec(window.location.hash || "");
+    if (!match) return null;
+    const value = Number(match[1]);
+    if (!Number.isInteger(value)) return null;
+    return Math.max(0, Math.min(STEPS.length - 1, value));
+  }
+
+  function syncHash() {
+    try {
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, "", `#step=${current}`);
+      }
+    } catch {
+      // file:// 下某些浏览器不允许改 history：深链只是锦上添花，失败不影响演示。
+    }
+  }
+
+  prevBtn.addEventListener("click", () => {
+    if (current === 0) return;
+    current -= 1;
+    rebuild();
+    syncHash();
+  });
+
+  nextBtn.addEventListener("click", () => {
+    if (current >= STEPS.length - 1) return;
+    current += 1;
+    rebuild();
+    syncHash();
+  });
+
+  replayBtn.addEventListener("click", () => {
+    current = 0;
+    selectedId = null;
+    rebuild();
+    syncHash();
+  });
+
+  timelineButtons.forEach((button, index) => {
+    button.addEventListener("click", () => {
+      current = index;
+      rebuild();
+      syncHash();
+    });
+  });
+
+  window.addEventListener("hashchange", () => {
+    const step = readHashStep();
+    if (step !== null && step !== current) {
+      current = step;
+      rebuild();
+    }
+  });
+
+  const resizeObserver = new ResizeObserver(scheduleEdges);
+  resizeObserver.observe(stage);
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(scheduleEdges);
+  }
+
+  const initialStep = readHashStep();
+  if (initialStep !== null) current = initialStep;
+  rebuild();
+  syncHash();
+})();
+</script>
+
+<style>
+  .marker-satisfied { fill: #1f9254; }
+  .marker-blocked { fill: #a8700f; }
+  .marker-optional { fill: #8a94a3; }
+  .marker-dynamic { fill: #2563eb; }
+
+  @media (prefers-color-scheme: dark) {
+    .marker-satisfied { fill: #4ade80; }
+    .marker-blocked { fill: #fbbf24; }
+    .marker-optional { fill: #94a3b8; }
+    .marker-dynamic { fill: #60a5fa; }
+  }
+
+  .edge { fill: none; stroke-width: 1.6; stroke-linecap: round; }
+  .edge-satisfied { stroke: var(--active); opacity: 0.9; }
+  .edge-blocked { stroke: var(--pending); stroke-dasharray: 5 4; opacity: 0.9; }
+  .edge-optional { stroke: var(--muted); stroke-dasharray: 4 4; opacity: 0.55; }
+  .edge-dynamic { stroke: var(--dynamic); stroke-dasharray: 2 4; opacity: 0.95; }
+
+  .edge-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    fill: var(--muted);
+    paint-order: stroke;
+    stroke: var(--panel);
+    stroke-width: 4px;
+    stroke-linejoin: round;
+  }
+</style>
+</body>
+</html>

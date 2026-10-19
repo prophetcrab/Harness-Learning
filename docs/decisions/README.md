@@ -85,3 +85,15 @@
 - [0041 P4 定调：实质化 —— 自有最小插件底座 + 三类插件 + 一个项目](0041-p4-substantiation.md)（P4 目标）
 - [0042 P4 基座边界：支持「everything is plugins」的最小底座](0042-p4-base-boundary.md)（P4 基座，**草案**）
 - [0043 P4 全部重写：不搬 P3 代码，逐个小步写](0043-p4-rewrite-from-scratch.md)（P4 方法）
+- [0044 LLM 是路由器：模型选择是数据，不是装配](0044-llm-router-and-model-selection.md)（P4 M2 第一步）
+- [0045 LLM 能力组：主插件 + 三个子插件（provider / retry / tokens-usages）](0045-llm-capability-group.md)（P4 M2）
+- [0046 提示词：base 装配器 + 两个能力插件（角色模板 / 检查与编辑）](0046-prompt-plugins.md)（P4 M2）
+- [0047 会话 / 持久化 / 工作区 / 项目](0047-sessions-workspace-project.md)（P4 M2）
+- [0048 工具面：tools-admin + 六个工具插件 + 两层文件策略](0048-tools-and-fs-policies.md)（P4 M2）
+- [0049 Agent 三件套：agent / agent-loop / agent-admin](0049-agent-trio.md)（P4 M2）
+- [0050 最小应用：launcher + 装配单 → 一个 AI 服务](0050-minimal-app.md)（P4 M2 收尾）
+- [0051 会话日志对齐 dsh：时间戳 / header / 目录布局 / 读写句柄 / 未知事件](0051-session-log-alignment.md)（P4 M2 收尾）
+- [0052 去掉 components 层：共享类型按功能域并入插件模块](0052-remove-components-layer.md)（P4 架构修正）
+- [0053 插件间依赖方向：只允许由外向内，兄弟能力不互相 import](0053-plugin-dependency-direction.md)（P4 架构修正）
+- [0054 装配单支持 YAML：数据与代码白名单分开](0054-yaml-manifest.md)（P4 M3 起步）
+- [0055 批量脚本改源码的教训：不在未提交的工作区上做机械重写](0055-batch-script-lesson.md)（P4 恢复记录）

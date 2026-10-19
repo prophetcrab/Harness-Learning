@@ -6,11 +6,38 @@
     P3      完全插件化：`_01`–`_06` 每阶段一个副本 —— 学"一个机制怎么长出来"
     P4      ★ 实质化：一个项目（本目录）本身就是产品；里程碑只是内部进度
 
-**状态：🏗️ 基座开工（2026-10-16）。** 全部从零重写、逐个小步走（决策
-[0043](../../docs/decisions/0043-p4-rewrite-from-scratch.md)）；**M1 完成**：
-8 步全绿、165 用例（服务槽位 / 插件装载与依赖驱动 / effect 回卷 / 事件 /
-条目与装配单 / 树与所有权级联 / 热插拔 / 启动器与纯度验收）。下一步 M2
-（基础插件：llm / prompt / sessions / tools / agent-loop / agent + guard）。
+**状态：🏗️ M1 / M2 完成，M3 部分落地（2026-10-19）。** 全部从零重写、逐个小步走
+（决策 [0043](../../docs/decisions/0043-p4-rewrite-from-scratch.md)）；**M1 完成**：
+8 步全绿，另补了动态依赖 `ctx.inject`；**M2 完成**：LLM 能力组（`llm` 路由主插件 +
+`llm-provider` 通用适配器 + `llm-retry` + `llm-tokens-usages`，决策
+[0044](../../docs/decisions/0044-llm-router-and-model-selection.md) /
+[0045](../../docs/decisions/0045-llm-capability-group.md)，含插件级依赖 `requires`、
+图片输入、流式安全的重试、统计只读）；提示词组（`prompt` + `character-admin` +
+`system-prompt-admin`，决策 [0046](../../docs/decisions/0046-prompt-plugins.md)）；
+会话与项目组（`sessions` + `session-store-jsonl` + `workspace` + `workspace-admin` +
+`project`，决策 [0047](../../docs/decisions/0047-sessions-workspace-project.md)）；
+工具面（`tools-admin` + `fs` / `proc` 约定 + 沙箱与读后写策略 + 六个工具插件，
+决策 [0048](../../docs/decisions/0048-tools-and-fs-policies.md)）；LLM 层补齐
+**工具调用**；**Agent 三件套**完成（`agent` 句柄与注册表 + `agent-loop` 默认驱动器 +
+`agent-admin` 模式管理，决策 [0049](../../docs/decisions/0049-agent-trio.md)）——
+**一个真 turn 已跑通**；**最小应用**完成（launcher + 装配单 → 离线 / 真实模型两种
+产品形态，决策 [0050](../../docs/decisions/0050-minimal-app.md)）；会话日志已对齐
+dsh（时间戳 / header / 目录布局 / 读写句柄 / 未知事件策略，决策
+[0051](../../docs/decisions/0051-session-log-alignment.md)）；架构上删掉
+`components/`（0052），并把插件间依赖收紧为**只允许由外向内**（0053）；装配单支持
+**YAML**（0054）。
+
+**M3 已落地的部分**：六个工具插件（calc / fs / shell / fs-search / web /
+ask-user）、token 统计、终端审批、fs 沙箱与读后写策略都在能力目录里；**未做**：
+`compact`、`context-meter`、按三类分组的 `plugin-admin` 管理面。共 **500 用例**
+全绿；真实 DeepSeek API 回归通过（模型自主调 `calc`）。
+
+**两份可读产物**：`python app.py` 起最小应用；
+[docs/ctx-plugin-management.html](docs/ctx-plugin-management.html) 是 ctx 管理插件的
+15 步交互图解（浏览器直接打开）。
+
+下一步：M3 收尾（compact / context-meter / 管理面），或直接进 M4 应用化插件
+（`web` / `cli` / `sdk`）。
 
 背景（为什么是这两件事）：P3 交出的是一套**可运行的机制集合**（插件内核 +
 能力插件 + 构件层），但它是学习形态——每个机制一份目录副本、组合写在代码里，
@@ -134,6 +161,12 @@
 `compact`、`token-usage`、`context-meter`、`approval`、`self-tools`、
 `plugin-admin`（管理面按三类分组）。
 
+**已完成**：`tool-math`（calc / math）、`tool-fs`、`tool-shell`、`tool-fs-search`、
+`tool-web-search`、`tool-ask-user`；`llm-tokens-usages`（总量 / 今日按用户 /
+本对话，只读视图）；`approval-terminal`；`fs-sandbox` 四种模式 +
+`fs-observation-policy`（改前必读）；`proc` 三后端；`workspace-admin`。
+**未做**：`compact`、`context-meter`、按三类分组的 `plugin-admin` 管理面。
+
 **验收**：任一能力插件的装卸不牵动别的；停用一件工具模型立即看不到；管理面
 三类分组可见可分。
 
@@ -177,7 +210,9 @@ P3 的 423 个用例不复用，可当"边角情况清单"查；阶段副本 `_0
 - ~~底座是"搬 P3 kernel 后收敛"还是"照边界重写"~~ —— **已定（2026-10-16）：
   照边界从零重写，逐个小步**（决策 0043）；
 - `cli` 产品：纯 REPL，还是上 TUI；
-- 装配单格式（YAML / TOML / Python 字面量）；patch / overlay 机制要不要
+- ~~装配单格式（YAML / TOML / Python 字面量）~~ —— **已定（2026-10-19）：
+  YAML 是数据、插件工厂白名单留在代码**（决策 0054）；Python 字面量保留给
+  "需要函数"的离线剧本（`transport` 表达不了），patch / overlay 仍待定
   （P3 曾推迟，见决策 0029 一带的讨论）。
 
 ---

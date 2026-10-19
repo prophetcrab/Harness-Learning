@@ -5,9 +5,9 @@ P4 是**一个项目**（不再是 P2/P3 那样的阶段副本目录）：插件
 
 - **目标与验收**：[PLAN.md](PLAN.md)（M1 拆步表在 M1 一节）
 - **定调决策**：[0041](../docs/decisions/0041-p4-substantiation.md)（为什么自研底座 / 三类插件的判据 / 为什么不再用阶段副本）
-- **基座边界**：[0042](../docs/decisions/0042-p4-base-boundary.md)（**草案**：非插件只有 core 一处——框架 + 引导（自带启动器）；树 / 装配单 / 热插拔是 loader 插件）
+- **基座边界**：[0042](../docs/decisions/0042-p4-base-boundary.md)（已采纳：非插件只有 core 一处——框架 + 引导（自带启动器）；树 / 装配单 / 热插拔是 loader 插件）
 - **重写方法**：[0043](../docs/decisions/0043-p4-rewrite-from-scratch.md)（全部从零写、P3 只作参考、逐个小步）
-- **当前状态**：**M1 完成**（步 1–8 全绿，165 用例）：服务槽位 / 插件装载与依赖驱动 / effect 回卷 / 事件 / 条目与装配单 / 树与所有权级联 / 热插拔 / 启动器与纯度验收
+- **当前状态**：**M1 完成 + M2 完成**（500 用例）：基座八步 / 动态 inject / 插件级依赖 / LLM 能力组（含工具调用）/ 提示词组 / 会话与项目组 / 工具面 / **Agent 三件套**（`agent` + `agent-loop` + `agent-admin`，跑通一个真 turn）/ **YAML 装配单**（launcher + 数据，改产品形态不改代码）
 - **素材来源**：P3 **不搬代码**（语义对照 + 教训清单），见 PLAN 第 5 节
 
 ## 目录（规划，随里程碑长出）
@@ -15,11 +15,23 @@ P4 是**一个项目**（不再是 P2/P3 那样的阶段副本目录）：插件
 | 目录 | 角色 | 现状 |
 |---|---|---|
 | `core/` | **非插件只有这一处**：框架（服务 / 事件 / effect / 生命周期 / 变更锁）+ 引导（`launcher.py`：`boot(装配单)` / 产品政策 / `--dump`） | ✅ M1 完成（步 1–8） |
-| `plugins/` | 一切插件——`loader` 起（装配 / 树 / 热插拔），其后 base / application / capability | `loader` ✅（装配单 / 树 / 热插拔） |
-| `components/` | 纯构件库（不 import core，不认识"插件"）：协议实现、日志、提示词、工具管线 | 未开工（M2 起） |
-| `tests/` | 逐个机制的验收（先写验收，再写实现） | 起步 |
+| `plugins/base/` | 基础插件（默认 role=base）：`loader`、`llm`、`prompt`、`sessions`、`workspace`、`project`、`fs`、`proc`、`tools_admin`（tool-admin）、`agent`（+ capability 组的 `agent/loop`、`agent/admin`） | ✅ |
+| `plugins/capability/` | 能力插件，按功能域分二级目录：`llm/`（provider / retry / tokens_usages / fake）、`agent/`（loop / admin）、`prompt/`（character_admin / system_prompt_admin）、`session/`（store_jsonl）、`fs/`（sandbox / observation_policy）、`proc/`（backends）、`workspace/`（admin）、`tools/`（math / fs / shell / fs_search / web_search / ask_user） | ✅ |
+| `plugins/application/` | 应用化插件（换掉它产品形态变了）：`web` / `cli` / `sdk` | M4 才长出 |
+| `tests/` | 逐个机制的验收（先写验收，再写实现） | 500 用例 |
+| `manifests/` | 装配单（产品形态就是数据）：`minimal.py`（离线）/ `realtime.py`（真实模型）/ `minimal.yaml`（YAML 版，同一形状） | ✅ |
+| `docs/` | 图解：[ctx 如何管理插件](docs/ctx-plugin-management.html)（15 步交互演示，直接用浏览器打开） | ✅ |
 
 ## 怎么跑
 
     cd P4_Coding
     python -m pytest tests -q      # 每小步的定向验收
+
+    python app.py                                   # 交互式（离线剧本）
+    python app.py --realtime --yes --ask "你好"      # 真实模型
+    python app.py --manifest manifests/minimal.yaml --dump
+    python app.py --manifest manifests/minimal.yaml --yes --ask "你好"
+
+YAML 装配单只是**数据**：插件工厂仍来自 `manifests/minimal.py` 的
+`catalog()` 白名单；`--manifest` 与 `--realtime` 互斥，因为 YAML 里两条
+路由（`fake` / `deepseek`）都已装好，用 `--provider` 选即可。
