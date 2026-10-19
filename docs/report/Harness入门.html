@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harness 入门</title>
+<style>
+  :root {
+    --ink: #0c1a2c;
+    --ink-2: #394a64;
+    --muted: #8291aa;
+    --line: rgba(28, 52, 96, 0.11);
+    --accent-a: #0e8f7d;
+    --accent-b: #2f6ce8;
+    --scale: 1;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC",
+                 -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: #f7fafd;
+  }
+
+  /* ---------------- 背景 ---------------- */
+
+  .bg {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    background: linear-gradient(132deg, #f8fbfe 0%, #eff5fc 50%, #f6f3fc 100%);
+  }
+
+  .field {
+    position: absolute;
+    border-radius: 50%;
+    will-change: transform;
+    animation: drift 34s ease-in-out infinite alternate;
+  }
+  .field.a {
+    width: 880px; height: 880px;
+    left: -400px; top: -420px;
+    background: radial-gradient(circle, rgba(14, 143, 125, 0.10) 0%, rgba(14, 143, 125, 0) 70%);
+  }
+  .field.b {
+    width: 1000px; height: 1000px;
+    right: -460px; top: -340px;
+    background: radial-gradient(circle, rgba(47, 108, 232, 0.10) 0%, rgba(47, 108, 232, 0) 70%);
+    animation-delay: -12s;
+  }
+  .field.c {
+    width: 1080px; height: 1080px;
+    left: 28%; bottom: -660px;
+    background: radial-gradient(circle, rgba(122, 90, 248, 0.09) 0%, rgba(122, 90, 248, 0) 70%);
+    animation-delay: -23s;
+  }
+
+  @keyframes drift {
+    0%   { transform: translate3d(0, 0, 0); }
+    50%  { transform: translate3d(30px, 20px, 0); }
+    100% { transform: translate3d(-14px, 34px, 0); }
+  }
+
+  /* ---------------- 舞台 ---------------- */
+
+  .viewport { position: fixed; inset: 0; overflow: hidden; }
+
+  .stage {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 1600px;
+    height: 900px;
+    margin: -450px 0 0 -800px;
+    transform: scale(var(--scale));
+    transform-origin: center center;
+    display: grid;
+    grid-template-columns: 566px 1fr;
+    align-items: center;
+    column-gap: 104px;
+    padding: 0 138px;
+  }
+
+  /* ---------------- 装饰层（纯几何，无文字） ---------------- */
+
+  .deco {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid rgba(47, 108, 232, 0.10);
+  }
+  .ring.r1 { width: 900px; height: 900px; right: -350px; top: -70px; border-color: rgba(47, 108, 232, 0.075); }
+  .ring.r2 {
+    width: 640px; height: 640px;
+    right: -190px; top: 120px;
+    border-color: rgba(14, 143, 125, 0.085);
+  }
+  .ring.r3 {
+    width: 280px; height: 280px;
+    left: -150px; bottom: -110px;
+    border-color: rgba(28, 52, 96, 0.07);
+  }
+
+  /* 四角角标：报告版式的收边 */
+  .corner {
+    position: absolute;
+    width: 26px; height: 26px;
+    border: 0 solid rgba(28, 52, 96, 0.20);
+  }
+  .corner.tl { left: 46px; top: 46px; border-left-width: 1px; border-top-width: 1px; }
+  .corner.tr { right: 46px; top: 46px; border-right-width: 1px; border-top-width: 1px; }
+  .corner.bl { left: 46px; bottom: 46px; border-left-width: 1px; border-bottom-width: 1px; }
+  .corner.br { right: 46px; bottom: 46px; border-right-width: 1px; border-bottom-width: 1px; }
+
+  /* 右下角的小方块点缀 */
+  .chip {
+    position: absolute;
+    right: 96px; bottom: 92px;
+    width: 9px; height: 9px;
+    background: var(--accent-a);
+    opacity: 0.55;
+  }
+
+  /* ---------------- 左侧标题 ---------------- */
+
+  .title-wrap {
+    position: relative;
+    z-index: 1;
+    width: max-content;
+    padding-left: 34px;
+    animation: rise 1s cubic-bezier(0.22, 0.8, 0.24, 1) both;
+  }
+
+  /* 标题左侧的竖线：顶部实、底部淡出 */
+  .title-wrap::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 15px;
+    width: 2px;
+    height: 292px;
+    background: linear-gradient(180deg, var(--accent-a) 0%, var(--accent-b) 62%, rgba(47, 108, 232, 0) 100%);
+    border-radius: 1px;
+  }
+
+  h1 {
+    font-size: 142px;
+    line-height: 0.94;
+    letter-spacing: -0.048em;
+    font-weight: 800;
+    color: var(--ink);
+  }
+
+  h1 .line { display: block; }
+
+  h1 .thin {
+    font-size: 0.72em;
+    font-weight: 300;
+    letter-spacing: 0.06em;
+    margin-top: 0.18em;
+    color: transparent;
+    background: linear-gradient(96deg, var(--accent-a) 0%, var(--accent-b) 62%, #6b57f0 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  /* 标题下方的短横线 */
+  .title-wrap::after {
+    content: "";
+    display: block;
+    width: 78px;
+    height: 2px;
+    margin-top: 34px;
+    background: linear-gradient(90deg, var(--accent-a), rgba(47, 108, 232, 0.15));
+    border-radius: 1px;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ---------------- 右侧目录 ---------------- */
+
+  .toc {
+    position: relative;
+    z-index: 1;
+    animation: rise 1.1s cubic-bezier(0.22, 0.8, 0.24, 1) 0.12s both;
+  }
+
+  .toc-item {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    align-items: center;
+    column-gap: 22px;
+    min-height: 96px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+  }
+  .toc-item:first-child { border-top: none; }
+  .toc-item:last-child { border-bottom: 1px solid var(--line); }
+
+  .toc-num {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 14px;
+    letter-spacing: 0.12em;
+    color: var(--accent-a);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .toc-title {
+    font-size: 28px;
+    line-height: 1.3;
+    font-weight: 600;
+    letter-spacing: -0.012em;
+    color: var(--ink-2);
+  }
+
+  .toc-sub {
+    display: block;
+    margin-top: 6px;
+    font-size: 18px;
+    line-height: 1.5;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    color: var(--muted);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .field, .title-wrap, .toc { animation: none; }
+  }
+
+  @media print {
+    @page { size: 1600px 900px; margin: 0; }
+    html, body { overflow: visible; background: #f7fafd; }
+    .viewport { position: static; display: block; }
+    .stage { transform: none; }
+    .title-wrap, .toc { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg">
+  <div class="field a"></div>
+  <div class="field b"></div>
+  <div class="field c"></div>
+</div>
+
+<div class="viewport">
+  <main class="stage">
+
+    <div class="deco">
+      <div class="ring r1"></div>
+      <div class="ring r2"></div>
+      <div class="ring r3"></div>
+      <span class="corner tl"></span>
+      <span class="corner tr"></span>
+      <span class="corner bl"></span>
+      <span class="corner br"></span>
+      <span class="chip"></span>
+    </div>
+
+    <div class="title-wrap">
+      <h1>
+        <span class="line">Harness</span>
+        <span class="line thin">入门</span>
+      </h1>
+    </div>
+
+    <nav class="toc">
+      <div class="toc-item">
+        <span class="toc-num">01</span>
+        <span class="toc-title">Harness 介绍<span class="toc-sub">Agent = Model + Harness</span></span>
+      </div>
+      <div class="toc-item">
+        <span class="toc-num">02</span>
+        <span class="toc-title">Harness 发展<span class="toc-sub">从聊天页面到智能工具</span></span>
+      </div>
+      <div class="toc-item">
+        <span class="toc-num">03</span>
+        <span class="toc-title">开源 Harness 与闭源 Harness</span>
+      </div>
+      <div class="toc-item">
+        <span class="toc-num">04</span>
+        <span class="toc-title">DeepSeek Harness 的前世今生<span class="toc-sub">万物皆插件</span></span>
+      </div>
+      <div class="toc-item">
+        <span class="toc-num">05</span>
+        <span class="toc-title">DSH 源码框架介绍与二次开发范例</span>
+      </div>
+      <div class="toc-item">
+        <span class="toc-num">06</span>
+        <span class="toc-title">总结与经验分享</span>
+      </div>
+    </nav>
+
+  </main>
+</div>
+
+<script>
+  (function () {
+    function fit() {
+      const scale = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
+      document.documentElement.style.setProperty('--scale', scale);
+    }
+    window.addEventListener('resize', fit);
+    fit();
+  })();
+</script>
+
+</body>
+</html>
