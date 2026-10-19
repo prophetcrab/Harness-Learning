@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from core import Context
+from plugins.base.tools_admin import current_session_id
 
 
 # === 本地副本（来自 plugins/base/tools_admin.py；插件之间不 import，见决策 0053）===
@@ -214,7 +215,7 @@ class ToolFsPlugin:
             参数 path：工作区内的相对路径。offset：从第几行开始（1 起）。
             limit：最多返回多少行。
             """
-            return _read(fs, path, offset, limit, None)
+            return _read(fs, path, offset, limit, current_session_id())
 
         @tool("list_files")
         def list_files(path: str = ".", recursive: bool = False) -> list[dict[str, Any]]:
@@ -222,7 +223,9 @@ class ToolFsPlugin:
 
             参数 path：工作区内的相对路径。recursive：是否递归列出子目录。
             """
-            return fs.list_dir(path, recursive=recursive)
+            return fs.list_dir(
+                path, recursive=recursive, session_id=current_session_id()
+            )
 
         @tool("write_file")
         def write_file(path: str, content: str) -> dict[str, Any]:
@@ -230,7 +233,7 @@ class ToolFsPlugin:
 
             参数 path：工作区内的相对路径。content：完整文件内容。
             """
-            return fs.write_text(path, content)
+            return fs.write_text(path, content, session_id=current_session_id())
 
         @tool("edit_file")
         def edit_file(path: str, old: str, new: str, count: int = 1) -> dict[str, Any]:
@@ -239,7 +242,9 @@ class ToolFsPlugin:
             参数 path：工作区内的相对路径。old：要替换的原文。new：替换后的文本。
             count：最多替换几处（0 = 全部）。
             """
-            return fs.edit_text(path, old, new, count=count)
+            return fs.edit_text(
+                path, old, new, count=count, session_id=current_session_id()
+            )
 
         handles = [
             tools.register(read_file.definition, read_file.func, owner=self.name),

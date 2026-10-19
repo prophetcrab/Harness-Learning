@@ -88,7 +88,13 @@ def test_session_survives_restart(tmp_path):
         from plugins.base.sessions import SESSIONS_SERVICE
 
         messages = runtime2.ctx.require(SESSIONS_SERVICE).messages("s1")
-        assert [m.role for m in messages] == ["user", "assistant", "user", "assistant"]
+        assert [m.role for m in messages] == [
+            "system",
+            "user",
+            "assistant",
+            "user",
+            "assistant",
+        ]
     finally:
         runtime2.close()
 

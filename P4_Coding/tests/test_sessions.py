@@ -152,6 +152,7 @@ def test_events_are_persisted_and_restored(tmp_path: Path):
     assert resumed is True
     assert session.effective_system_prompt() == "你是助手"
     assert [(m.role, m.content) for m in sessions2.messages("s1")] == [
+        ("system", "你是助手"),
         ("user", "你好"),
         ("assistant", "你好呀"),
     ]

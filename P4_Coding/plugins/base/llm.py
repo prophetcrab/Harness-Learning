@@ -273,6 +273,10 @@ class LLMRuntime:
                     if getattr(chunk, "type", None) == "finish":
                         usage = chunk.usage
                     yield chunk
+            except GeneratorExit:
+                # 消费方提前关闭流（取消 / 只要前几块）：这是调用方的选择，
+                # 不是模型错误——不能广播成 llm/error。
+                raise
             except BaseException as exc:
                 self._ctx.emit(LLM_ERROR_EVENT, request=effective, error=exc)
                 raise

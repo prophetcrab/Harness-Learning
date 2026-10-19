@@ -111,6 +111,10 @@ class SessionsService:
 
         `resumed=True` 表示这条会话是从历史恢复的（此时不会重复写 session/start）；
         `False` 表示新建。
+
+        **并发安全**：多个入口（并行客户端、同一进程的多个 agent）同时打开同一条
+        会话时，后到者不会因为"已经有人建好了"而报错——它返回先到者建的那条
+        会话（`resumed=True`）。只有真正建出 `session/start` 的那一个返回 False。
         """
         existing = self._store.get(session_id)
         if existing is not None:
@@ -118,17 +122,29 @@ class SessionsService:
 
         events = self._load(session_id)
         if events:
-            session = self._store.restore(session_id, events)
+            try:
+                session = self._store.restore(session_id, events)
+            except ValueError:
+                existing = self._store.get(session_id)
+                if existing is not None:
+                    return existing, True  # 另一个线程先恢复了，用它
+                raise
             return session, True
 
-        session = self._store.create(
-            session_id,
-            system_prompt=system_prompt,
-            prompt_trace=prompt_trace,
-            model=model,
-            at=at,
-        )
-        self._broadcast(session_id, session.events[-1])
+        try:
+            session = self._store.create(
+                session_id,
+                system_prompt=system_prompt,
+                prompt_trace=prompt_trace,
+                model=model,
+                at=at,
+            )
+        except ValueError:
+            existing = self._store.get(session_id)
+            if existing is not None:
+                return existing, True  # 另一个线程先建好了，用它
+            raise
+        self._broadcast(session_id, session.events[0])
         return session, False
 
     def _load(self, session_id: str) -> list[SessionEvent]:
@@ -163,6 +179,18 @@ class SessionsService:
         event = session.append(SESSION_START, {"system_prompt": "", "prompt_trace": {}, "model": {}})
         self._broadcast(session_id, event)
 
+    def begin_turn(self, session_id: str, text: str, *, at: str = "") -> int:
+        """原子地分配轮次号并写入 `turn/start`；返回轮次号。
+
+        **为什么不是一个 `last_turn_number + 1`**：多个 agent 共用一个会话时，
+        两个 runner 会同时读到同一个"最后轮次"并各写一条 `turn/start`——日志里
+        出现重复轮次，排障时无法定位。分配与追加必须在同一次锁内完成。
+        """
+        session = self._store.require(session_id)
+        event = session.begin_turn(text, at=at)
+        self._broadcast(session_id, event)
+        return int(event.payload["turn"])
+
     # ------------------------------------------------------------------
     # 读
     # ------------------------------------------------------------------
@@ -178,7 +206,7 @@ class SessionsService:
         return self._store.require(session_id).messages()
 
     def events(self, session_id: str) -> tuple[SessionEvent, ...]:
-        return tuple(self._store.require(session_id).events)
+        return self._store.require(session_id).events_snapshot()
 
     def system_prompt(self, session_id: str) -> str | None:
         return self._store.require(session_id).effective_system_prompt()
@@ -336,18 +364,23 @@ class Session:
     events: list[SessionEvent] = field(default_factory=list)
     #: 投影结果缓存（事件追加时失效）。
     _messages: list[Message] | None = field(default=None, repr=False)
+    #: 同一会话的追加可能来自多个线程（多 agent / 工具线程）。`last_seq + 1`
+    #: 是读-改-写，没有锁会产生重复 seq——落盘后整份日志都不可读。
+    _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     @property
     def last_seq(self) -> int:
-        return self.events[-1].seq if self.events else 0
+        with self._lock:
+            return self.events[-1].seq if self.events else 0
 
     @property
     def last_turn_number(self) -> int:
         """最近一轮的序号（turn/start 的 payload 里带 turn）。"""
-        for event in reversed(self.events):
-            if event.kind == TURN_START:
-                return int(event.payload.get("turn", 0))
-        return 0
+        with self._lock:
+            for event in reversed(self.events):
+                if event.kind == TURN_START:
+                    return int(event.payload.get("turn", 0))
+            return 0
 
     def append(self, kind: str, payload: Mapping[str, Any], *, at: str = "") -> SessionEvent:
         """追加一条事件（序号自增）；投影缓存立刻失效。
@@ -357,32 +390,60 @@ class Session:
         """
         if not at:
             at = datetime.now(UTC).isoformat()
-        event = SessionEvent(
-            seq=self.last_seq + 1, kind=kind, payload=dict(payload), at=at
-        )
-        self.events.append(event)
-        self._messages = None
-        return event
+        with self._lock:
+            event = SessionEvent(
+                seq=self.last_seq + 1, kind=kind, payload=dict(payload), at=at
+            )
+            self.events.append(event)
+            self._messages = None
+            return event
 
     def extend(self, events: list[SessionEvent]) -> None:
         """批量追加已有事件（恢复时用）；序号必须严格递增。"""
-        for event in events:
-            if event.seq <= self.last_seq:
-                raise ValueError(
-                    f"事件序号必须递增：{event.seq} 不大于 {self.last_seq}"
-                )
+        with self._lock:
+            for event in events:
+                if event.seq <= self.last_seq:
+                    raise ValueError(
+                        f"事件序号必须递增：{event.seq} 不大于 {self.last_seq}"
+                    )
+                self.events.append(event)
+            self._messages = None
+
+    def begin_turn(self, text: str, *, at: str = "") -> SessionEvent:
+        """原子地分配轮次号并追加 `turn/start`（返回写入的事件）。"""
+        if not at:
+            at = datetime.now(UTC).isoformat()
+        with self._lock:
+            number = 0
+            for event in reversed(self.events):
+                if event.kind == TURN_START:
+                    number = int(event.payload.get("turn", 0))
+                    break
+            event = SessionEvent(
+                seq=self.last_seq + 1,
+                kind=TURN_START,
+                payload={"turn": number + 1, "text": text},
+                at=at,
+            )
             self.events.append(event)
-        self._messages = None
+            self._messages = None
+            return event
 
     def messages(self) -> list[Message]:
         """投影出消息历史（带缓存；事件变了才重算）。"""
-        if self._messages is None:
-            self._messages = project_messages(self.events)
-        return list(self._messages)
+        with self._lock:
+            if self._messages is None:
+                self._messages = project_messages(list(self.events))
+            return list(self._messages)
+
+    def events_snapshot(self) -> tuple[SessionEvent, ...]:
+        """事件列表的线程安全快照（读方不必自己加锁）。"""
+        with self._lock:
+            return tuple(self.events)
 
     def effective_system_prompt(self) -> str | None:
         """当前生效的系统提示词（最后一个 system/message 或 session/start）。"""
-        for event in reversed(self.events):
+        for event in reversed(self.events_snapshot()):
             if event.kind == SYSTEM_MESSAGE:
                 text = event.payload.get("content")
                 return str(text) if text is not None else None
@@ -393,13 +454,28 @@ class Session:
 
 
 def project_messages(events: list[SessionEvent]) -> list[Message]:
-    """把事件流投影成消息历史（纯函数，便于测试与重放）。"""
+    """把事件流投影成消息历史（纯函数，便于测试与重放）。
+
+    **系统提示词进入投影结果**：`session/start` 与后续的 `system/message` 都是
+    提示词的载体（后者只在提示词指纹变化时追加）。模型每次请求只应看到当前
+    生效的那一版，所以取最后一段、放在消息列表开头——而不是把它留在原地
+    （那会让 system 消息出现在历史中间）。
+    """
     messages: list[Message] = []
+    system_prompt: str | None = None
     pending_calls: dict[str, ToolCall] = {}
 
     for event in events:
         payload = event.payload
-        if event.kind == TURN_START:
+        if event.kind == SESSION_START:
+            text = payload.get("system_prompt")
+            if text is not None:
+                system_prompt = str(text)
+        elif event.kind == SYSTEM_MESSAGE:
+            text = payload.get("content")
+            if text is not None:
+                system_prompt = str(text)
+        elif event.kind == TURN_START:
             text = payload.get("text")
             if text is not None:
                 messages.append(Message(role="user", content=str(text)))
@@ -424,16 +500,24 @@ def project_messages(events: list[SessionEvent]) -> list[Message]:
             )
         elif event.kind == TOOL_RESULT:
             call_id = str(payload.get("call_id", ""))
-            if call_id not in pending_calls:
-                # 结果比调用先到（或调用被压缩掉了）：仍然投影出来，别丢信息。
-                pass
             content = payload.get("content")
-            if not isinstance(content, str):
-                content = json.dumps(content, ensure_ascii=False, default=str)
+            # 失败 / 拒绝 / 超时的工具没有 content，真正的解释在 message 里。
+            # 只投影 content 会让模型看到字符串 "null"，等于没拿到错误原因。
+            if isinstance(content, str) and content:
+                text = content
+            elif content is not None:
+                text = json.dumps(content, ensure_ascii=False, default=str)
+            else:
+                text = str(payload.get("message") or "")
+            status = payload.get("status")
+            if status and status != "ok":
+                text = f"[{status}] {text}"
             messages.append(
-                Message(role="tool", content=content, tool_call_id=call_id)
+                Message(role="tool", content=text, tool_call_id=call_id)
             )
             pending_calls.pop(call_id, None)
+    if system_prompt:
+        messages.insert(0, Message(role="system", content=system_prompt))
     return messages
 
 

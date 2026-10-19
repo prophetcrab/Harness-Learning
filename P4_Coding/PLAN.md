@@ -29,8 +29,15 @@ dsh（时间戳 / header / 目录布局 / 读写句柄 / 未知事件策略，�
 
 **M3 已落地的部分**：六个工具插件（calc / fs / shell / fs-search / web /
 ask-user）、token 统计、终端审批、fs 沙箱与读后写策略都在能力目录里；**未做**：
-`compact`、`context-meter`、按三类分组的 `plugin-admin` 管理面。共 **500 用例**
-全绿；真实 DeepSeek API 回归通过（模型自主调 `calc`）。
+`compact`、`context-meter`、按三类分组的 `plugin-admin` 管理面。共 **536 用例**
+离线全绿；另有 **34 条真实 DeepSeek API 功能验收**（`pytest tests/test_real_api.py
+--real`，默认跳过）——覆盖流式、提示词送达、角色/override、工具调用、**长链路
+（读→改→跑，含失败自纠）**、**多会话并行与同会话多 agent**、**会话内编辑与读后写**、
+围栏、会话隔离、重启恢复、用量统计、重试、审批拒绝、工具开关、热插拔、取消与
+预算边界，当前 **34/34 通过**。同一批目标另有 28 条离线版本
+（`tests/test_feature_goals.py` + `tests/test_long_chain_and_concurrency.py`，
+模型走剧本、其余链路全真，含 6 会话 × 5 轮的并发压力与并发 open / 轮次分配的
+竞态用例），随默认门禁运行。
 
 **两份可读产物**：`python app.py` 起最小应用；
 [docs/ctx-plugin-management.html](docs/ctx-plugin-management.html) 是 ctx 管理插件的

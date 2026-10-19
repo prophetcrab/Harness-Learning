@@ -15,7 +15,13 @@ from typing import Any
 import pytest
 
 from core import Context
-from plugins.base.agent import AGENT_SERVICE, AgentNotAvailable, AgentOptions, agent_plugin
+from plugins.base.agent import (
+    AGENT_REQUEST,
+    AGENT_SERVICE,
+    AgentNotAvailable,
+    AgentOptions,
+    agent_plugin,
+)
 from plugins.base.llm import LLM_SERVICE, ToolCall, llm_plugin
 from plugins.base.prompt import prompt_plugin
 from plugins.base.sessions import (
@@ -39,11 +45,18 @@ from plugins.capability.llm.fake import ScriptedReply, fake_llm_plugin
 # ---------------------------------------------------------------------------
 
 
-def boot(tmp_path, *, replies=None, markdown: str | None = None, loop_config=None) -> Context:
+def boot(
+    tmp_path,
+    *,
+    replies=None,
+    markdown: str | None = None,
+    loop_config=None,
+    prompt_sections=None,
+) -> Context:
     ctx = Context()
     ctx.load_plugin(llm_plugin(default_provider="fake", default_model="fake-1"))
     ctx.load_plugin(fake_llm_plugin(replies=replies or ["你好"]))
-    ctx.load_plugin(prompt_plugin())
+    ctx.load_plugin(prompt_plugin(sections=prompt_sections or ()))
     ctx.load_plugin(sessions_plugin())
     ctx.load_plugin(tools_admin_plugin())
     ctx.load_plugin(agent_plugin())
@@ -245,6 +258,76 @@ def test_budget_exceeded(tmp_path):
     assert result.status == "budget_exceeded"
 
 
+def test_system_prompt_is_included_in_model_request(tmp_path):
+    """渲染出的系统提示词必须出现在发给模型的 messages 里。"""
+    ctx = boot(
+        tmp_path,
+        prompt_sections=[{"name": "identity", "order": 10, "text": "MARKER-42"}],
+    )
+    requests = []
+    ctx.on(AGENT_REQUEST, lambda request, **_: requests.append(request))
+
+    handle = ctx.require(AGENT_ADMIN_SERVICE).create(
+        session_id="s1", agent_id="p"
+    )
+    handle.followup("你好")
+
+    assert requests, "没有观察到模型请求"
+    first = requests[0].messages[0]
+    assert first.role == "system"
+    assert "MARKER-42" in first.text
+
+
+def test_budget_stop_does_not_leave_dangling_tool_calls(tmp_path):
+    """预算到顶时，本步已经落盘的 tool_calls 必须先执行完再停。
+
+    否则历史里会留下"assistant 带 tool_calls、却没有 tool 结果"的悬空调用，
+    下一轮 OpenAI 兼容请求会被直接拒绝。
+    """
+    from plugins.base.llm import Finish, ToolCallsDelta, Usage
+
+    class ToolCallProvider:
+        name = "tools"
+
+        def models(self):
+            from plugins.capability.llm.fake import fake_model
+
+            return {info.model: info for info in [fake_model("m", provider="tools")]}
+
+        def stream(self, request):
+            yield ToolCallsDelta(
+                deltas=(
+                    {
+                        "index": 0,
+                        "id": "c1",
+                        "function": {"name": "echo", "arguments": '{"text":"x"}'},
+                    },
+                )
+            )
+            yield Finish(reason="tool_calls", usage=Usage(input_tokens=100))
+
+    ctx = boot(tmp_path)
+    add_tool(ctx)
+    ctx.require(LLM_SERVICE).register("tools", ToolCallProvider())
+    handle = ctx.require(AGENT_ADMIN_SERVICE).create(
+        session_id="s1",
+        provider="tools",
+        model="m",
+        token_budget=1,
+        agent_id="t",
+    )
+    result = handle.followup("调用工具")
+    assert result.status == "budget_exceeded"
+
+    messages = ctx.require(SESSIONS_SERVICE).messages("s1")
+    for index, message in enumerate(messages):
+        if message.role == "assistant" and message.tool_calls:
+            assert any(later.role == "tool" for later in messages[index + 1 :]), (
+                "assistant 的 tool_calls 没有配套 tool 结果"
+            )
+    assert [k for k in events(ctx, "s1")].count(TOOL_RESULT) == 1
+
+
 def test_cancel_is_cooperative_and_keeps_partial_text(tmp_path):
     from plugins.base.llm import Finish, TextDelta
 
@@ -262,21 +345,36 @@ def test_cancel_is_cooperative_and_keeps_partial_text(tmp_path):
             yield Finish(reason="stop")
 
     ctx = boot(tmp_path)
-    ctx.require(LLM_SERVICE).register("slow", SlowProvider())
+    unregister = ctx.require(LLM_SERVICE).register("slow", SlowProvider())
     handle = ctx.require(AGENT_ADMIN_SERVICE).create(
         session_id="s1", provider="slow", model="m", agent_id="c"
     )
-    # 在第一个 delta 之后取消
-    original = ctx.require(LLM_SERVICE).stream
 
-    def cancelling_stream(request):
-        chunks = list(original(request))
-        handle.cancel()
-        return iter(chunks)
+    # 在**第一段吐出之后**取消：已生成的部分必须留在会话里。
+    class CancellingProvider:
+        name = "slow"
 
-    ctx.require(LLM_SERVICE).stream = cancelling_stream  # type: ignore[method-assign]
+        def models(self):
+            from plugins.capability.llm.fake import fake_model
+
+            return {info.model: info for info in [fake_model("m", provider="slow")]}
+
+        def stream(self, request):
+            yield TextDelta("第一段")
+            handle.cancel()
+            yield TextDelta("第二段")
+            yield Finish(reason="stop")
+
+    unregister()
+    ctx.require(LLM_SERVICE).register("slow", CancellingProvider())
+
     result = handle.followup("说点什么")
     assert result.status == "cancelled"
+    assert result.final_text == "第一段"
+    messages = ctx.require(SESSIONS_SERVICE).messages("s1")
+    assistant = [m for m in messages if m.role == "assistant"]
+    assert assistant and assistant[-1].text == "第一段"
+    assert assistant[-1].tool_calls == ()
 
 
 # ---------------------------------------------------------------------------

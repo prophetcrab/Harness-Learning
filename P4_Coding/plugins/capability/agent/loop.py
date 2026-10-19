@@ -510,10 +510,8 @@ class _AgentRunner:
         tools = ctx.require(TOOL_ADMIN_SERVICE)
         self._cancel.clear()
 
-        session = sessions.require(self._session_id)
-        turn = session.last_turn_number + 1
         self._ensure_prompt_recorded(sessions)
-        sessions.append(self._session_id, TURN_START, {"turn": turn, "text": text})
+        turn = sessions.begin_turn(self._session_id, text)
         ctx.emit(AGENT_TURN_START, agent=self._agent_id, turn=turn, text=text)
 
         total = Usage()
@@ -534,6 +532,12 @@ class _AgentRunner:
                     break
                 if self._cancel.is_set():
                     status = "cancelled"
+                    break
+                # 预算按**步边界**检查：本步的工具调用已经由模型请求、也已在
+                # assistant 消息里落盘，必须先执行完再停——否则历史里会留下
+                # 没有结果的 tool_calls，下一轮请求会被接口拒绝。
+                if budget is not None and total.total_tokens > budget:
+                    status = "budget_exceeded"
                     break
                 steps += 1
 
@@ -595,6 +599,38 @@ class _AgentRunner:
                     elif kind == "finish":
                         step_usage = chunk.usage
                 if status == "cancelled":
+                    # 已经流给界面的文本必须落盘（"已吐出的文本保留"）：
+                    # 工具调用没有执行，所以不写 assistant 的 tool_calls ——
+                    # 否则历史里会出现没有结果的悬空调用。
+                    partial = "".join(text_parts)
+                    if partial:
+                        final_text = partial
+                        sessions.append(
+                            self._session_id,
+                            ASSISTANT,
+                            {
+                                "content": partial,
+                                "tool_calls": [],
+                                "provider": provider,
+                                "model": model,
+                            },
+                        )
+                    sessions.append(
+                        self._session_id,
+                        STEP_END,
+                        {
+                            "turn": turn,
+                            "step": steps,
+                            "usage": _usage_dict(step_usage),
+                        },
+                    )
+                    ctx.emit(
+                        AGENT_STEP_END,
+                        agent=self._agent_id,
+                        turn=turn,
+                        step=steps,
+                        usage=step_usage,
+                    )
                     break
 
                 calls = accumulator.calls()
@@ -627,11 +663,13 @@ class _AgentRunner:
                 )
                 total = _add_usage(total, step_usage)
 
-                if budget is not None and total.total_tokens > budget:
-                    status = "budget_exceeded"
-                    break
                 if not calls:
-                    status = "done"
+                    # 没有后续调用：本轮已结束。但"超预算"仍然是事实，先如实
+                    # 报告预算，再报完成（否则超出预算的最后一轮会被当成正常）。
+                    if budget is not None and total.total_tokens > budget:
+                        status = "budget_exceeded"
+                    else:
+                        status = "done"
                     break
 
                 for call in calls:

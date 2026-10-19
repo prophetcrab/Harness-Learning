@@ -19,14 +19,23 @@ P4 是**一个项目**（不再是 P2/P3 那样的阶段副本目录）：插件
 | `plugins/capability/` | 能力插件，按功能域分二级目录：`llm/`（provider / retry / tokens_usages / fake）、`agent/`（loop / admin）、`prompt/`（character_admin / system_prompt_admin）、`session/`（store_jsonl）、`fs/`（sandbox / observation_policy）、`proc/`（backends）、`workspace/`（admin）、`tools/`（math / fs / shell / fs_search / web_search / ask_user） | ✅ |
 | `plugins/application/` | 应用化插件（换掉它产品形态变了）：`web` / `cli` / `sdk` | M4 才长出 |
 | `harness/` | **公开门面**（`pip install p4-harness` 后的 `import harness`）：纯 re-export，不加载插件 | ✅ |
-| `tests/` | 逐个机制的验收（先写验收，再写实现） | 506 用例 |
+| `tests/` | 机制验收 + **功能目标验收**（`test_feature_goals.py` / `test_long_chain_and_concurrency.py` 离线；`test_real_api.py` 真实模型） | 536 用例离线；另 34 条真实 API（默认跳过） |
 | `manifests/` | 装配单（产品形态就是数据）：`minimal.py`（离线）/ `realtime.py`（真实模型）/ `minimal.yaml`（YAML 版，同一形状） | ✅ |
 | `docs/` | 图解：[ctx 如何管理插件](docs/ctx-plugin-management.html)（15 步交互演示，直接用浏览器打开） | ✅ |
 
 ## 怎么跑
 
     cd P4_Coding
-    python -m pytest tests -q      # 每小步的定向验收
+    python -m pytest tests -q      # 每小步的定向验收（离线，默认不联网）
+
+    # 真实 API 功能验收（DeepSeek，联网 + 计费；默认跳过）
+    python -m pytest tests/test_real_api.py --real -q
+
+    # 同一批功能目标的离线版本（剧本模型，其余链路全真）
+    python -m pytest tests/test_feature_goals.py -q
+
+    # 长链路 / 并行会话 / 会话内编辑（离线，含并发压力）
+    python -m pytest tests/test_long_chain_and_concurrency.py -q
 
     python app.py                                   # 交互式（离线剧本）
     python app.py --realtime --yes --ask "你好"      # 真实模型

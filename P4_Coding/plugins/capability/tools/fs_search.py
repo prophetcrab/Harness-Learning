@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from core import Context
+from plugins.base.tools_admin import current_session_id
 
 
 # === 本地副本（来自 plugins/base/tools_admin.py；插件之间不 import，见决策 0053）===
@@ -229,13 +230,17 @@ class ToolFsSearchPlugin:
             except re.error as exc:
                 raise ValueError(f"正则表达式不合法：{exc}") from exc
             hits: list[dict[str, Any]] = []
-            for entry in fs.list_dir(path, recursive=True):
+            for entry in fs.list_dir(
+                path, recursive=True, session_id=current_session_id()
+            ):
                 if entry["type"] != "file":
                     continue
                 if not fnmatch.fnmatch(entry["path"].rsplit("/", 1)[-1], include):
                     continue
                 try:
-                    text = fs.read_text(entry["path"])
+                    text = fs.read_text(
+                        entry["path"], session_id=current_session_id()
+                    )
                 except Exception:  # noqa: BLE001 —— 二进制 / 不可读的文件跳过
                     continue
                 for number, line in enumerate(text.splitlines(), start=1):

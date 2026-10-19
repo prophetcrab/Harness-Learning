@@ -30,6 +30,7 @@ import inspect
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -37,6 +38,24 @@ from core import Context, Disposer
 
 #: 工具服务的名字（**唯一**：注册、执行、管理都在这一个面上）。
 TOOL_ADMIN_SERVICE = "tool-admin"
+
+#: 当前工具调用所属的会话。
+#:
+#: 工具函数**不应该**在 schema 里多一个 `session_id` 参数（模型不需要知道、也不该
+#: 能伪造它），但文件策略（读后写、按会话审批去重）必须按会话记账。所以管线在
+#: 执行线程里把会话 id 放进 ContextVar，工具实现用 `current_session_id()` 取出。
+_CURRENT_SESSION: ContextVar[str | None] = ContextVar(
+    "p4_tool_session_id", default=None
+)
+
+
+def current_session_id() -> str | None:
+    """本次工具调用所属的会话 id（不在工具调用中时为 None）。
+
+    工具插件（如 `tool-fs`）用它把 `session_id` 透给 `fs` 服务——否则读后写
+    策略与 risky 模式的"同会话只问一次"会退化成全局共享。
+    """
+    return _CURRENT_SESSION.get()
 
 
 class _LazyApproval:
@@ -334,6 +353,7 @@ __all__ = [
     "ToolsAdminPlugin",
     "ToolsAdminService",
     "UnknownToolError",
+    "current_session_id",
     "tool",
     "tools_admin_plugin",
     "validate_arguments",
@@ -812,7 +832,7 @@ class ToolPipeline:
         # 3) execute：策略可以包住调用（超时 / 重试 / 记账）
                 )
         def call() -> ToolResult:
-            return self._invoke(record, args)
+            return self._invoke(record, args, session_id=session_id)
 
         wrapped = self._hooks.waterfall(
             EXECUTE_EVENT,
@@ -863,15 +883,26 @@ class ToolPipeline:
         )
         return final
 
-    def _invoke(self, record: Any, args: dict[str, Any]) -> ToolResult:
+    def _invoke(
+        self,
+        record: Any,
+        args: dict[str, Any],
+        *,
+        session_id: str | None = None,
+    ) -> ToolResult:
         """在独立线程里执行（超时是**背压**：工具自己不守时也不会卡死 turn）。"""
         box: dict[str, Any] = {}
 
         def target() -> None:
+            # ContextVar 必须在线程内部设置；工具实现（tool-fs 等）据此拿到
+            # 本次调用所属的会话，把策略记账按会话隔离。
+            token = _CURRENT_SESSION.set(session_id)
             try:
                 box["value"] = record.func(**args)
             except BaseException as exc:  # noqa: BLE001 —— 收进结果
                 box["error"] = exc
+            finally:
+                _CURRENT_SESSION.reset(token)
 
         thread = threading.Thread(target=target, daemon=True)
         thread.start()

@@ -54,6 +54,28 @@ class Workspace:
     def root(self) -> Path:
         return self._root
 
+    @staticmethod
+    def _strip_extended(path: Path) -> Path:
+        """剥掉 Windows 扩展长度前缀（`\\\\?\\` / `\\\\?\\UNC\\`）。"""
+        text = str(path)
+        if text.startswith("\\\\?\\"):
+            text = text[4:]
+            if text.startswith("UNC\\"):
+                text = "\\\\" + text[4:]
+            return Path(text)
+        return path
+
+    @classmethod
+    def _canonical(cls, path: Path) -> str:
+        """路径的可比较形态（大小写与 Windows 扩展前缀都归一）。
+
+        `Path.resolve()` 在 Windows 上**偶尔**会返回带 `\\\\?\\` 前缀的扩展
+        长度路径（并发创建目录时实测会触发）。带前缀的字符串与普通绝对路径
+        不相等，逐段比较会得出"越界"的假结论——所以先剥掉前缀，再用
+        `os.path.normcase` 做平台正规化。
+        """
+        return os.path.normcase(str(cls._strip_extended(path)))
+
     def resolve(self, path: str | Path) -> Path:
         """把路径解析成工作区内的绝对路径；越界 → WorkspaceError。
 
@@ -75,17 +97,23 @@ class Workspace:
         return resolved
 
     def contains(self, path: str | Path) -> bool:
-        """某个（已存在的）路径是否在工作区内。"""
+        """某个路径是否在工作区内（大小写不敏感、忽略 Windows 扩展前缀）。"""
         candidate = Path(path)
         try:
             resolved = candidate.resolve()
         except OSError:
             return False
-        return resolved == self._root or self._root in resolved.parents
+        root = self._canonical(self._root)
+        target = self._canonical(resolved)
+        if target == root:
+            return True
+        return target.startswith(root + os.sep)
 
     def relative(self, path: str | Path) -> str:
         """工作区内的相对路径（给日志 / 工具结果用，不泄漏绝对路径）。"""
-        return str(self.resolve(path).relative_to(self._root)).replace(os.sep, "/")
+        resolved = self._strip_extended(self.resolve(path))
+        root = self._strip_extended(self._root)
+        return str(resolved.relative_to(root)).replace(os.sep, "/")
 
     def info(self) -> dict[str, Any]:
         """目录 / 文件数 / 总字节数（管理面展示用；不递归进符号链接目录之外）。"""

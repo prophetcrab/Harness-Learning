@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -77,6 +78,10 @@ class JsonlSessionStore:
         self.root = Path(root)
         self.last_repair: RepairReport | None = None
         self._writers: dict[str, SessionWriter] = {}
+        #: 写句柄池与磁盘写入的锁。多个会话并行跑 turn 时，`flush()`（每个
+        #: turn/end 都会触发）不能与"首次 append 新建写句柄"交错，否则会在
+        #: 迭代 dict 时抛 `dictionary changed size during iteration`。
+        self._lock = threading.RLock()
 
     # ------------------------------------------------------------------
     # 路径
@@ -97,27 +102,30 @@ class JsonlSessionStore:
         self, session_id: str, event: SessionEvent, *, cwd: str | Path | None = None
     ) -> None:
         """把一条事件写进该会话的写句柄（首次调用时创建）。"""
-        writer = self._writers.get(session_id)
-        if writer is None:
-            path = self.path_for(session_id, cwd=cwd)
-            header = SessionHeader(
-                session_id=session_id,
-                created_at=datetime.now(UTC).isoformat(),
-                cwd=str(cwd) if cwd is not None else None,
-            )
-            writer = SessionWriter(path, header)
-            self._writers[session_id] = writer
-        writer.append(event)
+        with self._lock:
+            writer = self._writers.get(session_id)
+            if writer is None:
+                path = self.path_for(session_id, cwd=cwd)
+                header = SessionHeader(
+                    session_id=session_id,
+                    created_at=datetime.now(UTC).isoformat(),
+                    cwd=str(cwd) if cwd is not None else None,
+                )
+                writer = SessionWriter(path, header)
+                self._writers[session_id] = writer
+            writer.append(event)
 
     def flush(self) -> None:
         """全局耐久屏障：所有打开的写句柄 fsync。"""
-        for writer in self._writers.values():
-            writer.flush()
+        with self._lock:
+            for writer in list(self._writers.values()):
+                writer.flush()
 
     def close_session(self, session_id: str) -> None:
-        writer = self._writers.pop(session_id, None)
-        if writer is not None:
-            writer.close()
+        with self._lock:
+            writer = self._writers.pop(session_id, None)
+            if writer is not None:
+                writer.close()
 
     # ------------------------------------------------------------------
     # 读
