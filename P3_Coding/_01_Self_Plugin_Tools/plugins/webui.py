@@ -74,6 +74,21 @@ class WebUiService:
 # ---------------------------------------------------------------------------
 
 
+def _endpoint_of(service: Any) -> str | None:
+    """服务的"地址"（有就一并交给页面）：webui 有 .url，rpc 有 .address。
+
+    这是"挂载点"的通用发现规则——页面不必认识任何插件：服务自己暴露地址，
+    页面就能把它挂成入口（如 token-usage 的用量页面挂在顶栏按钮上）。
+    """
+    url = getattr(service, "url", None)
+    if isinstance(url, str):
+        return url
+    address = getattr(service, "address", None)
+    if isinstance(address, tuple) and len(address) == 2:
+        return f"{address[0]}:{address[1]}"
+    return None
+
+
 def _ledger(ctx: Context) -> dict[str, Any]:
     """插件台账 / 服务 / 工具面——把"完全插件化"变成页面上一眼可见的事实。"""
     tools_service = ctx.get(TOOLS_SERVICE)
@@ -88,6 +103,13 @@ def _ledger(ctx: Context) -> dict[str, Any]:
             for info in ctx.plugins
         ],
         "services": ctx.services,
+        # 有地址的服务（.url / .address）顺手带给页面：主页面据此挂载入口
+        # （token-usage 的用量页面就是这么挂上去的——通用规则，非特例）。
+        "endpoints": {
+            name: url
+            for name in ctx.services
+            if (url := _endpoint_of(ctx.get(name))) is not None
+        },
         "tools": [spec.name for spec in tools_service.specs()] if tools_service is not None else [],
     }
 

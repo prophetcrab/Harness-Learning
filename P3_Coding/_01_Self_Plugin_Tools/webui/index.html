@@ -275,6 +275,19 @@
     white-space:pre-wrap;color:#9fb0c8;max-height:300px;overflow:auto}
   .banner{margin:0 0 14px;padding:8px 12px;border-radius:9px;font-size:12px;
     background:#1c1f17;border:1px solid #3a4227;color:var(--warn)}
+  /* ---------- token 用量面板（token-usage 插件的挂载点） ---------- */
+  #token-panel{position:fixed;inset:0;z-index:60;display:flex;align-items:center;
+    justify-content:center;padding:26px;background:#05070ad9;backdrop-filter:blur(3px)}
+  #token-panel .tbox{width:min(1080px,100%);height:100%;display:flex;
+    flex-direction:column;background:var(--bg);border:1px solid var(--line-2);
+    border-radius:14px;overflow:hidden;box-shadow:0 24px 70px #0009}
+  #token-panel .tbar{display:flex;align-items:center;gap:10px;padding:8px 12px;
+    border-bottom:1px solid var(--line);background:var(--panel-2)}
+  #token-panel .tbar h3{margin:0;font-size:13px;font-weight:600}
+  #token-panel .turl{font-family:var(--mono);font-size:11px;color:var(--faint);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #token-panel .tbar a{text-decoration:none;display:inline-block}
+  #token-frame{flex:1;width:100%;border:0;background:#12141a}
   [hidden]{display:none!important}
 </style>
 </head>
@@ -287,6 +300,7 @@
   <div class="spacer"></div>
   <button class="tbtn on" id="toggle-left" title="折叠 / 展开左栏">会话</button>
   <button class="tbtn on" id="toggle-right" title="折叠 / 展开轨迹栏">轨迹</button>
+  <button class="tbtn" id="token-btn" title="Token 用量统计（token-usage 插件）">📊 Token 用量</button>
   <span class="dot-status" title="服务在线"></span>
 </header>
 
@@ -316,6 +330,19 @@
     <table id="events"><tbody></tbody></table>
   </section>
 </main>
+
+<div id="token-panel" hidden>
+  <div class="tbox">
+    <div class="tbar">
+      <h3>📊 Token 用量</h3>
+      <span class="turl" id="token-url"></span>
+      <div class="spacer"></div>
+      <a class="tbtn" id="token-open" target="_blank" rel="noopener">新标签打开</a>
+      <button class="tbtn" id="token-close">关闭</button>
+    </div>
+    <iframe id="token-frame" title="Token 用量统计"></iframe>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -852,6 +879,80 @@ $("toggle-right").addEventListener("click", () => {
   }
   setInterval(loadSessions, 5000);
   setInterval(loadLedger, 2500);
+})();
+</script>
+<script>
+"use strict";
+/* ---------------- token 用量：token-usage 插件的挂载点 ----------------
+   页面不需要认识任何插件：地址按这个顺序解析——
+     ① URL 参数 ?token_usage=http://host:port/（手工指定，最优先）
+     ② window.TOKEN_USAGE_URL（部署时注入）
+     ③ /api/ledger 的 endpoints["token-usage"]（服务自报地址，通用发现）
+     ④ 默认 http://127.0.0.1:8767/（token-usage 插件的默认端口）
+   按钮上的数字 = 该服务 /api/usage 的合计 tokens（跨源读，靠服务端 CORS 头）；
+   点开 = 同页 iframe 面板，不打断对话（Esc / 点空白 / 「关闭」收起）。      */
+(function () {
+  const btn = document.getElementById("token-btn");
+  const panel = document.getElementById("token-panel");
+  const frame = document.getElementById("token-frame");
+  const urlEl = document.getElementById("token-url");
+  const openEl = document.getElementById("token-open");
+  const closeEl = document.getElementById("token-close");
+  if (!btn || !panel || !frame) return;
+
+  const fromQuery = new URLSearchParams(location.search).get("token_usage");
+  let base = String(fromQuery || window.TOKEN_USAGE_URL || "http://127.0.0.1:8767/");
+  if (!/^https?:\/\//i.test(base)) base = "http://" + base;
+  if (!base.endsWith("/")) base += "/";
+
+  function setUrl(url) {   // 只接受 http(s)：不给 javascript: 之类留任何口子
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return;
+    base = url.endsWith("/") ? url : url + "/";
+    urlEl.textContent = base;
+    urlEl.title = base;
+    openEl.href = base;
+    frame.dataset.ready = "";
+    if (!panel.hidden) { frame.src = base; frame.dataset.ready = "1"; }
+  }
+
+  async function discover() {   // ③ 服务自报地址（需要 webui 的 /api/ledger 带 endpoints）
+    try {
+      const res = await fetch("/api/ledger", { cache: "no-store" });
+      const data = await res.json();
+      setUrl(data && data.endpoints && data.endpoints["token-usage"]);
+    } catch (err) { /* 老版本 ledger 没有该字段：用当前 base */ }
+  }
+
+  async function refreshBadge() {   // 服务在不在 / 合计多少 tokens
+    try {
+      const res = await fetch(base + "api/usage", { cache: "no-store" });
+      const data = await res.json();
+      const total = Number(data.totals.total_tokens || 0).toLocaleString("zh-CN");
+      btn.textContent = "📊 Token " + total;
+      btn.title = "token-usage 插件：" + data.totals.calls + " 次调用 · 合计 "
+        + total + " tokens · " + base;
+    } catch (err) {
+      btn.textContent = "📊 Token 用量";
+      btn.title = "读不到 " + base + "api/usage（插件未装载？点击仍可打开页面）";
+    }
+  }
+
+  btn.addEventListener("click", async () => {
+    panel.hidden = false;
+    if (frame.dataset.ready !== "1") {
+      await discover();
+      frame.src = base;
+      frame.dataset.ready = "1";
+    }
+    refreshBadge();
+  });
+  closeEl.addEventListener("click", () => { panel.hidden = true; });
+  panel.addEventListener("click", (e) => { if (e.target === panel) panel.hidden = true; });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") panel.hidden = true; });
+
+  setUrl(base);
+  discover().then(refreshBadge);
+  setInterval(refreshBadge, 5000);
 })();
 </script>
 </body>
