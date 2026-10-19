@@ -212,11 +212,27 @@ def sessions_plugin(**config: Any) -> SessionsPlugin:
 
 
 __all__ = [
+    "ASSISTANT",
+    "COMPACT_CHECKPOINT",
+    "KNOWN_EVENT_TYPES",
+    "SESSIONS_SERVICE",
     "SESSION_EVENT",
     "SESSION_LOAD",
-    "SESSIONS_SERVICE",
+    "SESSION_START",
+    "STEP_END",
+    "STEP_START",
+    "SYSTEM_MESSAGE",
+    "Session",
+    "SessionEvent",
+    "SessionStore",
     "SessionsPlugin",
     "SessionsService",
+    "TOOL_CALL",
+    "TOOL_RESULT",
+    "TURN_END",
+    "TURN_START",
+    "USER_MESSAGE",
+    "project_messages",
     "sessions_plugin",
 ]
 
@@ -488,23 +504,3 @@ class SessionStore:
     def session_ids(self) -> tuple[str, ...]:
         with self._lock:
             return tuple(self._sessions)
-
-
-__all__ = [
-    "ASSISTANT",
-    "KNOWN_EVENT_TYPES",
-    "COMPACT_CHECKPOINT",
-    "SESSION_START",
-    "STEP_END",
-    "STEP_START",
-    "SYSTEM_MESSAGE",
-    "TOOL_CALL",
-    "TOOL_RESULT",
-    "TURN_END",
-    "TURN_START",
-    "USER_MESSAGE",
-    "Session",
-    "SessionEvent",
-    "SessionStore",
-    "project_messages",
-]

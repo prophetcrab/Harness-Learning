@@ -285,7 +285,6 @@ def tools_admin_plugin(**config: Any) -> ToolsAdminPlugin:
     return ToolsAdminPlugin(**config)
 
 
-
 def _looks_like_result(value: Any) -> bool:
     """鸭子类型：一个工具结果只需要这四个属性（不 import 本模块）。"""
     return all(hasattr(value, name) for name in ("status", "content", "message"))
@@ -312,10 +311,32 @@ def _coerce_result(value: Any, started: float | None) -> ToolResult:
 
     )
 __all__ = [
+    "ApprovalPolicy",
+    "AutoApprove",
+    "AutoDeny",
+    "DecoratedTool",
+    "DuplicateToolError",
+    "EXECUTE_EVENT",
+    "POST_EVENT",
+    "PRE_EVENT",
+    "ParamSpec",
+    "ParamType",
+    "PreAction",
+    "PreDecision",
+    "RESULT_EVENT",
     "TOOL_ADMIN_SERVICE",
+    "ToolDefinition",
+    "ToolPipeline",
+    "ToolRecord",
+    "ToolRegistry",
+    "ToolResult",
+    "ToolStatus",
     "ToolsAdminPlugin",
     "ToolsAdminService",
+    "UnknownToolError",
+    "tool",
     "tools_admin_plugin",
+    "validate_arguments",
 ]
 
 
@@ -541,15 +562,6 @@ def _check_type(tool_name: str, pname: str, spec: ParamSpec, value: Any) -> None
 
 
         )
-__all__ = [
-    "ParamSpec",
-    "ParamType",
-    "ToolDefinition",
-    "ToolResult",
-    "ToolStatus",
-    "tool",
-    "validate_arguments",
-]
 
 
 # ======================================================================
@@ -671,14 +683,6 @@ class ToolRegistry:
 
 #: `@tool` 装饰器的转出（工具插件从 components 一层 import 就够）。
 DecoratedTool = tool
-
-__all__ = [
-    "DecoratedTool",
-    "DuplicateToolError",
-    "ToolRecord",
-    "ToolRegistry",
-    "UnknownToolError",
-]
 
 
 # ======================================================================
@@ -889,17 +893,3 @@ class ToolPipeline:
         if _looks_like_result(value):
             return _coerce_result(value, None)
         return ToolResult(status="ok", content=value)
-
-
-__all__ = [
-    "EXECUTE_EVENT",
-    "POST_EVENT",
-    "PRE_EVENT",
-    "RESULT_EVENT",
-    "ApprovalPolicy",
-    "AutoApprove",
-    "AutoDeny",
-    "PreAction",
-    "PreDecision",
-    "ToolPipeline",
-]

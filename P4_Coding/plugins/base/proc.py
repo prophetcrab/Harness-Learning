@@ -157,7 +157,24 @@ def proc_plugin(**config: Any) -> ProcPlugin:
     return ProcPlugin(**config)
 
 
-__all__ = ["PROC_SERVICE", "ProcPlugin", "ProcRuntime", "proc_plugin"]
+__all__ = [
+    "DEFAULT_ENV",
+    "Dialect",
+    "GitBashBackend",
+    "PROC_SERVICE",
+    "PosixBackend",
+    "ProcBackend",
+    "ProcPlugin",
+    "ProcResult",
+    "ProcRuntime",
+    "ProcStatus",
+    "ScriptedBackend",
+    "TimeoutKind",
+    "detect_dialect",
+    "dialect_hint",
+    "proc_plugin",
+    "win_to_posix_path",
+]
 
 
 # ======================================================================
@@ -283,15 +300,6 @@ def dialect_hint(command: str, expected: Dialect) -> str | None:
 
 
     )
-__all__ = [
-    "Dialect",
-    "ProcBackend",
-    "ProcResult",
-    "ProcStatus",
-    "TimeoutKind",
-    "detect_dialect",
-    "dialect_hint",
-]
 
 
 # ======================================================================
@@ -561,10 +569,3 @@ class ScriptedBackend:
 
 
         )
-__all__ = [
-    "DEFAULT_ENV",
-    "GitBashBackend",
-    "PosixBackend",
-    "ScriptedBackend",
-    "win_to_posix_path",
-]

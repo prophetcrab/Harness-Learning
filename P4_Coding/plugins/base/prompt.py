@@ -64,7 +64,20 @@ def prompt_plugin(**config: Any) -> PromptPlugin:
     return PromptPlugin(**config)
 
 
-__all__ = ["PROMPT_SERVICE", "PromptPlugin", "prompt_plugin"]
+__all__ = [
+    "DuplicateSectionError",
+    "MissingVariableError",
+    "PROMPT_SERVICE",
+    "PromptAssembler",
+    "PromptError",
+    "PromptPlugin",
+    "RenderedPrompt",
+    "SectionText",
+    "SectionTrace",
+    "UnknownSectionError",
+    "VariableResolver",
+    "prompt_plugin",
+]
 
 
 # ======================================================================
@@ -284,16 +297,3 @@ def _substitute(
         )
     used[name] = value
     return "" if value is None else str(value)
-
-
-__all__ = [
-    "DuplicateSectionError",
-    "MissingVariableError",
-    "PromptAssembler",
-    "PromptError",
-    "RenderedPrompt",
-    "SectionText",
-    "SectionTrace",
-    "UnknownSectionError",
-    "VariableResolver",
-]

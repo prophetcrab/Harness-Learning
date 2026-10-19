@@ -439,12 +439,17 @@ __all__ = [
     "AGENT_TOOL_RESULT",
     "AGENT_TURN_END",
     "AGENT_TURN_START",
+    "AgentBackend",
     "AgentError",
     "AgentFactory",
     "AgentHandle",
     "AgentNotAvailable",
+    "AgentOptions",
     "AgentPlugin",
     "AgentRegistry",
+    "AgentStatus",
+    "TurnResult",
+    "TurnStatus",
     "UnknownAgentError",
     "agent_plugin",
 ]
@@ -529,12 +534,3 @@ class AgentBackend:
     inject: Callable[[str], None]
     cancel: Callable[[], bool]
     dispose: Callable[[], None]
-
-
-__all__ = [
-    "AgentBackend",
-    "AgentOptions",
-    "AgentStatus",
-    "TurnResult",
-    "TurnStatus",
-]

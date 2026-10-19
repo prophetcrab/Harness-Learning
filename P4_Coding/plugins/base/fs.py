@@ -203,6 +203,10 @@ def fs_plugin(**config: Any) -> FileSystemPlugin:
 
 
 __all__ = [
+    "ApprovalPolicy",
+    "ApprovalRequest",
+    "AutoApprove",
+    "AutoDeny",
     "FS_APPROVE",
     "FS_READ",
     "FS_READ_MISSING",
@@ -210,8 +214,16 @@ __all__ = [
     "FS_WRITE",
     "FileSystemPlugin",
     "FileSystemService",
+    "FsDenied",
     "FsError",
     "FsNotFound",
+    "MODES",
+    "ObservationTracker",
+    "Operation",
+    "RiskJudge",
+    "SandboxMode",
+    "SandboxPolicy",
+    "default_risk_judge",
     "fs_plugin",
 ]
 
@@ -328,21 +340,6 @@ class SandboxPolicy:
         return {"mode": self._mode, "approved": len(self._approved)}
 
 
-__all__ = [
-    "MODES",
-    "ApprovalPolicy",
-    "ApprovalRequest",
-    "AutoApprove",
-    "AutoDeny",
-    "FsDenied",
-    "Operation",
-    "RiskJudge",
-    "SandboxMode",
-    "SandboxPolicy",
-    "default_risk_judge",
-]
-
-
 # ======================================================================
 # 以下合并自 components/fs/observation.py
 # ======================================================================
@@ -372,6 +369,3 @@ class ObservationTracker:
     def snapshot(self) -> dict[str, int]:
         with self._lock:
             return {session: len(paths) for session, paths in self._seen.items()}
-
-
-__all__ = ["ObservationTracker"]

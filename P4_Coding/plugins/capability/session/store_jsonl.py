@@ -261,15 +261,23 @@ def session_store_jsonl_plugin(**config: Any) -> JsonlSessionStorePlugin:
 
 
 __all__ = [
-    "SESSION_STORE_SERVICE",
+    "FORMAT_MARK",
+    "FORMAT_VERSION",
     "JsonlSessionStore",
     "JsonlSessionStorePlugin",
     "RepairReport",
+    "SESSION_STORE_SERVICE",
     "SessionFormatError",
     "SessionHeader",
+    "SessionReader",
+    "SessionWriter",
     "encode_session_id",
+    "find_session_files",
+    "last_complete_offset",
     "project_dir_name",
+    "session_path",
     "session_store_jsonl_plugin",
+    "truncate_torn_tail",
 ]
 
 
@@ -594,20 +602,3 @@ class SessionWriter:
 
     def __exit__(self, *_exc: object) -> None:
         self.close()
-
-
-__all__ = [
-    "FORMAT_MARK",
-    "FORMAT_VERSION",
-    "RepairReport",
-    "SessionFormatError",
-    "SessionHeader",
-    "SessionReader",
-    "SessionWriter",
-    "encode_session_id",
-    "find_session_files",
-    "last_complete_offset",
-    "project_dir_name",
-    "session_path",
-    "truncate_torn_tail",
-]

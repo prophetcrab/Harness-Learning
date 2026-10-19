@@ -161,9 +161,9 @@ class LLMRuntime:
         if not route_provider or not route_model:
             raise InvalidRequestError(
                 "请求没有指定 provider/model，装配也没有默认值（检查装配单的 llm 配置）"
+            )
         # 边界归一：消息与工具可以是本模块的类型、字典，或任何"长得像"的对象
         # （其它插件用自己的副本构造）。这里统一转成本模块的内部类型。
-            )
         return LLMRequest(
             provider=route_provider,
             model=route_model,
@@ -176,8 +176,8 @@ class LLMRuntime:
             session_id=session_id,
             user_id=user_id,
             extra=dict(extra or {}),
-
         )
+
     def resolve(self, provider: str, model: str) -> ModelInfo:
         """解析模型信息（未知路由 / 未知模型都 fail loud，带稳定 code）。"""
         adapter = self._adapter(provider)
@@ -245,8 +245,8 @@ class LLMRuntime:
             session_id=request.session_id,
             user_id=request.user_id,
             extra=request.extra,
-
         )
+
     def stream(self, request: LLMRequest) -> Iterator[Chunk]:
         """按请求里的路由分发；参数先校验、默认值先补齐。
 
@@ -332,12 +332,13 @@ class LLMPlugin:
                 default_model=self._default_model,
             ),
         )
+
+
 def llm_plugin(
     *, default_provider: str | None = None, default_model: str | None = None
 ) -> LLMPlugin:
     """工厂：装配单的 `config` 直接喂给这里。"""
     return LLMPlugin(default_provider=default_provider, default_model=default_model)
-
 
 
 # ---------------------------------------------------------------------------
@@ -360,9 +361,9 @@ def _as_message(item: Any) -> Message:
         content=item.content,
         tool_calls=tuple(_as_tool_call(call) for call in getattr(item, "tool_calls", ()) or ()),
         tool_call_id=getattr(item, "tool_call_id", None),
-
-
     )
+
+
 def _as_tool_call(item: Any) -> ToolCall:
     if isinstance(item, ToolCall):
         return item
@@ -376,9 +377,9 @@ def _as_tool_call(item: Any) -> ToolCall:
         id=str(item.id),
         name=str(item.name),
         arguments=str(getattr(item, "arguments", "{}")),
-
-
     )
+
+
 def _as_tool_spec(item: Any) -> ToolSpec:
     if isinstance(item, ToolSpec):
         return item
@@ -392,18 +393,59 @@ def _as_tool_spec(item: Any) -> ToolSpec:
         name=str(item.name),
         description=str(getattr(item, "description", "")),
         parameters=dict(getattr(item, "parameters", {}) or {}),
-
-
     )
+
+
 __all__ = [
+    "Chunk",
+    "Content",
+    "ContentPart",
+    "DONE",
+    "Finish",
+    "FinishReason",
+    "ImagePart",
+    "InvalidRequestError",
+    "LLMAuthError",
+    "LLMConnectionError",
+    "LLMError",
+    "LLMPlugin",
+    "LLMProvider",
+    "LLMRateLimitError",
+    "LLMRequest",
+    "LLMRuntime",
+    "LLMServerError",
+    "LLMTimeoutError",
     "LLM_CALL_EVENT",
     "LLM_ERROR_EVENT",
     "LLM_FINISH_EVENT",
     "LLM_SERVICE",
+    "Message",
+    "ModelInfo",
+    "Role",
     "SUB_PLUGINS",
-    "LLMPlugin",
-    "LLMRuntime",
+    "TextDelta",
+    "TextPart",
+    "ToolCall",
+    "ToolCallAccumulator",
+    "ToolCallsDelta",
+    "ToolSpec",
+    "UnknownModelError",
+    "UnknownProviderError",
+    "Usage",
+    "assemble_text",
+    "build_payload",
+    "content_payload",
+    "final_usage",
+    "finish_reason",
+    "is_done",
     "llm_plugin",
+    "message_payload",
+    "parse_data_line",
+    "parse_stream",
+    "text_delta",
+    "tool_call_deltas",
+    "tool_payload",
+    "usage_from_event",
 ]
 
 
@@ -735,46 +777,15 @@ def assemble_text(chunks: Sequence[Chunk]) -> str:
     """把流里的文本增量拼起来（测试 / 非流式消费方的便利函数）。"""
     return "".join(
         chunk.text for chunk in chunks if getattr(chunk, "type", None) == "text"
-
-
     )
+
+
 def final_usage(chunks: Sequence[Chunk]) -> Usage | None:
     """取流结束标记里的用量（没有 Finish 或没带用量 → None）。"""
     for chunk in reversed(chunks):
         if getattr(chunk, "type", None) == "finish":
             return chunk.usage
     return None
-
-
-__all__ = [
-    "Chunk",
-    "Content",
-    "ContentPart",
-    "Finish",
-    "FinishReason",
-    "ImagePart",
-    "InvalidRequestError",
-    "LLMAuthError",
-    "LLMConnectionError",
-    "LLMError",
-    "LLMProvider",
-    "LLMRequest",
-    "LLMRateLimitError",
-    "LLMServerError",
-    "LLMTimeoutError",
-    "Message",
-    "ModelInfo",
-    "Role",
-    "TextDelta",
-    "TextPart",
-    "ToolCall",
-    "ToolSpec",
-    "UnknownModelError",
-    "UnknownProviderError",
-    "Usage",
-    "assemble_text",
-    "final_usage",
-]
 
 
 # ======================================================================
@@ -993,9 +1004,9 @@ def usage_from_event(event: Mapping[str, Any]) -> Usage | None:
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cached_input_tokens=cached,
-
-
     )
+
+
 def tool_call_deltas(event: Mapping[str, Any]) -> list[dict[str, Any]]:
     """从一条流事件里取出 tool_calls 的**增量分片**。
 
@@ -1103,21 +1114,3 @@ def parse_stream(lines: Iterable[str]) -> Iterable[object]:
         if found_usage is not None:
             usage = found_usage
     yield Finish(reason=reason or "stop", usage=usage)
-
-
-__all__ = [
-    "DONE",
-    "ToolCallAccumulator",
-    "ToolCallsDelta",
-    "build_payload",
-    "content_payload",
-    "finish_reason",
-    "is_done",
-    "message_payload",
-    "parse_data_line",
-    "parse_stream",
-    "text_delta",
-    "tool_call_deltas",
-    "tool_payload",
-    "usage_from_event",
-]
