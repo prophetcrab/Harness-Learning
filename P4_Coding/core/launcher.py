@@ -64,7 +64,7 @@ class Runtime:
     @property
     def loader(self) -> Any:
         """当前的 loader 服务（函数内懒加载：引导是 core 唯一允许认识 plugins 的地方）。"""
-        from plugins.loader import LOADER_SERVICE
+        from plugins.base.loader import LOADER_SERVICE
 
         return self.ctx.require(LOADER_SERVICE)
 
@@ -111,7 +111,7 @@ def boot(
     失败时抛 `AssemblyError`（装配单问题）或 `PolicyError`（产品政策）——
     **不返回半个 Runtime**：失败的装配不留下可用的世界。
     """
-    from plugins.loader import LOADER_SERVICE, loader_plugin
+    from plugins.base.loader import LOADER_SERVICE, loader_plugin
 
     ctx = Context()
     try:

@@ -19,10 +19,12 @@
     步 4  事件 ✅                 on / emit（广播）/ waterfall（中间件链）；订阅随 effect 回卷
     步 7  变更锁 + revision ✅    公共操作串行化；每次有效变更 revision +1 + 变更报告
     步 8  引导（launcher）✅      自带启动器：boot(装配单) → Runtime；产品政策检查
+    补充  动态依赖 inject ✅      ctx.inject(deps, cb)：依赖齐了才跑一块，走了自动拆
     （条目 / 树 / 装配单 / 热插拔都是 loader 插件的事，不在 core 的框架部分。）
 """
 
 from core.context import (
+    INJECT_EFFECT_PREFIX,
     PLUGIN_EFFECT_PREFIX,
     ChangeReport,
     Context,
@@ -30,6 +32,8 @@ from core.context import (
     DuplicatePluginError,
     DuplicateSlotError,
     EventHandler,
+    InjectionInfo,
+    InjectionStatus,
     Install,
     MissingEffectError,
     MissingPluginError,
@@ -50,14 +54,17 @@ from core.launcher import (
 from core.plugin import (
     Disposer,
     Plugin,
+    matches_plugin_requirement,
     plugin_injects,
     plugin_name,
     plugin_optionals,
+    plugin_requires,
     plugin_setup,
 )
 
 __all__ = [
     "APPLICATION_ROLE",
+    "INJECT_EFFECT_PREFIX",
     "PLUGIN_EFFECT_PREFIX",
     "ROLES",
     "BootError",
@@ -68,6 +75,8 @@ __all__ = [
     "DuplicatePluginError",
     "DuplicateSlotError",
     "EventHandler",
+    "InjectionInfo",
+    "InjectionStatus",
     "Install",
     "MissingEffectError",
     "MissingPluginError",
@@ -80,8 +89,10 @@ __all__ = [
     "boot",
     "check_product_policy",
     "dump",
+    "matches_plugin_requirement",
     "plugin_injects",
     "plugin_name",
     "plugin_optionals",
+    "plugin_requires",
     "plugin_setup",
 ]

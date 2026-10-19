@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from core import Context
-from plugins.loader import LOADER_SERVICE, AssemblyError, Entry, LoaderService, loader_plugin
+from plugins.base.loader import LOADER_SERVICE, AssemblyError, Entry, LoaderService, loader_plugin
 
 # ---------------------------------------------------------------------------
 # 目录：测试用的假插件工厂（name → 工厂；config 就是工厂参数）

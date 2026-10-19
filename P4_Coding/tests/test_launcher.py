@@ -20,7 +20,7 @@ from core import (
     check_product_policy,
     dump,
 )
-from plugins.loader import AssemblyError
+from plugins.base.loader import AssemblyError
 
 
 def make(name: str, *, provides: tuple[str, ...] = ()) -> Callable[..., object]:

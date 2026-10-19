@@ -15,4 +15,7 @@ demo_workspace/
 demo_run/
 sessions/
 sessions_*/
+# P4 最小应用的默认运行目录（app.py 写入）
+P4_Coding/workspace/
+P4_Coding/sessions/
 *.log

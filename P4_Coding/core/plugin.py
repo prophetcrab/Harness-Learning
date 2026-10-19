@@ -31,8 +31,8 @@ SetupFn = Callable[[Any], Disposer | None]
 class Plugin(Protocol):
     """插件协议：有 setup(ctx) 就是插件。
 
-    `name` / `inject` / `optional` 是**可选声明**——运行时按鸭子类型读取，
-    缺失即默认值（见本模块各读取函数）。
+    `name` / `inject` / `optional` / `requires` 是**可选声明**——运行时按鸭子
+    类型读取，缺失即默认值（见本模块各读取函数）。
     """
 
     def setup(self, ctx: Any) -> Disposer | None:
@@ -104,3 +104,33 @@ def plugin_optionals(plugin: object) -> tuple[str, ...]:
             "（一个服务要么必需、要么可选）"
         )
     return optionals
+
+
+#: 提供者插件的命名约定：`llm-provider` 的实例可以叫 `llm-provider:deepseek`。
+PROVIDER_SEPARATOR = ":"
+
+
+def matches_plugin_requirement(required: str, plugin_name_: str) -> bool:
+    """插件名是否满足一条**插件级依赖**声明。
+
+    规则：名字相同，或带 `:<实例>` 后缀（一个能力组挂多份）——`llm-provider`
+    由 `llm-provider:deepseek` / `llm-provider:openai` 满足。
+    """
+    return plugin_name_ == required or plugin_name_.startswith(
+        f"{required}{PROVIDER_SEPARATOR}"
+    )
+
+
+def plugin_requires(plugin: object) -> tuple[str, ...]:
+    """**插件级**依赖（requires）：缺了它，这个插件不完整。
+
+    与 inject / optional 的区别：那两样声明的是**服务**，驱动生命周期
+    （缺了 pending / 降级）；`requires` 声明的是**插件**，只做装配期校验
+    （由 loader 执行）——不参与激活，否则"provider 依赖 llm、llm 依赖
+    provider"会互相等死。
+
+    典型用途：`llm` 声明 `requires = ("llm-provider",)`——没有适配器时它虽然
+    能提供路由服务，但任何调用都会失败，属于"装配不完整"，应当在起产品时
+    fail loud，而不是等到第一次请求。
+    """
+    return _service_names(plugin, "requires")

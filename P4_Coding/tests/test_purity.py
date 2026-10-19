@@ -191,3 +191,176 @@ def test_core_package_imports_without_plugins_loaded():
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "ok"
+
+
+# ---------------------------------------------------------------------------
+# 层纪律：只有三层（core / plugins / 入口），不再有 components
+# ---------------------------------------------------------------------------
+
+
+def test_no_components_layer():
+    """项目只有 core 与 plugins 两层代码（加入口脚本）。
+
+    共享类型与纯函数按**功能域**并进对应插件模块（如 `plugins/base/tools_admin.py`
+    里的 `@tool` / `ToolDefinition` / `ToolPipeline`）——插件之间可以直接
+    import 类型，但**行为协作仍然只有服务与事件两条通道**。没有独立的
+    components 层：少一层目录，代价是插件间出现类型 import（已接受）。
+    """
+    stray = HERE / "components"
+    assert not stray.exists(), (
+        "components/ 已合并进 plugins/；要加共享类型请放进对应功能域的插件模块"
+    )
+
+
+def test_plugin_type_imports_do_not_form_cycles():
+    """插件可以 import 别的插件的类型，但不能形成环形依赖。
+
+    放宽"插件间只能服务与事件"之后，唯一的硬约束是**无环**：类型层可以
+    单向引用，一旦成环说明两个模块的职责没有切开。
+    """
+    plugins = HERE / "plugins"
+    modules = {
+        path.relative_to(HERE).with_suffix("").as_posix().replace("/", "."): path
+        for path in plugins.rglob("*.py")
+        if path.name != "__init__.py"
+    }
+    graph: dict[str, set[str]] = {name: set() for name in modules}
+    for name, path in modules.items():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for imported in _top_level_imports(tree):
+            if imported in modules:
+                graph[name].add(imported)
+
+    # DFS 找环
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def walk(node: str, stack: list[str]) -> None:
+        if node in visited:
+            return
+        if node in visiting:
+            cycle = " → ".join([*stack, node])
+            raise AssertionError(f"插件间出现环形 import：{cycle}")
+        visiting.add(node)
+        for neighbour in sorted(graph[node]):
+            walk(neighbour, [*stack, node])
+        visiting.discard(node)
+        visited.add(node)
+
+    for name in sorted(graph):
+        walk(name, [])
+
+
+def _plugin_role(module: str) -> str | None:
+    """`plugins.capability.llm.fake` → `capability`；不是插件模块 → None。"""
+    parts = module.split(".")
+    if len(parts) >= 3 and parts[0] == "plugins" and parts[1] in {
+        "base",
+        "capability",
+        "application",
+    }:
+        return parts[1]
+    return None
+
+
+def test_plugin_imports_go_one_way():
+    """插件间 import 只能**由外向内**：capability → base 允许，反向禁止。
+
+    这是"最小耦合"的可执行版本（决策 0053）：
+
+        · base 是稳定层，不认识任何具体能力；
+        · capability 可以用 base 的类型 / 纯函数（身份一致才不丢 isinstance）；
+        · **capability 之间不 import**——兄弟能力要么走服务与事件，要么各自
+          留一份副本（重复可以接受，隐式依赖不可以）；
+        · application 是组合根，可以认识两者。
+
+    行为协作仍然只有服务与事件两条通道；这条规则约束的是**类型层**。
+    """
+    plugins = HERE / "plugins"
+    violations: list[str] = []
+    for path in plugins.rglob("*.py"):
+        if path.name == "__init__.py":
+            continue
+        module = path.relative_to(HERE).with_suffix("").as_posix().replace("/", ".")
+        source_role = _plugin_role(module)
+        if source_role is None:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for imported in _top_level_imports(tree):
+            target_role = _plugin_role(imported)
+            if target_role is None:
+                continue
+            if source_role == "base" and target_role in {"capability", "application"}:
+                violations.append(f"{module}（base）→ {imported}（{target_role}）")
+            elif source_role == "capability" and target_role == "capability":
+                violations.append(f"{module}（capability）→ {imported}（兄弟能力）")
+            elif source_role == "capability" and target_role == "application":
+                violations.append(f"{module}（capability）→ {imported}（application）")
+    assert violations == [], (
+        "插件间 import 方向不对（只允许 capability → base / application → 任意）：\n  "
+        + "\n  ".join(violations)
+    )
+# ---------------------------------------------------------------------------
+# 插件目录按默认角色分类（0041 / 0035）
+# ---------------------------------------------------------------------------
+
+
+def test_plugins_live_in_role_directories():
+    """每个插件模块都必须在 base/ capability/ application/ 之下。
+
+    顶层 `plugins/*.py` 只允许包门面（`__init__.py`）——否则"三类插件"的
+    物理归类会随着新插件慢慢烂掉，装配单里的角色也失去默认值。
+    """
+    allowed_top = {"__init__.py"}
+    stray = [
+        path.name
+        for path in (HERE / "plugins").glob("*.py")
+        if path.name not in allowed_top
+    ]
+    assert stray == [], (
+        f"插件模块必须放进 plugins/<角色>/ 下（base / capability / application）：{stray}"
+    )
+
+    role_dirs = {"base", "capability", "application"}
+    present = {path.name for path in (HERE / "plugins").iterdir() if path.is_dir()}
+    unexpected = sorted(present - role_dirs - {"__pycache__"})
+    assert unexpected == [], f"plugins/ 下出现了未知目录：{unexpected}"
+
+
+#: capability 的二级目录（按功能域分组）；加新组时同步这张表。
+CAPABILITY_GROUPS = {
+    "llm", "prompt", "session", "fs", "proc", "workspace", "tools", "approval", "agent",
+}
+
+
+def test_capability_plugins_live_in_domain_directories():
+    """能力插件必须放进功能域子目录——顶层只允许包门面。
+
+    目录只是分组，插件身份仍是各自的 `name`（如 `tool-fs`），与目录无关；
+    但"平铺一层"会让能力层随着插件增多变得不可读（十几个文件谁属于谁全靠猜）。
+    """
+    capability = HERE / "plugins" / "capability"
+    stray = [
+        path.name
+        for path in capability.glob("*.py")
+        if path.name != "__init__.py"
+    ]
+    assert stray == [], (
+        f"能力插件必须放进功能域子目录（{' / '.join(sorted(CAPABILITY_GROUPS))}）：{stray}"
+    )
+
+    present = {path.name for path in capability.iterdir() if path.is_dir()}
+    unknown = sorted(present - CAPABILITY_GROUPS - {"__pycache__"})
+    assert unknown == [], f"capability/ 下出现了未登记的功能域：{unknown}"
+
+
+def test_each_capability_group_has_a_docstring():
+    """每个功能域要有包门面说明——否则新人不知道这一组是干什么的。"""
+    capability = HERE / "plugins" / "capability"
+    for name in sorted(CAPABILITY_GROUPS):
+        init = capability / name / "__init__.py"
+        assert init.is_file(), f"缺少 {name}/__init__.py"
+        tree = ast.parse(init.read_text(encoding="utf-8"))
+        doc = ast.get_docstring(tree)
+        assert doc and len(doc.strip()) > 10, f"{name}/__init__.py 缺少有意义的说明"
+

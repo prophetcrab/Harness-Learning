@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 
 from core import Context
-from plugins.loader import LOADER_SERVICE, AssemblyError, LoaderService, loader_plugin
+from plugins.base.loader import LOADER_SERVICE, AssemblyError, LoaderService, loader_plugin
 
 
 def make(

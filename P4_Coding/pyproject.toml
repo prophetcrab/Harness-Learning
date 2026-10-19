@@ -4,8 +4,10 @@ version = "0.4.0"
 description = "P4：插件化 harness 的实质化 —— 最小插件底座 + 三类插件 → 一个可用产品"
 requires-python = ">=3.13"
 
-# P4 是一个真实项目（不是 P2/P3 那样的阶段副本）：依赖等用到时再加，
-# 现在只有开发工具（pytest / ruff，由环境提供）。
+# P4 是一个真实项目（不是 P2/P3 那样的阶段副本）：依赖等用到时再加。
+# 唯一的运行时依赖是 PyYAML（`manifests/load.py` 读 YAML 装配单）；
+# 其余是开发工具（pytest / ruff，由环境提供）。
+dependencies = ["PyYAML>=6"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
@@ -24,8 +26,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-# P4 的顶层包：core（框架）/ plugins（插件）/ components（纯构件）/ app（启动器）。
-known-first-party = ["core", "plugins", "components", "app"]
+# P4 的顶层包：core（框架 + 引导）/ plugins（插件）/ manifests（装配单）/ app（入口）。
+known-first-party = ["core", "plugins", "manifests", "app"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

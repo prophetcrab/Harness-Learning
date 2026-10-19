@@ -44,7 +44,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from core import Context, Disposer, PluginInfo, plugin_name
+from core import Context, Disposer, PluginInfo, matches_plugin_requirement, plugin_name
 
 #: loader 服务的名字（loader 插件提供它；启动器 / 管理面 / 模型工具都用这一条通道）。
 LOADER_SERVICE = "loader"
@@ -316,6 +316,7 @@ class LoaderService:
         try:
             for node in nodes:
                 self._assemble_one(node)
+            self._ensure_requires(nodes)
             pending = [
                 name
                 for name in self._ctx.pending_plugins
@@ -492,6 +493,7 @@ class LoaderService:
         try:
             self._assemble_one(node)
             self._ensure_no_new_pending([node])
+            self._ensure_requires([node])
         except BaseException:
             self._rollback(pending_nodes)
             self._detach_nodes(pending_nodes)
@@ -553,6 +555,7 @@ class LoaderService:
         try:
             self._assemble_one(node)
             self._ensure_no_new_pending([node])
+            self._ensure_requires([node])
         except BaseException as exc:
             rollback_error: BaseException | None = None
             if was_running:
@@ -619,6 +622,7 @@ class LoaderService:
         try:
             self._assemble_one(node)
             self._ensure_no_new_pending([node])
+            self._ensure_requires([node])
         except BaseException as exc:
             role_rollback_error: BaseException | None = None
             if was_running:
@@ -739,6 +743,30 @@ class LoaderService:
                 raise AssemblyError(
                     f"条目 {node.path!r}（{info.name}）装配后仍在等待依赖：{missing}"
                     "（装配单缺了提供者，或依赖名写错）"
+                )
+
+    def _ensure_requires(self, nodes: list[_Node]) -> None:
+        """插件级依赖（`requires`）必须在场且**运行中**——装配期的 fail loud。
+
+        与 core 的 `missing_requires` 的区别：台账里"在场"包含 disabled /
+        failed；装配完整性的判据更严——一个停用的 provider 满足不了"llm 可用"。
+        只查本次涉及的节点；别处原有的不完整与这次操作无关。
+        """
+        active = self._ctx.active_plugins
+        for node in nodes:
+            info = self._record_of(node)
+            if info is None or not info.requires:
+                continue
+            missing = [
+                required
+                for required in info.requires
+                if not any(matches_plugin_requirement(required, name) for name in active)
+            ]
+            if missing:
+                raise AssemblyError(
+                    f"条目 {node.path!r}（{info.name}）的插件级依赖不满足："
+                    f"{'、'.join(missing)}（需要这些插件在场且运行；"
+                    "装配单缺了提供者，或依赖名写错）"
                 )
 
     def _label_of(self, plugin_name_: str) -> str:

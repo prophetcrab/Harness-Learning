@@ -1,0 +1,165 @@
+# P4 最小应用装配单（YAML 版）
+#
+# 起法：
+#     python app.py --manifest manifests/minimal.yaml
+#     python app.py --manifest manifests/minimal.yaml --ask "帮我算 2+3"
+#     python app.py --manifest manifests/minimal.yaml --provider deepseek --model deepseek-flash
+#
+# 这是**数据**：改插件组合、配置、角色都不用改 Python。插件工厂由
+# manifests/minimal.py:catalog() 提供（白名单在代码里，YAML 不能凭空造插件）。
+#
+# 占位符：
+#     ${workspace} / ${sessions} / ${sandbox} / ${approval_policy}
+#         由 app.py 按命令行参数填入（部署决策）
+#     ${env:NAME} / ${env:NAME:-默认值}
+#         环境变量；密钥只走环境变量，不写进本文件
+#
+# 默认路由是 `fake`（离线剧本，不联网）。想用真实模型时显式指定
+# --provider deepseek --model <模型名>，或者把 llm 条目的默认路由改成 deepseek。
+
+- id: app
+  children:
+    # ---------- 基础 ----------
+    - id: workspace
+      name: workspace
+      role: base
+      config:
+        root: "${workspace}"
+
+    - id: fs
+      name: fs
+      role: base
+
+    - id: proc
+      name: proc-service
+      role: base
+
+    - id: sessions
+      name: sessions
+      role: base
+
+    - id: store
+      name: session-store-jsonl
+      role: capability
+      config:
+        root: "${sessions}"
+
+    - id: prompt
+      name: prompt
+      role: base
+      config:
+        sections:
+          - name: identity
+            order: 10
+            text: "你是一个严谨的编程助手。先读再改，改动尽量小而完整。"
+          - name: cwd
+            order: 30
+            text: "工作目录：{{cwd}}"
+
+    # ---------- 模型路由 ----------
+    # 默认走离线剧本；deepseek 路由一并装好，--provider 即可切换。
+    - id: llm
+      name: llm
+      role: base
+      config:
+        default_provider: fake
+        default_model: fake-1
+
+    - id: llm-fake
+      name: llm-fake
+      role: capability
+      config:
+        route: fake
+        model: fake-1
+        context_window: 128000
+        max_output_tokens: 4096
+        replies:
+          - "（离线模型）你好。"
+
+    - id: llm-deepseek
+      name: llm-provider
+      role: capability
+      config:
+        route: deepseek
+        base_url: "${env:DEEPSEEK_BASE_URL:-https://api.deepseek.com/chat/completions}"
+        api_key_env: DEEPSEEK_API_KEY
+        models:
+          - id: "${env:DEEPSEEK_MODEL:-deepseek-flash}"
+            context_window: 128000
+            max_output_tokens: 8192
+        timeout: 120
+
+    # ---------- 工具面 ----------
+    - id: tools
+      name: tools-admin
+      role: base
+
+    - id: math
+      name: tool-math
+      role: capability
+
+    - id: tool-fs
+      name: tool-fs
+      role: capability
+
+    - id: tool-shell
+      name: tool-shell
+      role: capability
+
+    - id: tool-search
+      name: tool-fs-search
+      role: capability
+
+    - id: tool-web
+      name: tool-web-search
+      role: capability
+
+    - id: tool-ask
+      name: tool-ask-user
+      role: capability
+
+    # ---------- 策略 / 后端 ----------
+    - id: approval
+      name: approval-terminal
+      role: capability
+      config:
+        policy: "${approval_policy}"
+
+    - id: sandbox
+      name: fs-sandbox
+      role: capability
+      config:
+        mode: "${sandbox}"
+
+    - id: observation
+      name: fs-observation-policy
+      role: capability
+
+    - id: backend-bash
+      name: proc-local-git-bash
+      role: capability
+
+    - id: backend-posix
+      name: proc-local-posix
+      role: capability
+
+    - id: backend-scripted
+      name: proc-scripted
+      role: capability
+
+    # ---------- agent + 项目入口 ----------
+    - id: agent
+      name: agent
+      role: base
+
+    - id: loop
+      name: agent-loop
+      role: capability
+
+    - id: admin
+      name: agent-admin
+      role: capability
+
+    - id: project
+      name: project
+      role: base

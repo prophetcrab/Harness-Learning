@@ -48,12 +48,20 @@ fail loud**（名字是地址，写错地址必须报出来）。两者的分工
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from core.plugin import Disposer, plugin_injects, plugin_name, plugin_optionals, plugin_setup
+from core.plugin import (
+    Disposer,
+    matches_plugin_requirement,
+    plugin_injects,
+    plugin_name,
+    plugin_optionals,
+    plugin_requires,
+    plugin_setup,
+)
 
 #: 插件状态。
 #:
@@ -66,6 +74,9 @@ PluginStatus = Literal["pending", "active", "disabled", "failed"]
 #: 插件自己的 effect 名字前缀（`plugin:<插件名>`）。
 #: 这个命名空间只由 Context 内部使用——用户 effect 不许占用（见 `effect`）。
 PLUGIN_EFFECT_PREFIX = "plugin:"
+
+#: 动态依赖回调的 effect 名字前缀（`inject:<序号>`）：同样是内部命名空间。
+INJECT_EFFECT_PREFIX = "inject:"
 
 #: effect 的装载函数：执行登记，返回撤销函数（或 None = 没有额外资源要收）。
 Install = Callable[[], "Disposer | None"]
@@ -110,6 +121,10 @@ class PluginInfo:
     missing_optionals: tuple[str, ...]  # 可选依赖里当前取不到的那些（"降级中"）
     provided: tuple[str, ...]  # active 期间提供的服务（退位级联按它扩散）
     error: BaseException | None = None
+    #: **插件级**依赖声明（`requires`）：这些插件名在场，本插件才完整。
+    requires: tuple[str, ...] = ()
+    #: 当前缺的插件级依赖（不阻断生命周期；loader 在装配期据此 fail loud）。
+    missing_requires: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -117,12 +132,49 @@ class ChangeReport:
     """一次**有效变更**的报告（revision 与它一一对应）。
 
     retired / activated 是插件名，按发生顺序；同一个插件在一次变更里先退位
-    又激活（重启）时，会同时出现在两边。
+    又激活（重启）时，会同时出现在两边。动态依赖回调（`ctx.inject`）用
+    `injections_started` / `injections_stopped` 记录（值是 `inject:<序号>`）。
     """
 
     revision: int
     retired: tuple[str, ...]
     activated: tuple[str, ...]
+    injections_started: tuple[str, ...] = ()
+    injections_stopped: tuple[str, ...] = ()
+
+
+#: 动态依赖回调的状态。
+#:
+#:     pending  依赖未齐（齐了自动运行回调）
+#:     active   回调正在生效（它注册的一切挂在自己的 effect 下）
+#:     failed   回调抛错（错误留着；依赖**变化**后会重试——不原地空转）
+InjectionStatus = Literal["pending", "active", "failed"]
+
+
+@dataclass(frozen=True)
+class InjectionInfo:
+    """一条动态依赖订阅的状态快照（观测用：测试 / 管理面 / 排障）。"""
+
+    name: str  # `inject:<序号>`（effect 名，也是报告里的标识）
+    deps: tuple[str, ...]
+    status: InjectionStatus
+    missing: tuple[str, ...]
+    error: BaseException | None = None
+
+
+@dataclass
+class _InjectionRecord:
+    """一条动态依赖订阅：依赖齐了就运行 callback（放进一个子 effect）。"""
+
+    seq: int
+    deps: tuple[str, ...]
+    callback: Callable[[Context], Any]
+    #: 注册时所在的 effect 名（装载期注册的订阅随那个 effect 一起回卷）；
+    #: None = 顶层注册（调用方持有句柄负责卸载）。
+    owner_effect: str | None = None
+    status: InjectionStatus = "pending"
+    effect: str | None = None  # 回调正在生效时的 effect 名
+    error: BaseException | None = None
 
 
 @dataclass
@@ -133,6 +185,8 @@ class _PluginRecord:
     setup: Any  # SetupFn：Callable[[Context], Disposer | None]
     inject: tuple[str, ...]
     optional: tuple[str, ...] = ()
+    #: 插件级依赖（`requires`）：只做装配期校验，不参与激活（见 core/plugin.py）。
+    requires: tuple[str, ...] = ()
     status: PluginStatus = "pending"
     effect: str | None = None  # 激活时创建的 effect 名（退位时回卷的就是它）
     provided: tuple[str, ...] = ()
@@ -194,6 +248,11 @@ class Context:
         self._last_change: ChangeReport | None = None
         self._report_retired: list[str] = []
         self._report_activated: list[str] = []
+        self._report_injections_started: list[str] = []
+        self._report_injections_stopped: list[str] = []
+        #: 动态依赖订阅（`ctx.inject`）：序号 → 记录。
+        self._injections: dict[int, _InjectionRecord] = {}
+        self._injection_seq = 0
         #: settle 重入保护（见 _settle）：稳定化过程中不再嵌套稳定化。
         self._settling = False
         #: 退位级联期间被抑制的插件名：它们刚被停用，但提供者的服务还没撤——
@@ -217,11 +276,12 @@ class Context:
             return self._last_change
 
     def _signature(self) -> tuple[Any, ...]:
-        """当前世界的"变没变"签名：服务表 + 插件状态 + effect 表。"""
+        """当前世界的"变没变"签名：服务表 + 插件状态 + effect 表 + 动态订阅状态。"""
         return (
             tuple(self._slots),
             tuple((record.name, record.status) for record in self._plugins.values()),
             tuple(self._effects),
+            tuple((record.seq, record.status) for record in self._injections.values()),
         )
 
     @contextmanager
@@ -238,6 +298,8 @@ class Context:
                 self._change_before = self._signature()
                 self._report_retired = []
                 self._report_activated = []
+                self._report_injections_started = []
+                self._report_injections_stopped = []
             self._change_depth += 1
             try:
                 yield
@@ -251,6 +313,8 @@ class Context:
                             revision=self._revision,
                             retired=tuple(self._report_retired),
                             activated=tuple(self._report_activated),
+                            injections_started=tuple(self._report_injections_started),
+                            injections_stopped=tuple(self._report_injections_stopped),
                         )
 
     # ------------------------------------------------------------------
@@ -437,6 +501,84 @@ class Context:
         return [name for name, handlers in self._handlers.items() if handlers]
 
     # ------------------------------------------------------------------
+    # 动态依赖（inject）：依赖齐了才跑一块
+    # ------------------------------------------------------------------
+
+    def inject(self, deps: Iterable[str], callback: Callable[[Context], Any]) -> Disposer:
+        """注册一块**依赖出现才运行**的代码；返回取消订阅的句柄（幂等）。
+
+        与静态 `inject` 是一对：
+
+            静态 inject = ("store",)   → 缺依赖，**整个插件**不激活
+            ctx.inject(["store"], cb)  → 插件本体照常跑，**这一块**等依赖
+
+        回调在依赖齐备时运行，**放进一个子 effect**：它在那里面做的登记
+        （provide / on / effect / 返回的清理函数）随"依赖消失"自动回卷；
+        依赖再出现时会重跑（这是与 `optional` 的关键区别——optional 是
+        "来了不重装"，动态 inject 是"来了就装、走了就拆"）。
+
+        三种典型用途（dsh 里 57 处调用都是这个形状）：
+
+            · 服务出现时往它那里**注册**东西（挂拦截器、加提示词段、注册变量）
+            · 服务被换掉后**重新挂**（旧订阅已经随之回卷）
+            · 可选能力的延后装配（主体不必等）
+
+        装载期（某个 effect 的 install 里）调用时，**订阅本身**也挂在那个
+        effect 下：外层 effect 卸载 → 订阅取消 + 正在生效的回调随之回卷。
+
+        回调抛错 → 记录标 failed、原异常抛给触发方；**不原地重试**（否则每次
+        settle 都会再炸一遍）。依赖消失再出现后会重试——错误可查（`injections`）。
+
+        `deps` 必须是非空序列（单个字符串是常见笔误，直接报错）。
+        """
+        names = self._inject_deps(deps)
+        if not callable(callback):
+            raise TypeError(f"inject 的 callback 必须可调用，收到：{callback!r}")
+
+        with self._change():
+            self._injection_seq += 1
+            record = _InjectionRecord(
+                seq=self._injection_seq,
+                deps=names,
+                callback=callback,
+                owner_effect=self._stack[-1].name if self._stack else None,
+            )
+            self._injections[record.seq] = record
+
+            def handle() -> None:
+                # 认"这一次注册"（记录身份），不是序号（同句柄语义）。
+                with self._lock:
+                    if self._injections.get(record.seq) is not record:
+                        return
+                    # 作为外层 effect 的 disposer 被调用时（unwind 中），只取消
+                    # 订阅、不推动稳定态——外层操作收尾时会 settle（与 provide /
+                    # on 的自动撤销同一纪律，避免在半个世界里做激活）。
+                    with self._change():
+                        self._cancel_injection(record)
+                    if not self._stack:
+                        self._settle()
+
+            if self._stack:  # 装载期：订阅随外层 effect 回卷
+                self._stack[-1].disposers.append(handle)
+            self._settle()
+        return handle
+
+    @property
+    def injections(self) -> list[InjectionInfo]:
+        """全部动态依赖订阅的状态快照（按注册顺序）。"""
+        with self._lock:
+            return [
+                InjectionInfo(
+                    name=f"{INJECT_EFFECT_PREFIX}{record.seq}",
+                    deps=record.deps,
+                    status=record.status,
+                    missing=tuple(dep for dep in record.deps if dep not in self._slots),
+                    error=record.error,
+                )
+                for record in self._injections.values()
+            ]
+
+    # ------------------------------------------------------------------
     # 插件（装载 / 卸载 / 停用 / 启用）
     # ------------------------------------------------------------------
 
@@ -466,6 +608,7 @@ class Context:
             setup=plugin_setup(plugin),
             inject=plugin_injects(plugin),
             optional=plugin_optionals(plugin),
+            requires=plugin_requires(plugin),
         )
         with self._change():
             self._plugins[name] = record
@@ -582,9 +725,20 @@ class Context:
                     ),
                     provided=record.provided,
                     error=record.error,
+                    requires=record.requires,
+                    missing_requires=self._missing_requires(record),
                 )
                 for record in self._plugins.values()
             ]
+
+    def _missing_requires(self, record: _PluginRecord) -> tuple[str, ...]:
+        """插件级依赖里当前不在台账的那些（供 loader / 管理面做装配期校验）。"""
+        names = list(self._plugins)
+        return tuple(
+            required
+            for required in record.requires
+            if not any(matches_plugin_requirement(required, name) for name in names)
+        )
 
     @property
     def active_plugins(self) -> list[str]:
@@ -623,6 +777,11 @@ class Context:
             raise ValueError(
                 f"effect 名不能以 {PLUGIN_EFFECT_PREFIX!r} 开头：{name!r}"
                 "（那是插件自己的命名空间，由 load_plugin 使用）"
+            )
+        if name.startswith(INJECT_EFFECT_PREFIX) and not internal:
+            raise ValueError(
+                f"effect 名不能以 {INJECT_EFFECT_PREFIX!r} 开头：{name!r}"
+                "（那是动态依赖订阅的命名空间，由 ctx.inject 使用）"
             )
         if name in self._effects:
             raise DuplicateEffectError(f"effect 已存在：{name}（先卸载再重装）")
@@ -712,6 +871,54 @@ class Context:
 
     def _deps_ok(self, record: _PluginRecord) -> bool:
         return all(dep in self._slots for dep in record.inject)
+
+    @staticmethod
+    def _inject_deps(deps: Iterable[str]) -> tuple[str, ...]:
+        """校验并规范化动态依赖声明（与静态 inject 同一套 fail-loud 纪律）。"""
+        if isinstance(deps, (str, bytes)):
+            raise TypeError(f"inject 的 deps 必须是序列（如 ['store']），收到字符串：{deps!r}")
+        if not isinstance(deps, Iterable):
+            raise TypeError(f"inject 的 deps 不可迭代：{deps!r}")
+        names = tuple(str(dep) for dep in deps)
+        if not names:
+            raise ValueError("inject 至少要声明一个依赖")
+        if any(not name for name in names):
+            raise ValueError(f"inject 的 deps 里有空的服务名：{names!r}")
+        if len(set(names)) != len(names):
+            raise ValueError(f"inject 的 deps 有重复项：{names!r}")
+        return names
+
+    def _start_injection(self, record: _InjectionRecord) -> None:
+        """依赖齐了：把回调放进一个子 effect 里运行（注册的一切随它回卷）。"""
+        effect_name = f"{INJECT_EFFECT_PREFIX}{record.seq}"
+        record.status = "active"
+        record.error = None
+        try:
+            self._effect(effect_name, lambda: record.callback(self), internal=True)
+        except BaseException as exc:
+            # 回调抛错：标 failed、不原地重试（否则每次 settle 都要再炸一遍）。
+            record.status = "failed"
+            record.error = exc
+            record.effect = None
+            raise
+        record.effect = effect_name
+        self._report_injections_started.append(effect_name)
+
+    def _stop_injection(self, record: _InjectionRecord) -> None:
+        """依赖不再齐：回卷回调的 effect，**订阅保留**（依赖回来时重跑）。"""
+        effect_name, record.effect = record.effect, None
+        record.status = "pending"
+        record.error = None
+        if effect_name is not None:
+            self._report_injections_stopped.append(effect_name)
+            errors = self._unload_effect(effect_name)
+            if errors:
+                raise errors[0]  # 清理失败 fail loud（其余回卷照常完成）
+
+    def _cancel_injection(self, record: _InjectionRecord) -> None:
+        """取消订阅本身：回卷回调的 effect、从订阅表摘掉。"""
+        self._injections.pop(record.seq, None)
+        self._stop_injection(record)
 
     def _activate(self, record: _PluginRecord) -> None:
         """激活：把 setup 放进一个 effect 里跑（`plugin:<名>`）。
@@ -815,6 +1022,17 @@ class Context:
         try:
             while True:
                 changed = False
+                # 动态依赖：先停"依赖不再满足"的（订阅保留），再在最后启动"依赖已齐"的。
+                for injection in list(self._injections.values()):
+                    deps_ok = all(dep in self._slots for dep in injection.deps)
+                    if injection.status == "active" and not deps_ok:
+                        self._stop_injection(injection)
+                        changed = True
+                    elif injection.status == "failed" and not deps_ok:
+                        # 依赖走了：回到 pending，等它再出现时重试（不原地空转）。
+                        injection.status = "pending"
+                        injection.error = None
+                        changed = True
                 for record in list(self._plugins.values()):
                     if record.status == "active" and not self._deps_ok(record):
                         self._deactivate(record)
@@ -826,6 +1044,12 @@ class Context:
                         and self._deps_ok(record)
                     ):
                         self._activate(record)
+                        changed = True
+                for injection in list(self._injections.values()):
+                    if injection.status == "pending" and all(
+                        dep in self._slots for dep in injection.deps
+                    ):
+                        self._start_injection(injection)
                         changed = True
                 if not changed:
                     return
