@@ -2774,7 +2774,7 @@
           </div>
 
           <div class="live-foot" id="live-foot">
-            工作区里有一张订单表（A-1029）。只读工具自动放行；退款是写操作，会经过审批与沙箱。
+            工作区和会话历史都跨轮保留：重跑会带上前几轮的上下文，超过 24 条时自动裁剪最早的。只读工具自动放行，退款需审批与沙箱。
           </div>
         </section>
 
@@ -3650,6 +3650,14 @@
     var pendingApprove = null;
     var t0 = 0;
 
+    // 跨轮持久：会话历史只有在「清空」时才重置；每轮运行是同一会话的一个 turn
+    var conversation = [];
+    var MAX_HISTORY = 24;
+
+    function contextWindow(history) {
+      return history.length > MAX_HISTORY ? history.slice(-MAX_HISTORY) : history;
+    }
+
     function now() {
       return ((performance.now() - t0) / 1000).toFixed(2) + "s";
     }
@@ -3865,7 +3873,8 @@
       var question = String(input.value || "").trim() ||
         "A-1029 这单被扣了两次，一共 256 元。帮我算出应退金额并退款。";
       // 工作区跨运行保留：第二次运行会读到上一次的退款结果
-      var history = [];
+      var priorCount = conversation.length;
+      var history = conversation;
       var usage = { prompt: 0, completion: 0 };
       var steps = 0;
       var toolCalls = 0;
@@ -3873,7 +3882,8 @@
 
       try {
         phase("A");
-        row("init", "harness.boot · 加载插件、恢复会话");
+        row("init", "harness.boot · 加载插件、恢复会话" +
+            (priorCount ? "（历史 " + priorCount + " 条）" : "（新会话）"));
         event("harness/boot", { plugins: "tools,llm,session", workspace: "orders(A-1029)" }, "store");
         await wait(260);
         if (my !== token) return;
@@ -3887,7 +3897,16 @@
         if (my !== token) return;
 
         phase("C", "m-bc");
-        row("ctx", "上下文装配 · 系统提示 " + SYSTEM.length + " 字 · 工具 2 个 · 预算未超限");
+        var willSend = contextWindow(history).length;
+        var trimmed = history.length - willSend;
+        row("ctx", "上下文装配 · 系统提示 " + SYSTEM.length + " 字 · 工具 2 个 · 携带 " +
+            willSend + " 条消息" + (trimmed > 0 ? "（裁剪掉最早 " + trimmed + " 条）" : ""));
+        event("context/assembly", {
+          history: history.length,
+          sent: willSend,
+          trimmed: trimmed > 0 ? trimmed : 0,
+          max_history: MAX_HISTORY
+        });
         event("system/message", { chars: SYSTEM.length, tools: 2, compressed: false });
         await wait(300);
         if (my !== token) return;
@@ -3911,10 +3930,11 @@
           }
 
           phase("D", steps === 1 ? "m-cd" : "m-loop");
-          row("llm", "请求模型 · step " + steps + " · " + history.length + " 条消息");
-          event("step/start", { step: steps, messages: history.length + 1 });
+          var window = contextWindow(history);
+          row("llm", "请求模型 · step " + steps + " · 携带 " + window.length + " 条消息");
+          event("step/start", { step: steps, messages: window.length, history: history.length });
           var started = performance.now();
-          var reply = await api([{ role: "system", content: SYSTEM }].concat(history), 8000);
+          var reply = await api([{ role: "system", content: SYSTEM }].concat(window), 8000);
           if (my !== token) return;
           var ms = Math.round(performance.now() - started);
           if (reply.usage) {
@@ -4051,12 +4071,13 @@
       // 清空 = 日志和工作区一起回到初始状态
       ORDERS["A-1029"].refunded = 0;
       ORDERS["A-1029"].status = "paid";
+      conversation.length = 0;
       logEl.innerHTML = '<div class="live-row"><span class="t">0.00s</span>' +
-        '<span class="tag init">init</span><span class="msg">已清空：日志和工作区都回到初始状态。</span></div>';
+        '<span class="tag init">init</span><span class="msg">已清空：日志、会话历史和工作区都回到初始状态。</span></div>';
       clearSession();
       resetRunView();
       runBtn.textContent = "开始运行";
-      foot.textContent = "工作区里有一张订单表（A-1029）。只读工具自动放行；退款是写操作，会经过审批与沙箱。";
+      foot.textContent = "工作区和会话历史都跨轮保留：重跑会带上前几轮的上下文，超过 24 条时自动裁剪最早的。只读工具自动放行，退款需审批与沙箱。";
     });
 
     (async function init() {
