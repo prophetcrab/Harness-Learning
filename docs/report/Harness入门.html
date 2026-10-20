@@ -10,9 +10,13 @@
     --ink-2: #394a64;
     --muted: #8291aa;
     --line: rgba(28, 52, 96, 0.11);
+    --line-strong: rgba(28, 52, 96, 0.18);
     --accent-a: #0e8f7d;
     --accent-b: #2f6ce8;
+    --violet: #6b57f0;
+    --card: rgba(255, 255, 255, 0.72);
     --scale: 1;
+    --font-display: "Segoe UI", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -24,6 +28,19 @@
                  -apple-system, "Segoe UI", sans-serif;
     color: var(--ink);
     background: #f7fafd;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+
+  button:focus-visible {
+    outline: 2px solid var(--accent-b);
+    outline-offset: 3px;
   }
 
   /* ---------------- 背景 ---------------- */
@@ -66,7 +83,7 @@
     100% { transform: translate3d(-14px, 34px, 0); }
   }
 
-  /* ---------------- 舞台 ---------------- */
+  /* ---------------- 舞台与翻页 ---------------- */
 
   .viewport { position: fixed; inset: 0; overflow: hidden; }
 
@@ -79,14 +96,33 @@
     margin: -450px 0 0 -800px;
     transform: scale(var(--scale));
     transform-origin: center center;
+  }
+
+  .page {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(14px);
+    transition: opacity 0.45s ease, transform 0.55s cubic-bezier(0.22, 0.8, 0.24, 1);
+  }
+  .page.is-active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+  }
+
+  /* ---------------- 封面 ---------------- */
+
+  .page-cover {
     display: grid;
     grid-template-columns: 566px 1fr;
     align-items: center;
     column-gap: 104px;
     padding: 0 138px;
   }
-
-  /* ---------------- 装饰层（纯几何，无文字） ---------------- */
 
   .deco {
     position: absolute;
@@ -112,7 +148,6 @@
     border-color: rgba(28, 52, 96, 0.07);
   }
 
-  /* 四角角标：报告版式的收边 */
   .corner {
     position: absolute;
     width: 26px; height: 26px;
@@ -123,8 +158,7 @@
   .corner.bl { left: 46px; bottom: 46px; border-left-width: 1px; border-bottom-width: 1px; }
   .corner.br { right: 46px; bottom: 46px; border-right-width: 1px; border-bottom-width: 1px; }
 
-  /* 右下角的小方块点缀 */
-  .chip {
+  .chip-deco {
     position: absolute;
     right: 96px; bottom: 92px;
     width: 9px; height: 9px;
@@ -132,17 +166,13 @@
     opacity: 0.55;
   }
 
-  /* ---------------- 左侧标题 ---------------- */
-
   .title-wrap {
     position: relative;
     z-index: 1;
     width: max-content;
     padding-left: 34px;
-    animation: rise 1s cubic-bezier(0.22, 0.8, 0.24, 1) both;
   }
 
-  /* 标题左侧的竖线：顶部实、底部淡出 */
   .title-wrap::before {
     content: "";
     position: absolute;
@@ -154,6 +184,7 @@
   }
 
   h1 {
+    font-family: var(--font-display);
     font-size: 142px;
     line-height: 0.94;
     letter-spacing: -0.048em;
@@ -174,7 +205,6 @@
     background-clip: text;
   }
 
-  /* 标题下方的短横线 */
   .title-wrap::after {
     content: "";
     display: block;
@@ -185,30 +215,26 @@
     border-radius: 1px;
   }
 
-  @keyframes rise {
-    from { opacity: 0; transform: translateY(16px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  /* ---------------- 右侧目录 ---------------- */
-
   .toc {
     position: relative;
     z-index: 1;
-    animation: rise 1.1s cubic-bezier(0.22, 0.8, 0.24, 1) 0.12s both;
   }
 
   .toc-item {
     display: grid;
-    grid-template-columns: 56px 1fr;
+    grid-template-columns: 56px 1fr 26px;
     align-items: center;
     column-gap: 22px;
+    width: 100%;
     min-height: 96px;
     padding: 12px 0;
+    text-align: left;
     border-top: 1px solid var(--line);
+    transition: transform 0.25s ease;
   }
   .toc-item:first-child { border-top: none; }
   .toc-item:last-child { border-bottom: 1px solid var(--line); }
+  .toc-item:hover { transform: translateX(6px); }
 
   .toc-num {
     font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
@@ -219,12 +245,15 @@
   }
 
   .toc-title {
+    display: block;
     font-size: 28px;
     line-height: 1.3;
     font-weight: 600;
     letter-spacing: -0.012em;
     color: var(--ink-2);
+    transition: color 0.2s ease;
   }
+  .toc-item:hover .toc-title { color: var(--ink); }
 
   .toc-sub {
     display: block;
@@ -236,16 +265,1551 @@
     color: var(--muted);
   }
 
+  .toc-go {
+    font-size: 20px;
+    color: var(--accent-b);
+    opacity: 0;
+    transform: translateX(-6px);
+    transition: opacity 0.2s ease, transform 0.25s ease;
+  }
+  .toc-item:hover .toc-go { opacity: 1; transform: none; }
+
+  /* ---------------- 第一章 ---------------- */
+
+  .page-chapter {
+    padding: 48px 84px 32px;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .chapter-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    color: var(--muted);
+  }
+  .breadcrumb .n { color: var(--accent-a); font-weight: 700; }
+  .breadcrumb .bar { width: 44px; height: 1px; background: var(--line-strong); }
+
+  .chapter-title {
+    font-family: var(--font-display);
+    margin-top: 14px;
+    font-size: 82px;
+    line-height: 0.95;
+    letter-spacing: -0.045em;
+    font-weight: 800;
+  }
+
+  .chapter-sub {
+    margin-top: 10px;
+    font-size: 17px;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
+
+  .chapter-meta {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 6px;
+  }
+
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.6);
+    font-size: 12.5px;
+    color: var(--ink-2);
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+  .back-btn:hover { background: #fff; border-color: var(--line-strong); }
+  .next-btn {
+    border-color: rgba(14, 143, 125, 0.4);
+    color: var(--accent-a);
+  }
+  .next-btn:hover { border-color: var(--accent-a); }
+
+  .meta-line {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+
+  .chapter-body {
+    display: grid;
+    grid-template-columns: 504px 1fr;
+    gap: 56px;
+    margin-top: 24px;
+    min-height: 0;
+  }
+
+  .chapter-body.single { grid-template-columns: 1fr; }
+  .chapter-body.single .evolution {
+    justify-self: stretch;
+    width: 100%;
+    max-width: none;
+  }
+
+  .chapter-body.intro-body { grid-template-columns: 1fr; }
+  .intro-body .thesis {
+    justify-self: center;
+    align-self: start;
+    width: 100%;
+    max-width: 900px;
+  }
+  .intro-body .chips { grid-template-columns: repeat(4, 1fr); }
+
+  /* 左：核心思想 */
+
+  .thesis {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 32px 34px;
+    border-radius: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    background:
+      radial-gradient(120% 120% at 100% 0%, rgba(47, 108, 232, 0.075), transparent 55%),
+      radial-gradient(100% 100% at 0% 100%, rgba(14, 143, 125, 0.085), transparent 60%),
+      rgba(255, 255, 255, 0.7);
+    box-shadow: 0 22px 60px rgba(20, 40, 80, 0.07);
+  }
+
+  .eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    color: var(--accent-a);
+  }
+  .eyebrow::before { content: ""; width: 22px; height: 2px; background: var(--accent-a); }
+
+  .thesis-q {
+    margin-top: 20px;
+    font-size: 26px;
+    line-height: 1.52;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+  .thesis-q .soft { color: var(--ink-2); font-weight: 500; }
+  .thesis-q .mark {
+    background: linear-gradient(transparent 64%, rgba(14, 143, 125, 0.18) 64%);
+  }
+
+  .thesis-a {
+    margin-top: 16px;
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--ink-2);
+  }
+  .thesis-a b { color: var(--ink); }
+
+  .formula {
+    display: flex;
+    align-items: stretch;
+    gap: 9px;
+    margin-top: 20px;
+  }
+  .formula .box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 13px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    background: #fff;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  .formula .box small {
+    margin-top: 3px;
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .formula .box.harness {
+    border-color: rgba(14, 143, 125, 0.35);
+    background: linear-gradient(135deg, #f1fbf8, #eef4ff);
+  }
+  .formula .op { align-self: center; color: var(--muted); font-size: 14px; }
+
+  .chips {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 9px;
+    padding-top: 24px;
+  }
+
+  .chip {
+    display: flex;
+    gap: 9px;
+    align-items: flex-start;
+    padding: 10px 11px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.78);
+  }
+  .chip svg {
+    flex: none;
+    width: 15px;
+    height: 15px;
+    margin-top: 2px;
+    stroke: var(--accent-a);
+    stroke-width: 1.6;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .chip b { display: block; font-size: 12.5px; font-weight: 600; }
+  .chip small { display: block; margin-top: 2px; font-size: 11px; line-height: 1.4; color: var(--muted); }
+
+  /* 右：演化时间线 */
+
+  .evolution {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 24px 30px 20px;
+    border-radius: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.62);
+    box-shadow: 0 22px 60px rgba(20, 40, 80, 0.06);
+  }
+
+  .evo-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex: none;
+  }
+  .evo-head h3 { font-size: 17px; font-weight: 700; letter-spacing: 0.01em; }
+  .evo-head p { margin-top: 4px; font-size: 12px; color: var(--muted); }
+  .evo-tip {
+    font-size: 12px;
+    color: var(--accent-b);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .evo-tip::before {
+    content: "";
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent-b);
+  }
+
+  .evo-list {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    margin-top: 10px;
+    min-height: 0;
+  }
+
+  .evo-item {
+    display: grid;
+    grid-template-columns: 116px 22px 1fr 24px;
+    gap: 14px;
+    align-items: center;
+    flex: 1;
+    width: 100%;
+    padding: 7px 10px 7px 0;
+    text-align: left;
+    border-top: 1px solid var(--line);
+    border-radius: 0 10px 10px 0;
+    transition: background 0.2s ease, transform 0.22s ease;
+  }
+  .evo-item:first-child { border-top: 0; }
+  .evo-item:hover { background: rgba(47, 108, 232, 0.045); transform: translateX(3px); }
+
+  .evo-era {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+
+  .evo-mid {
+    position: relative;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .evo-mid::before {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0; left: 50%;
+    width: 1px;
+    background: var(--line);
+  }
+  .evo-dot {
+    position: relative;
+    z-index: 1;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    border: 2px solid #b9c4d6;
+    background: #fff;
+  }
+
+  .evo-name { display: block; font-size: 17px; font-weight: 600; line-height: 1.25; color: var(--ink); }
+  .evo-desc { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+
+  .evo-go {
+    font-size: 17px;
+    color: var(--muted);
+    opacity: 0.45;
+    transition: opacity 0.2s ease, transform 0.22s ease, color 0.2s ease;
+  }
+  .evo-item:hover .evo-go { opacity: 1; color: var(--accent-b); transform: translateX(3px); }
+
+  .evo-item.now {
+    background: linear-gradient(90deg, rgba(14, 143, 125, 0.075), rgba(47, 108, 232, 0.035));
+    border-radius: 10px;
+    border-top-color: transparent;
+  }
+  .evo-item.now .evo-dot {
+    width: 13px; height: 13px;
+    border-color: var(--accent-a);
+    background: var(--accent-a);
+    box-shadow: 0 0 0 5px rgba(14, 143, 125, 0.12);
+  }
+  .evo-item.now .evo-name { color: var(--accent-a); }
+
+  .chapter-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 16px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .keys { display: inline-flex; align-items: center; gap: 7px; }
+  .kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    padding: 2px 6px;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.7);
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 11px;
+    color: var(--ink-2);
+  }
+
+  /* ---------------- 第一章第 2 页：问题清单 ---------------- */
+
+  .problem-board {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 26px 30px 22px;
+    border-radius: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.62);
+    box-shadow: 0 22px 60px rgba(20, 40, 80, 0.06);
+  }
+
+  .problem-list {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    margin-top: 0;
+  }
+
+  .problem-row {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 190px 1fr 300px;
+    gap: 22px;
+    align-items: center;
+    padding: 10px 14px;
+    border-top: 1px solid var(--line);
+    border-radius: 10px;
+    transition: background 0.2s ease;
+  }
+  .problem-row:first-child { border-top: 0; }
+  .problem-row:hover { background: rgba(47, 108, 232, 0.04); }
+
+  .problem-stage { display: flex; align-items: center; gap: 11px; min-width: 0; }
+  .problem-idx {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 26px; height: 26px;
+    border-radius: 8px;
+    border: 1px solid var(--line-strong);
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10.5px;
+    color: var(--muted);
+  }
+  .problem-name { font-size: 15px; font-weight: 600; line-height: 1.3; }
+  .problem-era {
+    display: block;
+    margin-top: 2px;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .problem-pains { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pain {
+    padding: 5px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--ink-2);
+  }
+
+  .problem-residue {
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+  .problem-residue b {
+    display: block;
+    margin-bottom: 3px;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--accent-a);
+  }
+
+  .problem-row.last {
+    background: linear-gradient(90deg, rgba(14, 143, 125, 0.07), rgba(47, 108, 232, 0.03));
+    border-top-color: transparent;
+    border-radius: 10px;
+  }
+  .problem-row.last .problem-name { color: var(--accent-a); }
+  .problem-row.last .pain { border-color: rgba(14, 143, 125, 0.3); }
+  .problem-row.last .problem-residue { color: var(--ink-2); }
+
+  /* ---------------- 弹窗 ---------------- */
+
+  .modal-root {
+    position: absolute;
+    inset: 0;
+    z-index: 80;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-root.is-open { display: flex; }
+
+  .modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(12, 26, 44, 0.32);
+    backdrop-filter: blur(5px);
+  }
+
+  .modal-card {
+    position: relative;
+    width: 1240px;
+    height: 760px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 24px;
+    background: #fff;
+    box-shadow: 0 40px 100px rgba(12, 26, 44, 0.28);
+    transform: translateY(14px) scale(0.985);
+    transition: transform 0.32s cubic-bezier(0.22, 0.8, 0.24, 1);
+  }
+  .modal-root.is-open .modal-card { transform: none; }
+
+  .modal-head {
+    flex: none;
+    display: flex;
+    align-items: flex-end;
+    gap: 18px;
+    padding: 26px 36px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .modal-num {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    color: var(--accent-a);
+  }
+
+  .modal-title {
+    font-family: var(--font-display);
+    margin-top: 7px;
+    font-size: 40px;
+    line-height: 1;
+    font-weight: 800;
+    letter-spacing: -0.035em;
+  }
+
+  .modal-tag {
+    padding-bottom: 4px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .modal-close {
+    margin-left: auto;
+    width: 38px; height: 38px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    font-size: 20px;
+    line-height: 1;
+    color: var(--ink-2);
+    transition: background 0.2s ease, transform 0.25s ease;
+  }
+  .modal-close:hover { background: #f2f5fa; transform: rotate(90deg); }
+
+  .modal-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 32px;
+    padding: 22px 36px 28px;
+  }
+
+  .modal-copy {
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 6px;
+  }
+
+  .modal-lead {
+    font-size: 15px;
+    line-height: 1.8;
+    color: var(--ink-2);
+  }
+
+  .modal-points {
+    list-style: none;
+    display: grid;
+    gap: 11px;
+    margin-top: 17px;
+  }
+  .modal-points li {
+    position: relative;
+    padding-left: 19px;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--ink-2);
+  }
+  .modal-points li::before {
+    content: "";
+    position: absolute;
+    left: 2px; top: 8px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent-a);
+    opacity: 0.7;
+  }
+  .modal-points b { color: var(--ink); font-weight: 600; }
+
+  .modal-hint {
+    margin-top: 18px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid #e3ecf8;
+    background: #f4f8fd;
+    font-size: 12px;
+    line-height: 1.65;
+    color: var(--ink-2);
+  }
+  .modal-hint b {
+    display: inline-block;
+    margin-bottom: 3px;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    color: var(--accent-b);
+  }
+
+  .demo-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: #fbfcfe;
+  }
+
+  .demo-top {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 38px;
+    padding: 0 15px;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+  }
+  .dots { display: flex; gap: 5px; }
+  .dots i { width: 7px; height: 7px; border-radius: 50%; background: #dce3ee; }
+  .dots i:nth-child(1) { background: #f0b6b6; }
+  .dots i:nth-child(2) { background: #f3d79a; }
+  .dots i:nth-child(3) { background: #a9dbc7; }
+  .demo-top .label {
+    margin-left: 4px;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .demo-stage {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 18px 20px;
+  }
+
+  .demo-foot {
+    flex: none;
+    padding: 11px 18px;
+    border-top: 1px solid var(--line);
+    background: #fff;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+
+  /* 通用控件 */
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 13px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-2);
+    transition: background 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+  }
+  .btn:hover { border-color: var(--line-strong); background: #f7f9fd; }
+  .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .btn.primary:hover { background: #1b3354; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .demo-actions {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .action-note { font-size: 11.5px; color: var(--muted); }
+
+  .demo-stage ::-webkit-scrollbar,
+  .modal-copy::-webkit-scrollbar { width: 6px; height: 6px; }
+  .demo-stage ::-webkit-scrollbar-thumb,
+  .modal-copy::-webkit-scrollbar-thumb { background: rgba(28, 52, 96, 0.18); border-radius: 3px; }
+  .demo-stage ::-webkit-scrollbar-track,
+  .modal-copy::-webkit-scrollbar-track { background: transparent; }
+
+  /* 演示 1：聊天页面 */
+
+  .chat-demo {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 258px;
+    gap: 14px;
+  }
+
+  .chat-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  .chat-scroll {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px;
+    overflow-y: auto;
+  }
+
+  .chat-empty {
+    margin: auto;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+
+  .bubble {
+    max-width: 84%;
+    padding: 8px 11px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .bubble.user {
+    align-self: flex-end;
+    background: #eaf1fe;
+    color: #1e3a6e;
+    border-bottom-right-radius: 3px;
+  }
+  .bubble.bot {
+    align-self: flex-start;
+    background: #f3f6fa;
+    color: var(--ink-2);
+    border-bottom-left-radius: 3px;
+  }
+  .bubble.bot.error {
+    background: #fff1f1;
+    color: #a24b4b;
+  }
+
+  .typing {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 11px 12px;
+  }
+  .typing i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #9fb0c8;
+    animation: typing 1.2s infinite ease-in-out;
+  }
+  .typing i:nth-child(2) { animation-delay: 0.15s; }
+  .typing i:nth-child(3) { animation-delay: 0.3s; }
+
+  @keyframes typing {
+    0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-2px); }
+  }
+
+  .chat-compose {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 11px;
+    border-top: 1px solid var(--line);
+  }
+  .chat-compose input {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: #f6f8fc;
+    font: inherit;
+    font-size: 12px;
+    color: var(--ink);
+  }
+  .chat-compose input:focus {
+    outline: none;
+    border-color: #c9d9f7;
+    background: #fff;
+  }
+  .chat-compose input:disabled { color: var(--muted); }
+  .chat-compose button {
+    padding: 6px 12px;
+    border-radius: 7px;
+    background: var(--ink);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .chat-compose button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+
+  .payload {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+  }
+  .payload-head {
+    flex: none;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .payload-head b {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--accent-a);
+  }
+  .payload-list {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 8px;
+    overflow-y: auto;
+  }
+  .msg-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 4px 7px;
+    border-radius: 5px;
+    background: #f5f8fc;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10.5px;
+    color: var(--ink-2);
+  }
+  .msg-row span:last-child { color: var(--muted); }
+  .msg-row.lost {
+    background: #fff1f1;
+    color: #a24b4b;
+    opacity: 0.6;
+    text-decoration: line-through;
+  }
+  .msg-row.lost span:last-child { color: #c06a6a; text-decoration: none; }
+
+  .meter {
+    flex: none;
+    height: 4px;
+    margin-top: 8px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: #e9eef7;
+  }
+  .meter i {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+    transition: width 0.35s ease;
+  }
+  .payload-note {
+    flex: none;
+    margin-top: 8px;
+    font-size: 10.5px;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+
+  /* 演示 2：嵌入式助手 */
+
+  .ide-demo {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 346px;
+    gap: 14px;
+  }
+
+  .editor {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 12px;
+    background: #0f1c2e;
+  }
+  .editor-tab {
+    flex: none;
+    display: flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 13px;
+    background: #16263c;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 11.5px;
+    color: #9fb4d2;
+  }
+  .code {
+    flex: 1;
+    padding: 12px 0;
+    overflow-y: auto;
+    font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.9;
+    color: #c6d7ee;
+  }
+  .code-line {
+    display: flex;
+    padding: 0 12px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .code-line:hover { background: rgba(255, 255, 255, 0.05); }
+  .code-line.on { background: rgba(47, 108, 232, 0.24); }
+  .ln { flex: none; width: 22px; color: #52678a; user-select: none; }
+  .tok-k { color: #7cc4ff; }
+  .tok-s { color: #9ee6b0; }
+  .tok-c { color: #6d829e; }
+  .tok-n { color: #f0c987; }
+
+  .ide-side {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    min-height: 0;
+  }
+
+  .seg {
+    display: flex;
+    padding: 3px;
+    border-radius: 8px;
+    background: #eef2f8;
+  }
+  .seg button {
+    flex: 1;
+    padding: 6px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    color: var(--muted);
+    transition: background 0.18s ease, color 0.18s ease;
+  }
+  .seg button.on {
+    background: #fff;
+    color: var(--ink);
+    box-shadow: 0 1px 3px rgba(12, 26, 44, 0.12);
+  }
+
+  .ctx-list { display: flex; flex-direction: column; gap: 5px; }
+  .ctx-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: #fff;
+    font-size: 11.5px;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .ctx-item input { accent-color: var(--accent-a); }
+  .ctx-item small {
+    margin-left: auto;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10.5px;
+    color: var(--muted);
+  }
+  .ctx-item:has(input:disabled) { opacity: 0.5; cursor: default; }
+
+  .request-box {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    margin-top: 4px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #fff;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--ink-2);
+  }
+  .request-box b { color: var(--accent-a); }
+  .request-box span { color: var(--muted); font-size: 12px; }
+  .request-box .warn-text { color: #b5761e; }
+  .request-pre {
+    flex: 1;
+    min-height: 0;
+    margin-top: 8px;
+    padding: 10px;
+    overflow-y: auto;
+    border-radius: 7px;
+    background: #f6f8fc;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #3d4f6b;
+  }
+  .request-pre .key { color: var(--accent-b); }
+  .request-pre .faint { color: #98a6bb; }
+
+  /* 演示 3：AI 工作流 */
+
+  .flow-demo {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .flow-track {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .flow-node {
+    flex: 1;
+    min-width: 0;
+    padding: 9px 6px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #fff;
+    text-align: center;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease,
+                background 0.2s ease;
+  }
+  .flow-node b { display: block; font-size: 12px; font-weight: 600; }
+  .flow-node small { display: block; margin-top: 2px; font-size: 10.5px; line-height: 1.3; color: var(--muted); }
+  .flow-node.model { border-color: #c9d9f7; background: #f7faff; }
+  .flow-node.on {
+    border-color: var(--accent-b);
+    box-shadow: 0 0 0 3px rgba(47, 108, 232, 0.13);
+    transform: translateY(-2px);
+  }
+  .flow-node.done { border-color: rgba(14, 143, 125, 0.55); background: #f2fbf8; }
+  .flow-node.fail { border-color: rgba(214, 69, 69, 0.55); background: #fff7f7; }
+  .flow-arrow { flex: none; font-size: 12px; color: #b5c1d4; }
+
+  .flow-log {
+    flex: 1;
+    min-height: 0;
+    padding: 12px 14px;
+    overflow-y: auto;
+    border-radius: 10px;
+    background: #0f1c2e;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.85;
+    color: #bcd0ea;
+  }
+  .flow-log .dim { color: #7f97b8; }
+  .flow-log .ok { color: #8ee6b8; }
+  .flow-log .mod { color: #7cc4ff; }
+  .flow-log .bad { color: #ff9b9b; }
+
+  .flow-out {
+    flex: none;
+    max-height: 178px;
+    overflow-y: auto;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #fff;
+    opacity: 0.35;
+    transition: opacity 0.3s ease;
+  }
+  .flow-out.show { opacity: 1; }
+  .out-label {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    color: var(--accent-a);
+  }
+  .flow-out pre {
+    margin-top: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--ink-2);
+  }
+
+  /* 演示 4：Agent 智能体 */
+
+  .agent-demo {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 18px;
+  }
+
+  .loop-map {
+    position: relative;
+    align-self: center;
+    width: 300px;
+    height: 400px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(47, 108, 232, 0.045), transparent 62%),
+      #fff;
+  }
+  .loop-map svg { position: absolute; inset: 0; width: 300px; height: 400px; }
+
+  .loop-node {
+    position: absolute;
+    z-index: 1;
+    width: 96px;
+    padding: 8px 4px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #fff;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  }
+  .loop-node small {
+    display: block;
+    margin-top: 2px;
+    font-size: 10.5px;
+    font-weight: 400;
+    color: var(--muted);
+  }
+  .loop-node.on {
+    border-color: var(--accent-b);
+    background: #f7faff;
+    box-shadow: 0 0 0 4px rgba(47, 108, 232, 0.12);
+  }
+  .loop-node.done { border-color: rgba(14, 143, 125, 0.5); background: #f2fbf8; }
+
+  .agent-right {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .agent-status {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .pill {
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #eef7f5;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-a);
+  }
+  .steps {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .steps b { color: var(--ink); }
+
+  .agent-files {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .agent-file {
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: #f1f4f9;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10.5px;
+    color: var(--muted);
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+  .agent-file.read { background: #edf3ff; color: var(--accent-b); }
+  .agent-file.written { background: #e9faf5; color: var(--accent-a); }
+
+  .agent-log {
+    flex: 1;
+    min-height: 0;
+    padding: 13px 14px;
+    overflow-y: auto;
+    border-radius: 11px;
+    background: #0f1c2e;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: #c6d7ee;
+  }
+  .agent-log .log-step { margin-top: 10px; color: #7cc4ff; font-weight: 600; }
+  .agent-log .log-step:first-child { margin-top: 0; }
+  .agent-log .log-tool { color: #ffd479; }
+  .agent-log .log-obs { color: #9ee6b8; }
+  .agent-log .log-judge { margin-top: 3px; color: #8fa9c9; }
+
+  /* 演示 5：Agent 框架 */
+
+  .fw-demo {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 288px;
+    gap: 14px;
+  }
+
+  .fw-canvas {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 9px;
+    min-height: 0;
+    padding: 13px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  .fw-apps { display: flex; gap: 6px; flex: none; }
+  .fw-app {
+    flex: 1;
+    padding: 6px;
+    border-radius: 6px;
+    background: #eef2f8;
+    text-align: center;
+    font-size: 11px;
+    color: var(--ink-2);
+  }
+
+  .fw-core {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    padding: 11px;
+    border: 1px dashed #c9d9f7;
+    border-radius: 10px;
+    background: #f7faff;
+  }
+  .fw-core h4 {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--accent-b);
+  }
+  .fw-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .fw-comp {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    min-height: 58px;
+    padding: 8px 9px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: #fff;
+    text-align: left;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+  .fw-comp small {
+    display: block;
+    margin-top: 2px;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--muted);
+  }
+  .fw-comp:hover { border-color: #c9d9f7; }
+  .fw-comp.on { border-color: var(--accent-b); box-shadow: 0 0 0 3px rgba(47, 108, 232, 0.12); }
+
+  .fw-adapter {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 68px;
+    padding: 12px 16px;
+    border: 1px solid #d9e4f6;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #f6faff, #f2f6fd);
+    text-align: center;
+  }
+  .fw-adapter b {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .fw-adapter small {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10.5px;
+    color: var(--muted);
+  }
+
+  .fw-detail {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 0;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+  }
+  .fw-kicker {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    color: var(--accent-a);
+  }
+  .fw-detail h4 { margin-top: 7px; font-size: 18px; font-weight: 700; }
+  .fw-detail p { margin-top: 9px; font-size: 12.5px; line-height: 1.7; color: var(--ink-2); }
+  .fw-gap {
+    margin-top: 18px;
+    padding: 10px;
+    border: 1px solid #f3e3c3;
+    border-radius: 8px;
+    background: #fff8ec;
+    font-size: 11px;
+    line-height: 1.6;
+    color: #7a5a17;
+  }
+
+  /* 演示 6：Harness */
+
+  .harness-demo {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 14px;
+  }
+
+  .harness-left {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-height: 0;
+  }
+
+  .model-core {
+    flex: none;
+    padding: 11px;
+    border: 1px solid #dbe8f6;
+    border-radius: 11px;
+    background: linear-gradient(135deg, #eef7f5, #eef3fe);
+    text-align: center;
+  }
+  .model-core b { font-size: 13px; }
+  .model-core small { display: block; margin-top: 2px; font-size: 10.5px; color: var(--muted); }
+
+  .facility {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #fff;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  .facility .txt { font-size: 11.5px; font-weight: 600; line-height: 1.25; }
+  .facility small {
+    display: block;
+    margin-top: 1px;
+    font-size: 10.5px;
+    font-weight: 400;
+    color: var(--muted);
+  }
+  .facility.is-pass { border-color: rgba(14, 143, 125, 0.38); background: #f5fbf9; }
+  .facility.is-fail { border-color: rgba(214, 69, 69, 0.38); background: #fff7f7; }
+
+  .switch {
+    position: relative;
+    flex: none;
+    width: 32px;
+    height: 18px;
+    margin-left: auto;
+  }
+  .switch input {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .switch i {
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    background: #d9e1ed;
+    transition: background 0.2s ease;
+  }
+  .switch i::after {
+    content: "";
+    position: absolute;
+    left: 2px; top: 2px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s ease;
+  }
+  .switch input:checked + i { background: var(--accent-a); }
+  .switch input:checked + i::after { transform: translateX(14px); }
+  .switch input:disabled { cursor: not-allowed; }
+
+  .facility-count {
+    margin-top: 5px;
+    padding-top: 4px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .facility-count b {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    color: var(--accent-a);
+  }
+
+  .terminal {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: #0f1c2e;
+  }
+  .term-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 10.5px;
+    color: #8fa9c9;
+  }
+  .term-head .grow { flex: 1; }
+
+  .term-body {
+    flex: 1;
+    min-height: 0;
+    margin-top: 9px;
+    overflow-y: auto;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.75;
+    color: #c6d7ee;
+  }
+  .term-body .ok { color: #8ee6b8; }
+  .term-body .warn { color: #ffd479; }
+  .term-body .bad { color: #ff9b9b; }
+  .term-body .dim { color: #7f97b8; }
+  .term-body .gap { height: 5px; }
+
+  .term-foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding-top: 9px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .term-foot .btn {
+    border-color: #2b4466;
+    background: #1d314c;
+    color: #dbe7f8;
+  }
+  .term-foot .btn:hover { background: #27405f; }
+  .term-foot .action-note { color: #7f97b8; font-size: 10.5px; }
+
+  /* ---------------- 提示 ---------------- */
+
+  .toast {
+    position: absolute;
+    left: 50%;
+    bottom: 34px;
+    z-index: 100;
+    padding: 9px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: 999px;
+    background: rgba(12, 26, 44, 0.88);
+    box-shadow: 0 10px 30px rgba(12, 26, 44, 0.2);
+    font-size: 12px;
+    color: #fff;
+    opacity: 0;
+    transform: translate(-50%, 10px);
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
   @media (prefers-reduced-motion: reduce) {
-    .field, .title-wrap, .toc { animation: none; }
+    .field, .page, .modal-card, .typing i { animation: none; transition: none; }
   }
 
   @media print {
     @page { size: 1600px 900px; margin: 0; }
-    html, body { overflow: visible; background: #f7fafd; }
-    .viewport { position: static; display: block; }
-    .stage { transform: none; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    html, body { height: auto; overflow: visible; background: #f7fafd; }
+    .viewport { position: static; }
+    .stage { position: static; width: 1600px; height: auto; margin: 0; transform: none; }
+    .page {
+      position: relative;
+      display: none;
+      width: 1600px;
+      height: 900px;
+      opacity: 1;
+      visibility: visible;
+      transform: none;
+    }
+    .page.is-active { display: block; }
     .title-wrap, .toc { animation: none; }
+    .modal-root { display: none; }
   }
 </style>
 </head>
@@ -260,63 +1824,1872 @@
 <div class="viewport">
   <main class="stage">
 
-    <div class="deco">
-      <div class="ring r1"></div>
-      <div class="ring r2"></div>
-      <div class="ring r3"></div>
-      <span class="corner tl"></span>
-      <span class="corner tr"></span>
-      <span class="corner bl"></span>
-      <span class="corner br"></span>
-      <span class="chip"></span>
+    <!-- ==================== 封面 ==================== -->
+    <section class="page page-cover is-active" data-page="cover">
+
+      <div class="deco">
+        <div class="ring r1"></div>
+        <div class="ring r2"></div>
+        <div class="ring r3"></div>
+        <span class="corner tl"></span>
+        <span class="corner tr"></span>
+        <span class="corner bl"></span>
+        <span class="corner br"></span>
+        <span class="chip-deco"></span>
+      </div>
+
+      <div class="title-wrap">
+        <h1>
+          <span class="line">Harness</span>
+          <span class="line thin">入门</span>
+        </h1>
+      </div>
+
+      <nav class="toc" aria-label="章节目录">
+        <button class="toc-item" data-chapter="1" data-title="AI 应用的发展"
+                aria-label="打开第 1 章：AI 应用的发展">
+          <span class="toc-num">01</span>
+          <span class="toc-title">AI 应用的发展<span class="toc-sub">从聊天页面到智能工具</span></span>
+          <span class="toc-go" aria-hidden="true">→</span>
+        </button>
+        <button class="toc-item" data-chapter="2" data-title="Harness 介绍"
+                aria-label="打开第 2 章：Harness 介绍">
+          <span class="toc-num">02</span>
+          <span class="toc-title">Harness 介绍<span class="toc-sub">Agent = Model + Harness</span></span>
+          <span class="toc-go" aria-hidden="true">→</span>
+        </button>
+        <button class="toc-item" data-chapter="3" data-title="开源与闭源 Harness"
+                aria-label="打开第 3 章：开源与闭源 Harness">
+          <span class="toc-num">03</span>
+          <span class="toc-title">开源 Harness 与闭源 Harness</span>
+          <span class="toc-go" aria-hidden="true">→</span>
+        </button>
+        <button class="toc-item" data-chapter="4" data-title="DeepSeek Harness 的前世今生"
+                aria-label="打开第 4 章：DeepSeek Harness 的前世今生">
+          <span class="toc-num">04</span>
+          <span class="toc-title">DeepSeek Harness 的前世今生<span class="toc-sub">万物皆插件</span></span>
+          <span class="toc-go" aria-hidden="true">→</span>
+        </button>
+        <button class="toc-item" data-chapter="5" data-title="DSH 源码框架与二次开发"
+                aria-label="打开第 5 章：DSH 源码框架介绍与二次开发范例">
+          <span class="toc-num">05</span>
+          <span class="toc-title">DSH 源码框架介绍与二次开发范例</span>
+          <span class="toc-go" aria-hidden="true">→</span>
+        </button>
+        <button class="toc-item" data-chapter="6" data-title="总结与经验分享"
+                aria-label="打开第 6 章：总结与经验分享">
+          <span class="toc-num">06</span>
+          <span class="toc-title">总结与经验分享</span>
+          <span class="toc-go" aria-hidden="true">→</span>
+        </button>
+      </nav>
+
+    </section>
+
+    <!-- ==================== 第一章 ==================== -->
+    <section class="page page-chapter" data-page="p01" aria-label="第一章：AI 应用的发展">
+
+      <header class="chapter-head">
+        <div>
+          <div class="breadcrumb">
+            <span class="n">01</span>
+            <span class="bar"></span>
+            <span>AI 应用的发展</span>
+          </div>
+          <h2 class="chapter-title">AI 应用的发展</h2>
+          <p class="chapter-sub">从聊天页面到智能工具</p>
+        </div>
+        <div class="chapter-meta">
+          <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn next-btn" data-next="p01b" aria-label="下一页：留下的问题">下一页 →</button>
+        </div>
+      </header>
+
+      <div class="chapter-body single">
+
+        <section class="evolution" aria-label="Harness 的演化">
+          <div class="evo-head">
+            <div>
+              <h3>演化</h3>
+              <p>模型之外的工程，一层一层加上去</p>
+            </div>
+            <span class="evo-tip">点击任一阶段，查看示例</span>
+          </div>
+
+          <div class="evo-list">
+            <button class="evo-item" data-stage="1" aria-label="查看聊天页面示例">
+              <span class="evo-era">2022 — 2023 初</span>
+              <span class="evo-mid"><span class="evo-dot"></span></span>
+              <span>
+                <span class="evo-name">聊天页面</span>
+                <span class="evo-desc">无状态请求—回复；每轮重发全部历史，窗口外即遗忘。</span>
+              </span>
+              <span class="evo-go" aria-hidden="true">→</span>
+            </button>
+
+            <button class="evo-item" data-stage="2" aria-label="查看嵌入式助手示例">
+              <span class="evo-era">2021 起 · 2023 扩散</span>
+              <span class="evo-mid"><span class="evo-dot"></span></span>
+              <span>
+                <span class="evo-name">嵌入式助手</span>
+                <span class="evo-desc">宿主应用自动装配环境上下文；模型侧仍无状态。</span>
+              </span>
+              <span class="evo-go" aria-hidden="true">→</span>
+            </button>
+
+            <button class="evo-item" data-stage="3" aria-label="查看 AI 工作流示例">
+              <span class="evo-era">2023 中 — 2024</span>
+              <span class="evo-mid"><span class="evo-dot"></span></span>
+              <span>
+                <span class="evo-name">AI 工作流</span>
+                <span class="evo-desc">人预先编排固定步骤，模型在节点内交付指定格式。</span>
+              </span>
+              <span class="evo-go" aria-hidden="true">→</span>
+            </button>
+
+            <button class="evo-item" data-stage="4" aria-label="查看 Agent 智能体示例">
+              <span class="evo-era">2023 — 2024</span>
+              <span class="evo-mid"><span class="evo-dot"></span></span>
+              <span>
+                <span class="evo-name">Agent 智能体</span>
+                <span class="evo-desc">模型在外层循环里“要工具、看结果、做决定”。</span>
+              </span>
+              <span class="evo-go" aria-hidden="true">→</span>
+            </button>
+
+            <button class="evo-item" data-stage="5" aria-label="查看 Agent 框架示例">
+              <span class="evo-era">2023 — 2024</span>
+              <span class="evo-mid"><span class="evo-dot"></span></span>
+              <span>
+                <span class="evo-name">Agent 框架</span>
+                <span class="evo-desc">把循环封装成可复用框架，补工具、记忆与多 Agent。</span>
+              </span>
+              <span class="evo-go" aria-hidden="true">→</span>
+            </button>
+
+            <button class="evo-item now" data-stage="6" aria-label="查看 Harness 示例">
+              <span class="evo-era">2025 — 现在</span>
+              <span class="evo-mid"><span class="evo-dot"></span></span>
+              <span>
+                <span class="evo-name">Harness</span>
+                <span class="evo-desc">把模型外的运行时工程化：记忆、压缩、审批、沙箱。</span>
+              </span>
+              <span class="evo-go" aria-hidden="true">→</span>
+            </button>
+          </div>
+        </section>
+
+      </div>
+
+      <footer class="chapter-foot">
+        <span>六个阶段，一条主线：模型提供智能，Harness 负责让智能可靠地落地。</span>
+        <span class="keys">
+          <span class="kbd">←</span> 返回封面
+          <span class="kbd">Esc</span> 关闭弹窗
+        </span>
+      </footer>
+
+    </section>
+
+    <!-- ==================== 第一章 · 第 2 页：问题 ==================== -->
+    <section class="page page-chapter" data-page="p01b" aria-label="AI 应用的发展：留下的问题">
+
+      <header class="chapter-head">
+        <div>
+          <div class="breadcrumb">
+            <span class="n">01</span>
+            <span class="bar"></span>
+            <span>AI 应用的发展 · 2 / 2</span>
+          </div>
+          <h2 class="chapter-title">留下的问题</h2>
+        </div>
+        <div class="chapter-meta">
+          <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn next-btn" data-next="p02" aria-label="下一页：Harness 介绍">下一页 →</button>
+        </div>
+      </header>
+
+      <div class="chapter-body single">
+        <section class="problem-board" aria-label="五个阶段留下的问题">
+          <div class="problem-list">
+
+            <div class="problem-row">
+              <div class="problem-stage">
+                <span class="problem-idx">01</span>
+                <div>
+                  <span class="problem-name">聊天页面</span>
+                  <span class="problem-era">2022 — 2023 初</span>
+                </div>
+              </div>
+              <div class="problem-pains">
+                <span class="pain">没有状态</span>
+                <span class="pain">没有持久记忆</span>
+                <span class="pain">只能返回文本</span>
+                <span class="pain">不能执行动作</span>
+              </div>
+              <div class="problem-residue"><b>留给下一代</b>记忆与执行能力都由应用来补。</div>
+            </div>
+
+            <div class="problem-row">
+              <div class="problem-stage">
+                <span class="problem-idx">02</span>
+                <div>
+                  <span class="problem-name">嵌入式助手</span>
+                  <span class="problem-era">2021 起 · 2023 扩散</span>
+                </div>
+              </div>
+              <div class="problem-pains">
+                <span class="pain">严重依赖宿主环境</span>
+                <span class="pain">每个应用各接一套</span>
+                <span class="pain">跨应用无协同</span>
+                <span class="pain">无共享记忆</span>
+              </div>
+              <div class="problem-residue"><b>留给下一代</b>能力被锁在单个应用里，无法复用。</div>
+            </div>
+
+            <div class="problem-row">
+              <div class="problem-stage">
+                <span class="problem-idx">03</span>
+                <div>
+                  <span class="problem-name">AI 工作流</span>
+                  <span class="problem-era">2023 中 — 2024</span>
+                </div>
+              </div>
+              <div class="problem-pains">
+                <span class="pain">只能走预设路径</span>
+                <span class="pain">异常即中断</span>
+                <span class="pain">不会自我恢复</span>
+              </div>
+              <div class="problem-residue"><b>留给下一代</b>路径要人写死，覆盖不到意外情况。</div>
+            </div>
+
+            <div class="problem-row">
+              <div class="problem-stage">
+                <span class="problem-idx">04</span>
+                <div>
+                  <span class="problem-name">Agent 智能体</span>
+                  <span class="problem-era">2023 — 2024</span>
+                </div>
+              </div>
+              <div class="problem-pains">
+                <span class="pain">没有预算概念</span>
+                <span class="pain">上下文持续膨胀</span>
+                <span class="pain">会死循环</span>
+                <span class="pain">危险动作难拦截</span>
+                <span class="pain">行为不可复现</span>
+                <span class="pain">难调试</span>
+              </div>
+              <div class="problem-residue"><b>留给下一代</b>自主性有了，但缺少约束与可观测。</div>
+            </div>
+
+            <div class="problem-row last">
+              <div class="problem-stage">
+                <span class="problem-idx">05</span>
+                <div>
+                  <span class="problem-name">Agent 框架</span>
+                  <span class="problem-era">2023 — 2024</span>
+                </div>
+              </div>
+              <div class="problem-pains">
+                <span class="pain">长任务能力薄弱</span>
+                <span class="pain">状态难持久</span>
+                <span class="pain">能力锁死在框架抽象里</span>
+                <span class="pain">多 Agent 仍需手工编排</span>
+              </div>
+              <div class="problem-residue"><b>留给下一代</b>复用有了，但运行时保障仍然缺席。</div>
+            </div>
+
+          </div>
+
+        </section>
+      </div>
+
+      <footer class="chapter-foot">
+        <span></span>
+        <span class="keys">
+          <span class="kbd">←</span> 上一页
+          <span class="kbd">→</span> 下一页
+          <span class="kbd">Esc</span> 返回封面
+        </span>
+      </footer>
+
+    </section>
+
+    <!-- ==================== 第二章 ==================== -->
+    <section class="page page-chapter page-intro" data-page="p02" aria-label="第二章：Harness 介绍">
+
+      <header class="chapter-head">
+        <div>
+          <div class="breadcrumb">
+            <span class="n">02</span>
+            <span class="bar"></span>
+            <span>HARNESS 介绍</span>
+          </div>
+          <h2 class="chapter-title">Harness 介绍</h2>
+          <p class="chapter-sub">Agent = Model + Harness</p>
+        </div>
+        <div class="chapter-meta">
+          <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+        </div>
+      </header>
+
+      <div class="chapter-body intro-body">
+
+        <aside class="thesis">
+          <div class="eyebrow">核心思想</div>
+          <p class="thesis-q">
+            <span class="soft">模型已经会调用工具、会规划任务。</span><br>
+            问题只剩一个：怎么让它<br>
+            <span class="mark">安全、有效、正确</span>地达成目标？
+          </p>
+          <p class="thesis-a">
+            答案在模型之外。把记忆、上下文、边界和能力做成一层可靠的运行时，
+            这层运行时就是 <b>Harness</b>。
+          </p>
+
+          <div class="formula" aria-label="Agent 等于模型加 Harness">
+            <span class="box">Agent</span>
+            <span class="op">=</span>
+            <span class="box">Model<small>智能</small></span>
+            <span class="op">+</span>
+            <span class="box harness">Harness<small>保障</small></span>
+          </div>
+
+          <div class="chips">
+            <div class="chip">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <ellipse cx="12" cy="5" rx="7" ry="3"></ellipse>
+                <path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"></path>
+                <path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"></path>
+              </svg>
+              <div><b>记忆持久化</b><small>会话落盘，重启可续</small></div>
+            </div>
+            <div class="chip">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h16M4 12h16M4 17h10"></path>
+                <path d="M17 15l3 2-3 2"></path>
+              </svg>
+              <div><b>上下文可压缩</b><small>长任务不丢关键决策</small></div>
+            </div>
+            <div class="chip">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3l7 3v5c0 4.4-3 8.2-7 10-4-1.8-7-5.6-7-10V6l7-3z"></path>
+                <path d="M9 12l2 2 4-4"></path>
+              </svg>
+              <div><b>审批与沙箱</b><small>危险动作有边界</small></div>
+            </div>
+            <div class="chip">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="4" y="4" width="7" height="7" rx="1.5"></rect>
+                <rect x="13" y="4" width="7" height="7" rx="1.5"></rect>
+                <rect x="4" y="13" width="7" height="7" rx="1.5"></rect>
+                <path d="M16.5 13v7M13 16.5h7"></path>
+              </svg>
+              <div><b>模型、工具和能力</b><small>可协议化配置</small></div>
+            </div>
+          </div>
+        </aside>
+
+      </div>
+
+      <footer class="chapter-foot">
+        <span>模型负责智能，Harness 负责让智能可靠地落地。</span>
+        <span class="keys">
+          <span class="kbd">←</span> 返回封面
+          <span class="kbd">Esc</span> 关闭弹窗
+        </span>
+      </footer>
+
+    </section>
+
+    <!-- ==================== 弹窗 ==================== -->
+    <div class="modal-root" id="modal-root" aria-hidden="true">
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title"></div>
     </div>
 
-    <div class="title-wrap">
-      <h1>
-        <span class="line">Harness</span>
-        <span class="line thin">入门</span>
-      </h1>
-    </div>
-
-    <nav class="toc">
-      <div class="toc-item">
-        <span class="toc-num">01</span>
-        <span class="toc-title">Harness 介绍<span class="toc-sub">Agent = Model + Harness</span></span>
-      </div>
-      <div class="toc-item">
-        <span class="toc-num">02</span>
-        <span class="toc-title">Harness 发展<span class="toc-sub">从聊天页面到智能工具</span></span>
-      </div>
-      <div class="toc-item">
-        <span class="toc-num">03</span>
-        <span class="toc-title">开源 Harness 与闭源 Harness</span>
-      </div>
-      <div class="toc-item">
-        <span class="toc-num">04</span>
-        <span class="toc-title">DeepSeek Harness 的前世今生<span class="toc-sub">万物皆插件</span></span>
-      </div>
-      <div class="toc-item">
-        <span class="toc-num">05</span>
-        <span class="toc-title">DSH 源码框架介绍与二次开发范例</span>
-      </div>
-      <div class="toc-item">
-        <span class="toc-num">06</span>
-        <span class="toc-title">总结与经验分享</span>
-      </div>
-    </nav>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   </main>
 </div>
 
+<!-- ==================== 演示模板 ==================== -->
+
+<template id="tpl-chat">
+  <div class="chat-demo">
+    <div class="chat-pane">
+      <div class="chat-scroll"></div>
+      <form class="chat-compose" data-form="chat" autocomplete="off">
+        <input type="text" placeholder="输入问题，回车发送…" disabled aria-label="聊天输入">
+        <button type="submit" disabled>发送</button>
+      </form>
+    </div>
+    <div class="payload">
+      <div class="payload-head"><span>本次请求</span><b id="chat-count">0 / 6 条</b></div>
+      <div class="payload-list"></div>
+      <div class="meter"><i id="chat-meter"></i></div>
+      <div class="payload-note" id="chat-note">正在检查本地服务…</div>
+    </div>
+  </div>
+  <div class="demo-actions">
+    <button class="btn" data-act="chat-reset">清空对话</button>
+    <span class="action-note">真实调用 · 每次携带最近 6 条</span>
+  </div>
+</template>
+
+<template id="tpl-ide">
+  <div class="ide-demo">
+    <div class="editor">
+      <div class="editor-tab">billing.py</div>
+      <div class="code">
+        <div class="code-line" data-line="1"><span class="ln">1</span><span><span class="tok-k">def</span> refund(order_id):</span></div>
+        <div class="code-line" data-line="2"><span class="ln">2</span><span>&nbsp;&nbsp;order = db.get(order_id)</span></div>
+        <div class="code-line" data-line="3"><span class="ln">3</span><span>&nbsp;&nbsp;<span class="tok-k">if</span> order.status == <span class="tok-s">"paid"</span>:</span></div>
+        <div class="code-line on" data-line="4"><span class="ln">4</span><span>&nbsp;&nbsp;&nbsp;&nbsp;order.status = <span class="tok-s">"refunded"</span></span></div>
+        <div class="code-line" data-line="5"><span class="ln">5</span><span>&nbsp;&nbsp;&nbsp;&nbsp;db.save(order)</span></div>
+        <div class="code-line" data-line="6"><span class="ln">6</span><span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="tok-k">return</span> <span class="tok-n">True</span></span></div>
+        <div class="code-line" data-line="7"><span class="ln">7</span><span>&nbsp;&nbsp;<span class="tok-k">return</span> <span class="tok-n">False</span></span></div>
+        <div class="code-line" data-line="8"><span class="ln">8</span><span>&nbsp;</span></div>
+        <div class="code-line" data-line="9"><span class="ln">9</span><span><span class="tok-k">def</span> refund_batch(order_ids):</span></div>
+        <div class="code-line" data-line="10"><span class="ln">10</span><span>&nbsp;&nbsp;results = []</span></div>
+        <div class="code-line" data-line="11"><span class="ln">11</span><span>&nbsp;&nbsp;<span class="tok-k">for</span> oid <span class="tok-k">in</span> order_ids:</span></div>
+        <div class="code-line" data-line="12"><span class="ln">12</span><span>&nbsp;&nbsp;&nbsp;&nbsp;results.append(refund(oid))</span></div>
+        <div class="code-line" data-line="13"><span class="ln">13</span><span>&nbsp;&nbsp;<span class="tok-k">return</span> results</span></div>
+        <div class="code-line" data-line="14"><span class="ln">14</span><span>&nbsp;</span></div>
+        <div class="code-line" data-line="15"><span class="ln">15</span><span class="tok-c"># 缺少重复退款判断</span></div>
+        <div class="code-line" data-line="16"><span class="ln">16</span><span class="tok-c"># 没有审计日志</span></div>
+      </div>
+    </div>
+    <div class="ide-side">
+      <div class="seg">
+        <button class="on" data-mode="auto">自动装配</button>
+        <button data-mode="manual">手动粘贴</button>
+      </div>
+      <div class="ctx-list">
+        <label class="ctx-item"><input type="checkbox" checked data-name="当前文件"> 当前文件 <small>1.2k tok</small></label>
+        <label class="ctx-item"><input type="checkbox" checked data-name="光标选区"> 光标选区 <small id="sel-line">L4</small></label>
+        <label class="ctx-item"><input type="checkbox" checked data-name="项目结构"> 项目结构 <small>18 files</small></label>
+        <label class="ctx-item"><input type="checkbox" checked data-name="关联工单"> 关联工单 <small>#4821</small></label>
+      </div>
+      <div class="request-box">
+        <div id="request-text"></div>
+        <pre class="request-pre" id="request-pre"></pre>
+      </div>
+    </div>
+  </div>
+  <div class="demo-actions">
+    <span class="action-note">点代码行移动光标；取消勾选看请求变化</span>
+  </div>
+</template>
+
+<template id="tpl-flow">
+  <div class="flow-demo">
+    <div class="flow-track">
+      <div class="flow-node" data-node="0"><b>输入</b><small>模拟工单 #4821</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node model" data-node="1"><b>模型 · 抽取</b><small>金额 / 原因 / 订单</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node model" data-node="2"><b>模型 · 生成</b><small>按模板写回复</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node" data-node="3"><b>格式校验</b><small>Schema + 禁用词</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node" data-node="4"><b>交付</b><small>写入工单系统</small></div>
+    </div>
+    <div class="flow-log"><div class="dim">等待运行… 点下方按钮</div></div>
+    <div class="flow-out">
+      <div class="out-label">最终交付</div>
+      <pre>{ 运行后生成 }</pre>
+    </div>
+  </div>
+  <div class="demo-actions">
+    <button class="btn primary" data-act="flow-run">运行工作流</button>
+    <span class="action-note">输入是模拟工单 · 两个模型节点真实调用 DeepSeek</span>
+  </div>
+</template>
+
+<template id="tpl-agent">
+  <div class="agent-demo">
+    <div class="loop-map" aria-hidden="true">
+      <svg viewBox="0 0 300 400">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5"
+                  markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="#b9c6d9"></path>
+          </marker>
+        </defs>
+        <path d="M150 76 C 210 90, 242 130, 247 166" fill="none" stroke="#c5d0e0" stroke-width="1.2" stroke-dasharray="3 4" marker-end="url(#arr)"></path>
+        <path d="M247 234 C 242 300, 210 330, 154 326" fill="none" stroke="#c5d0e0" stroke-width="1.2" stroke-dasharray="3 4" marker-end="url(#arr)"></path>
+        <path d="M150 326 C 90 330, 58 300, 53 234" fill="none" stroke="#c5d0e0" stroke-width="1.2" stroke-dasharray="3 4" marker-end="url(#arr)"></path>
+        <path d="M53 166 C 58 100, 90 74, 146 76" fill="none" stroke="#c5d0e0" stroke-width="1.2" stroke-dasharray="3 4" marker-end="url(#arr)"></path>
+      </svg>
+      <div class="loop-node" data-loop="model" style="left:102px;top:16px">模型<small>决定下一步</small></div>
+      <div class="loop-node" data-loop="tool" style="right:10px;top:50%;transform:translateY(-50%)">工具<small>执行动作</small></div>
+      <div class="loop-node" data-loop="observe" style="left:102px;bottom:16px">观察<small>读取结果</small></div>
+      <div class="loop-node" data-loop="judge" style="left:10px;top:50%;transform:translateY(-50%)">判断<small>完成了吗</small></div>
+    </div>
+    <div class="agent-right">
+      <div class="agent-status">
+        <span class="pill" id="agent-pill">决策权：模型</span>
+        <span class="steps"><b id="agent-count">0</b> / 8 步</span>
+      </div>
+      <div class="agent-files" id="agent-files"></div>
+      <div class="agent-log"><div class="log-judge">点「推进一步」或「自动运行」，模型会自己决定调用哪个工具。</div></div>
+      <div class="demo-actions">
+        <button class="btn primary" data-act="agent-next">推进一步</button>
+        <button class="btn" data-act="agent-auto">自动运行</button>
+        <button class="btn" data-act="agent-reset">重置</button>
+        <span class="action-note">真实模型决策 · 内存工作区</span>
+      </div>
+    </div>
+  </div>
+</template>
+
+<template id="tpl-framework">
+  <div class="fw-demo">
+    <div class="fw-canvas">
+      <div class="fw-apps">
+        <span class="fw-app">应用 A</span>
+        <span class="fw-app">应用 B</span>
+        <span class="fw-app">应用 C</span>
+      </div>
+      <div class="fw-core">
+        <h4>AGENT 框架</h4>
+        <div class="fw-grid">
+          <button class="fw-comp on" data-comp="loop">执行循环<small>model → tool → model</small></button>
+          <button class="fw-comp" data-comp="tools">工具生态<small>统一调用协议</small></button>
+          <button class="fw-comp" data-comp="memory">长期记忆<small>向量库 / 会话存储</small></button>
+          <button class="fw-comp" data-comp="multi">多 Agent<small>分工 / 消息 / 汇总</small></button>
+        </div>
+      </div>
+      <div class="fw-adapter">
+        <b>模型 API</b>
+        <small>OpenAI · Anthropic · 本地模型</small>
+      </div>
+    </div>
+    <div class="fw-detail">
+      <div class="fw-kicker">组件</div>
+      <h4 id="fw-title">执行循环</h4>
+      <p id="fw-body">把「模型 → 工具 → 模型」封装成可复用的驱动器。换模型、换工具，循环本身不用重写。</p>
+      <div class="fw-gap">框架只给零件：记忆怎么存、权限怎么管、出错怎么恢复，仍要自己接。</div>
+    </div>
+  </div>
+</template>
+
+<template id="tpl-harness">
+  <div class="harness-demo">
+    <div class="harness-left">
+      <div class="model-core"><b>模型</b><small>提供智能</small></div>
+
+      <label class="facility" data-facility="memory">
+        <span class="txt">记忆持久化<small>会话落盘 · 重启可续</small></span>
+        <span class="switch"><input type="checkbox" checked><i></i></span>
+      </label>
+      <label class="facility" data-facility="compact">
+        <span class="txt">上下文压缩<small>长任务不丢决策</small></span>
+        <span class="switch"><input type="checkbox" checked><i></i></span>
+      </label>
+      <label class="facility" data-facility="guard">
+        <span class="txt">审批 + 沙箱<small>危险动作拦得住</small></span>
+        <span class="switch"><input type="checkbox" checked><i></i></span>
+      </label>
+      <label class="facility" data-facility="capability">
+        <span class="txt">协议化配置<small>模型 / 工具 / 能力</small></span>
+        <span class="switch"><input type="checkbox" checked><i></i></span>
+      </label>
+
+      <div class="facility-count">运行时能力 <b id="facility-count">4 / 4</b></div>
+    </div>
+
+    <div class="terminal">
+      <div class="term-head">
+        <span>harness · runtime</span>
+        <span class="grow"></span>
+        <span>12-step task</span>
+      </div>
+      <div class="term-body"></div>
+      <div class="term-foot">
+        <button class="btn" data-act="harness-run">运行同一个任务</button>
+        <span class="action-note">关掉一项再跑，对比日志</span>
+      </div>
+    </div>
+  </div>
+</template>
+
 <script>
-  (function () {
-    function fit() {
-      const scale = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
-      document.documentElement.style.setProperty('--scale', scale);
+(function () {
+  "use strict";
+
+  /* ---------------- 基础 ---------------- */
+
+  var stage = document.querySelector(".stage");
+  var pages = {
+    cover: document.querySelector('[data-page="cover"]'),
+    p01: document.querySelector('[data-page="p01"]'),
+    p01b: document.querySelector('[data-page="p01b"]'),
+    p02: document.querySelector('[data-page="p02"]')
+  };
+  var currentPage = "cover";
+
+  function fit() {
+    var w = window.innerWidth || document.documentElement.clientWidth || 1600;
+    var h = window.innerHeight || document.documentElement.clientHeight || 900;
+    var scale = Math.min(w / 1600, h / 900);
+    if (!isFinite(scale) || scale <= 0) scale = 1;
+    document.documentElement.style.setProperty("--scale", scale);
+  }
+  window.addEventListener("resize", fit);
+  window.addEventListener("load", fit);
+  document.addEventListener("visibilitychange", fit);
+  fit();
+  requestAnimationFrame(fit);
+
+  function go(page) {
+    if (!pages[page]) return;
+    currentPage = page;
+    Object.keys(pages).forEach(function (key) {
+      pages[key].classList.toggle("is-active", key === page);
+      pages[key].setAttribute("aria-hidden", key === page ? "false" : "true");
+    });
+  }
+
+  var toastTimer = null;
+  var toastEl = document.getElementById("toast");
+  function toast(text) {
+    toastEl.textContent = text;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      toastEl.classList.remove("show");
+    }, 2300);
+  }
+
+  /* ---------------- 封面导航 ---------------- */
+
+  document.querySelectorAll("[data-chapter]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var n = Number(btn.getAttribute("data-chapter"));
+      if (n === 1) {
+        go("p01");
+      } else if (n === 2) {
+        go("p02");
+      } else {
+        toast("第 0" + n + " 章 · " + btn.getAttribute("data-title") + " 还在整理中");
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-back]").forEach(function (btn) {
+    btn.addEventListener("click", function () { go("cover"); });
+  });
+
+  document.querySelectorAll("[data-next]").forEach(function (btn) {
+    btn.addEventListener("click", function () { go(btn.getAttribute("data-next")); });
+  });
+
+  /* ---------------- 弹窗框架 ---------------- */
+
+  var modalRoot = document.getElementById("modal-root");
+  var modalCard = modalRoot.querySelector(".modal-card");
+  var activeStage = null;
+  var lastFocus = null;
+  var demoSeq = 0;
+
+  var STAGES = {
+    1: {
+      num: "01",
+      title: "聊天页面",
+      era: "2022 — 2023 年初",
+      tag: "大模型厂商网页端服务",
+      lead: "最早的产品形态：把模型当成一个对话接口。每次提问都是一次独立的 HTTP 请求，页面把历史消息一起带上。",
+      points: [
+        ["无状态", "：模型端不保存任何会话；“记得”是因为浏览器把历史重发了。"],
+        ["窗口即上限", "：超出上下文窗口的早期消息被直接裁掉，之后再也想不起来。"],
+        ["只有文本", "：没有工具调用，模型不能读文件、跑命令、改代码。"],
+        ["状态在客户端", "：换设备、清缓存，对话就没了。"]
+      ],
+      hint: "直接在输入框提问，回复来自真实 DeepSeek。看右侧「本次请求」：超过 6 条后，最早的会被窗口挤掉。",
+      caption: "每轮把历史整体重发，窗口之外的旧消息被裁掉——模型本身什么都不记得。",
+      demo: "chat"
+    },
+    2: {
+      num: "02",
+      title: "嵌入式助手",
+      era: "2021 起 · 2023 扩散",
+      tag: "GitHub Copilot · Cursor · 钉钉 / 飞书智能助手",
+      lead: "助手被塞进用户正在工作的地方。宿主应用知道你在哪个文件、选中了什么、关联哪条业务记录，于是自动把这些装配进请求。",
+      points: [
+        ["上下文由应用提供", "：当前文件、光标选区、项目结构、业务数据。"],
+        ["用户不用复制粘贴", "：体验从“问答”变成“就地协作”。"],
+        ["模型侧仍无状态", "：真正的状态在宿主应用里。"],
+        ["各应用各写一套", "：装配逻辑和能力边界都由应用自己决定。"]
+      ],
+      hint: "点代码行移动光标；取消勾选任意一段上下文，看请求里少了什么。",
+      caption: "应用替模型准备好了现场；但每家公司、每个产品都要自己重写一遍装配逻辑。",
+      demo: "ide"
+    },
+    3: {
+      num: "03",
+      title: "AI 工作流",
+      era: "2023 中 — 2024",
+      tag: "Dify · Coze · n8n",
+      lead: "人把流程拆成固定节点，只在需要判断的节点调用模型。输入、顺序、输出格式都是预先编排的。",
+      points: [
+        ["路径确定", "：先做什么、后做什么由人写死，模型不改变路线。"],
+        ["节点内智能", "：抽取、分类、改写、生成，各自有明确的输入输出。"],
+        ["可预测、易审计", "：每一步都能单独测试、单独重跑。"],
+        ["不处理意外", "：节点失败就停在那里，不会自己换一条路。"]
+      ],
+      hint: "点「运行工作流」：输入是写死的模拟工单，两个蓝色节点会真实调用 DeepSeek，其余节点在本地完成。",
+      caption: "流程可靠，但只覆盖人预先想到的路径；意外发生时，它不会自己绕路。",
+      demo: "flow"
+    },
+    4: {
+      num: "04",
+      title: "Agent 智能体",
+      era: "2023 — 2024",
+      tag: "AutoGPT · BabyAGI · SWE-agent",
+      lead: "工具调用让模型可以动手。外面再套一层循环：模型决定调用什么、看结果、再决定下一步，直到它认为任务完成。",
+      points: [
+        ["自主推进", "：不需要人逐步指挥，模型自己选工具、自己判断进展。"],
+        ["循环", "：决策 → 动作 → 观察 → 再决策。"],
+        ["能力来自工具", "：搜索、读写文件、执行命令、调用 API。"],
+        ["风险也来自自主", "：可能跑偏、死循环、做危险动作，需要步数上限与边界。"]
+      ],
+      hint: "点「自动运行」：真实模型自己决定读文件、改代码、跑测试，工具在本页内存工作区里真的执行。",
+      caption: "自主性来自循环：模型不再执行一条固定路径，而是走一步、看一步、再决定下一步。这里的每一步都是真实模型决策。",
+      demo: "agent"
+    },
+    5: {
+      num: "05",
+      title: "Agent 框架",
+      era: "2023 — 2024",
+      tag: "LangChain · LangGraph · AutoGen",
+      lead: "大家发现每个 Agent 都在重写同一套循环。框架把这些零件抽出来，变成可复用的库。",
+      points: [
+        ["执行循环", "：封装“模型 → 工具 → 模型”，换模型不改主流程。"],
+        ["工具生态", "：统一工具描述与调用协议，第三方工具可直接接入。"],
+        ["长期记忆", "：接向量库、会话存储，让信息跨对话保留。"],
+        ["多 Agent 编排", "：角色分工、消息传递、任务分派。"],
+        ["但框架只给零件", "：记忆怎么存、权限怎么管，仍要自己接。"]
+      ],
+      hint: "点四个组件，看框架各提供了什么；也看它没有解决什么。",
+      caption: "框架解决了“别重复写循环”，但没有解决“运行时怎么保证可靠”。",
+      demo: "framework"
+    },
+    6: {
+      num: "06",
+      title: "Harness",
+      era: "2025 — 现在",
+      tag: "OpenClaw · Codex · Claude Code · DeepSeek Harness · ZCode",
+      lead: "Harness 把模型外的那一层当成正式工程来做：会话、上下文、权限、工具、插件，全部纳入运行时。",
+      points: [
+        ["记忆持久化", "：会话日志落盘，进程重启后能接着做。"],
+        ["上下文可压缩", "：长任务超出窗口时摘要旧区段，不丢关键决策。"],
+        ["动作受约束", "：危险操作先审批，执行放进沙箱。"],
+        ["协议化配置", "：模型、工具和能力都通过统一协议接入，按项目替换。"],
+        ["结果可审计", "：模型看到什么、做了什么，都能从日志重建。"]
+      ],
+      hint: "四项运行时能力可以逐个开关。关掉任意一项，再跑同一个 12 步任务，看它在哪里出事。",
+      caption: "Harness 的价值不在模型更聪明，而在模型之外：记得住、装得下、拦得住、换得掉。",
+      demo: "harness"
     }
-    window.addEventListener('resize', fit);
-    fit();
-  })();
+  };
+
+  function openStage(key) {
+    var data = STAGES[key];
+    if (!data) return;
+
+    demoSeq += 1;
+    activeStage = key;
+    lastFocus = document.activeElement;
+
+    var tpl = document.getElementById("tpl-" + data.demo);
+    var demoHtml = tpl ? tpl.innerHTML : "";
+
+    var pointsHtml = data.points.map(function (pair) {
+      return "<li><b>" + pair[0] + "</b>" + pair[1] + "</li>";
+    }).join("");
+
+    modalCard.innerHTML =
+      '<header class="modal-head">' +
+        '<div>' +
+          '<div class="modal-num">' + data.num + ' · 演化</div>' +
+          '<h3 class="modal-title" id="modal-title">' + data.title + "</h3>" +
+        "</div>" +
+        '<p class="modal-tag">' + data.tag + "</p>" +
+        '<button class="modal-close" aria-label="关闭弹窗">×</button>' +
+      "</header>" +
+      '<div class="modal-body">' +
+        '<aside class="modal-copy">' +
+          '<p class="modal-lead">' + data.lead + "</p>" +
+          '<ul class="modal-points">' + pointsHtml + "</ul>" +
+          '<div class="modal-hint"><b>试一下</b><br>' + data.hint + "</div>" +
+        "</aside>" +
+        '<div class="demo-shell">' +
+          '<div class="demo-top"><span class="dots"><i></i><i></i><i></i></span>' +
+            '<span class="label">' + data.era + " · 演示</span></div>" +
+          '<div class="demo-stage">' + demoHtml + "</div>" +
+          '<div class="demo-foot">' + data.caption + "</div>" +
+        "</div>" +
+      "</div>";
+
+    modalRoot.classList.add("is-open");
+    modalRoot.setAttribute("aria-hidden", "false");
+
+    modalCard.querySelector(".modal-close").addEventListener("click", closeModal);
+
+    var binders = {
+      chat: bindChat,
+      ide: bindIde,
+      flow: bindFlow,
+      agent: bindAgent,
+      framework: bindFramework,
+      harness: bindHarness
+    };
+    if (binders[data.demo]) binders[data.demo](modalCard);
+
+    setTimeout(function () {
+      var close = modalCard.querySelector(".modal-close");
+      if (close) close.focus();
+    }, 40);
+  }
+
+  function closeModal() {
+    if (activeStage === null) return;
+    activeStage = null;
+    demoSeq += 1;
+    modalRoot.classList.remove("is-open");
+    modalRoot.setAttribute("aria-hidden", "true");
+    if (lastFocus && typeof lastFocus.focus === "function") lastFocus.focus();
+    setTimeout(function () {
+      if (activeStage === null) modalCard.innerHTML = "";
+    }, 280);
+  }
+
+  document.querySelectorAll("[data-stage]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      openStage(Number(btn.getAttribute("data-stage")));
+    });
+  });
+
+  modalRoot.querySelector("[data-close]").addEventListener("click", closeModal);
+
+  /* ---------------- 键盘 ---------------- */
+
+  document.addEventListener("keydown", function (e) {
+    if (activeStage !== null) {
+      if (e.key === "Escape") closeModal();
+      return;
+    }
+    if (e.key === "Escape" && currentPage !== "cover") {
+      go("cover");
+      return;
+    }
+    if (e.key === "ArrowRight" && currentPage === "cover") {
+      go("p01");
+      return;
+    }
+    if (e.key === "ArrowRight" && currentPage === "p01") {
+      go("p01b");
+      return;
+    }
+    if (e.key === "ArrowRight" && currentPage === "p01b") {
+      go("p02");
+      return;
+    }
+    if (e.key === "ArrowLeft" && currentPage === "p02") {
+      go("p01b");
+      return;
+    }
+    if (e.key === "ArrowLeft" && currentPage === "p01b") {
+      go("p01");
+      return;
+    }
+    if (e.key === "ArrowLeft" && currentPage === "p01") {
+      go("cover");
+      return;
+    }
+    if ((currentPage === "cover" || currentPage === "p01") && /^[1-6]$/.test(e.key)) {
+      openStage(Number(e.key));
+    }
+  });
+
+  function wait(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function parseJsonLoose(text) {
+    var s = String(text || "").trim();
+    var fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fence) s = fence[1].trim();
+    var start = s.indexOf("{");
+    if (start < 0) throw new SyntaxError("响应里没有 JSON 对象");
+    // 只取第一个完整对象：模型有时会连着输出多步
+    var depth = 0;
+    var inString = false;
+    var escaped = false;
+    for (var i = start; i < s.length; i++) {
+      var c = s.charAt(i);
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (c === "\\") escaped = true;
+        else if (c === '"') inString = false;
+        continue;
+      }
+      if (c === '"') inString = true;
+      else if (c === "{") depth += 1;
+      else if (c === "}") {
+        depth -= 1;
+        if (depth === 0) return JSON.parse(s.slice(start, i + 1));
+      }
+    }
+    throw new SyntaxError("JSON 对象没有闭合");
+  }
+
+  /* ---------------- 演示 1：聊天页面 ---------------- */
+
+  function bindChat(root) {
+    var scroll = root.querySelector(".chat-scroll");
+    var list = root.querySelector(".payload-list");
+    var count = root.querySelector("#chat-count");
+    var meter = root.querySelector("#chat-meter");
+    var note = root.querySelector("#chat-note");
+    var form = root.querySelector('[data-form="chat"]');
+    var input = form.querySelector("input");
+    var submit = form.querySelector("button");
+    var reset = root.querySelector('[data-act="chat-reset"]');
+
+    var msgs = [];
+    var CAP = 6;
+    var busy = false;
+    var apiState = null;
+    var lastUsage = "";
+
+    function apiReady() {
+      return !!(apiState && apiState.configured && !apiState.error);
+    }
+
+    function setNote() {
+      if (!apiState) {
+        note.innerHTML = "正在检查本地服务…";
+      } else if (apiState.error) {
+        note.innerHTML = '真实 API 不可用<br><span class="warn-text">' + esc(apiState.error) + "</span>";
+      } else if (!apiState.configured) {
+        note.innerHTML = '未配置 DEEPSEEK_API_KEY<br><span class="warn-text">在项目根 .env 里填写</span>';
+      } else {
+        note.innerHTML = esc(apiState.model) +
+          "<br>" + (lastUsage ? esc(lastUsage) : "模型侧无状态 · 历史由页面重发");
+      }
+    }
+
+    function updateControls() {
+      var editable = apiReady() && !busy;
+      input.disabled = !editable;
+      submit.disabled = !editable;
+      input.placeholder = apiReady() ? "输入问题，回车发送…" : "真实 API 未就绪";
+    }
+
+    function emptyState() {
+      if (!apiState) return "正在检查本地服务…";
+      if (apiState.error) {
+        return "真实 API 不可用。<br>" + esc(apiState.error);
+      }
+      if (!apiState.configured) {
+        return "服务端没有找到 DEEPSEEK_API_KEY。<br>在项目根 .env 里配置后重试。";
+      }
+      return "已接入 DeepSeek（" + esc(apiState.model) + "）。<br>" +
+             "输入问题；每次请求只带最近 6 条消息。";
+    }
+
+    function render() {
+      if (!msgs.length) {
+        scroll.innerHTML = '<div class="chat-empty">' + emptyState() + "</div>";
+      } else {
+        scroll.innerHTML = msgs.map(function (m) {
+          var cls = m.role === "user" ? "user" : "bot";
+          if (m.error) cls += " error";
+          return '<div class="bubble ' + cls + '">' + esc(m.text) + "</div>";
+        }).join("");
+      }
+      if (busy) {
+        scroll.innerHTML += '<div class="bubble bot typing"><i></i><i></i><i></i></div>';
+      }
+      scroll.scrollTop = scroll.scrollHeight;
+
+      var dropped = Math.max(0, msgs.length - CAP);
+      var rows = [];
+      msgs.slice(0, dropped).forEach(function (m, i) {
+        rows.push('<div class="msg-row lost"><span>M' + (i + 1) + " " +
+                  (m.role === "user" ? "用户" : "助手") + "</span><span>未发送</span></div>");
+      });
+      msgs.slice(dropped).forEach(function (m, i) {
+        rows.push('<div class="msg-row"><span>M' + (dropped + i + 1) + " " +
+                  (m.role === "user" ? "用户" : "助手") + "</span><span>已携带</span></div>");
+      });
+      list.innerHTML = rows.join("");
+      list.scrollTop = list.scrollHeight;
+
+      count.textContent = Math.min(msgs.length, CAP) + " / " + CAP + " 条";
+      meter.style.width = Math.min(100, (msgs.length / CAP) * 100) + "%";
+
+      setNote();
+      updateControls();
+    }
+
+    async function send(text) {
+      var content = String(text || "").trim();
+      if (!content || busy || !apiReady()) return;
+      input.value = "";
+      msgs.push({ role: "user", text: content });
+      busy = true;
+      render();
+
+      var windowMsgs = msgs.slice(-CAP).map(function (m) {
+        return { role: m.role, content: m.text };
+      });
+
+      try {
+        var res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: windowMsgs, max_tokens: 512 })
+        });
+        var data = null;
+        try { data = await res.json(); } catch (e) { /* 非 JSON 响应 */ }
+        if (!res.ok || !data || !data.ok) {
+          throw new Error((data && data.error) || ("HTTP " + res.status));
+        }
+        msgs.push({ role: "assistant", text: data.reply });
+        if (data.usage) {
+          lastUsage = "tokens " + (data.usage.prompt_tokens || 0) +
+                      " 发 / " + (data.usage.completion_tokens || 0) + " 收";
+        }
+      } catch (err) {
+        msgs.push({
+          role: "assistant",
+          text: "请求失败：" + (err && err.message ? err.message : err),
+          error: true
+        });
+      } finally {
+        busy = false;
+        render();
+      }
+    }
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      send(input.value);
+    });
+
+    input.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
+      e.preventDefault();
+      send(input.value);
+    });
+
+    reset.addEventListener("click", function () {
+      if (busy) return;
+      msgs = [];
+      lastUsage = "";
+      render();
+    });
+
+    (async function init() {
+      render();
+      try {
+        var res = await fetch("/api/status", { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        apiState = await res.json();
+      } catch (err) {
+        apiState = {
+          configured: false,
+          error: "当前页面不是由 server.py 提供，请用 docs/report/server.py 启动"
+        };
+      }
+      render();
+    })();
+  }
+
+  /* ---------------- 演示 2：嵌入式助手 ---------------- */
+
+  function bindIde(root) {
+    var checks = Array.prototype.slice.call(root.querySelectorAll(".ctx-item input"));
+    var request = root.querySelector("#request-text");
+    var preview = root.querySelector("#request-pre");
+    var selLabel = root.querySelector("#sel-line");
+    var segs = Array.prototype.slice.call(root.querySelectorAll(".seg button"));
+    var mode = "auto";
+
+    var snippets = {
+      "当前文件": 'file: billing.py (34 行)\ndef refund(order_id): ...',
+      "项目结构": 'tree: billing.py · payments.py · tests/ …',
+      "关联工单": 'ticket #4821\n"同一订单被退了两次款"'
+    };
+    var sel = { line: "4", code: 'order.status = "refunded"' };
+
+    function render() {
+      var names = checks.filter(function (c) { return c.checked; })
+                       .map(function (c) { return c.getAttribute("data-name"); });
+
+      if (mode === "manual") {
+        request.innerHTML = "问题 + <b>0</b> 段上下文<br>" +
+          '<span class="warn-text">用户需要自己复制粘贴</span>';
+        preview.innerHTML = '<span class="faint"># 用户只贴了一段报错，模型不知道是哪个文件</span>\n\n' +
+          "user: 这里退款好像有问题，帮我看下\n" +
+          'assistant: 请提供相关代码或文件路径。';
+      } else {
+        request.innerHTML = "问题 + <b>" + names.length + "</b> 段自动装配上下文" +
+          (names.length ? "<br><span>" + names.join(" · ") + "</span>" : "");
+        if (!names.length) {
+          preview.innerHTML = '<span class="faint"># 全部取消：请求里只剩一句问题</span>\n\n' +
+            "user: refund() 是不是少了个判断？";
+        } else {
+          var body = names.map(function (name) {
+            var text = name === "光标选区"
+              ? "selection: L" + sel.line + "\n  " + sel.code
+              : snippets[name];
+            return '<span class="key">## ' + name + "</span>\n" + text;
+          }).join("\n\n");
+          preview.innerHTML = '<span class="key">## 问题</span>\nrefund() 是不是少了个判断？\n\n' + body;
+        }
+      }
+    }
+
+    checks.forEach(function (c) {
+      c.addEventListener("change", render);
+    });
+
+    segs.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        mode = btn.getAttribute("data-mode");
+        segs.forEach(function (b) { b.classList.toggle("on", b === btn); });
+        checks.forEach(function (c) {
+          c.disabled = mode === "manual";
+          c.checked = mode === "auto";
+        });
+        render();
+      });
+    });
+
+    root.querySelectorAll(".code-line").forEach(function (line) {
+      line.addEventListener("click", function () {
+        root.querySelectorAll(".code-line").forEach(function (l) { l.classList.remove("on"); });
+        line.classList.add("on");
+        var num = line.getAttribute("data-line");
+        var body = line.lastElementChild.textContent.replace(/\u00a0/g, " ").trim();
+        sel = { line: num, code: body };
+        selLabel.textContent = "L" + num;
+        if (mode === "auto") {
+          var pick = checks.find(function (c) {
+            return c.getAttribute("data-name") === "光标选区";
+          });
+          if (pick) pick.checked = true;
+        }
+        render();
+      });
+    });
+
+    render();
+  }
+
+  /* ---------------- 演示 3：AI 工作流 ---------------- */
+
+  function bindFlow(root) {
+    var nodes = Array.prototype.slice.call(root.querySelectorAll(".flow-node"));
+    var log = root.querySelector(".flow-log");
+    var out = root.querySelector(".flow-out");
+    var result = out.querySelector("pre");
+    var run = root.querySelector('[data-act="flow-run"]');
+    var token = demoSeq;
+    var running = false;
+    var apiReady = false;
+
+    var TICKET = [
+      "【模拟工单 #4821】",
+      "客户：林女士",
+      "订单：A-1029",
+      "问题：同一订单被重复扣款两次，共 256 元，希望退回多扣的 128 元。",
+      "语气要求：简洁、致歉、说明处理时效。"
+    ].join("\n");
+
+    var BANNED = ["无法处理", "不关我", "自己看", "没办法"];
+
+    function push(html) {
+      log.innerHTML += "<div>" + html + "</div>";
+      log.scrollTop = log.scrollHeight;
+    }
+    function line(no, text, cls) {
+      push('<span class="dim">0' + no + "</span> " +
+           (cls ? '<span class="' + cls + '">' + esc(text) + "</span>" : esc(text)));
+    }
+    function mark(i, state) {
+      nodes[i].classList.remove("on", "done", "fail");
+      if (state) nodes[i].classList.add(state);
+    }
+    async function callModel(system, user, maxTokens) {
+      var res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user }
+          ],
+          max_tokens: maxTokens,
+          temperature: 0
+        })
+      });
+      var data = null;
+      try { data = await res.json(); } catch (e) { /* 非 JSON 响应 */ }
+      if (!res.ok || !data || !data.ok) {
+        throw new Error((data && data.error) || ("HTTP " + res.status));
+      }
+      return data;
+    }
+
+    (async function init() {
+      try {
+        var res = await fetch("/api/status", { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        var state = await res.json();
+        apiReady = !!(state.configured && !state.error);
+        if (!apiReady) {
+          log.innerHTML = '<div class="dim">真实 API 未就绪：请用 docs/report/server.py 启动并配置 DEEPSEEK_API_KEY</div>';
+        }
+      } catch (err) {
+        log.innerHTML = '<div class="dim">当前页面不是由 server.py 提供，模型节点无法调用</div>';
+      }
+    })();
+
+    run.addEventListener("click", async function () {
+      if (running || !apiReady) return;
+      running = true;
+      run.disabled = true;
+      nodes.forEach(function (n) { n.classList.remove("on", "done", "fail"); });
+      log.innerHTML = "";
+      out.classList.remove("show");
+      result.textContent = "{ 运行后生成 }";
+
+      var usage = { prompt: 0, completion: 0 };
+      var ok = true;
+
+      try {
+        // 01 输入：模拟工单
+        mark(0, "on");
+        line(1, "读取模拟工单 #4821");
+        TICKET.split("\n").forEach(function (text) {
+          push('<span class="dim">&nbsp;&nbsp;&nbsp;' + esc(text) + "</span>");
+        });
+        await wait(650);
+        if (token !== demoSeq) return;
+        mark(0, "done");
+
+        // 02 模型抽取（真实 API）
+        mark(1, "on");
+        line(2, "模型节点 1：调用 DeepSeek 抽取字段…", "mod");
+        var extractedRaw = await callModel(
+          "你是工单信息抽取器。只输出一个 JSON 对象，不要解释，不要 markdown 代码块。" +
+          '字段：order_id（字符串）、refund_amount（数字，单位元）、reason（字符串，20 字以内）、customer（字符串）。' +
+          "无法确定的字段填 null。",
+          TICKET,
+          8000
+        );
+        if (token !== demoSeq) return;
+        if (extractedRaw.usage) {
+          usage.prompt += extractedRaw.usage.prompt_tokens || 0;
+          usage.completion += extractedRaw.usage.completion_tokens || 0;
+        }
+        var extracted;
+        try {
+          extracted = parseJsonLoose(extractedRaw.reply);
+        } catch (err) {
+          throw new Error("抽取节点没有返回合法 JSON：" + extractedRaw.reply.slice(0, 80));
+        }
+        push('<span class="dim">&nbsp;&nbsp;&nbsp;→ ' + esc(JSON.stringify(extracted)) + "</span>");
+        await wait(600);
+        if (token !== demoSeq) return;
+        mark(1, "done");
+
+        // 03 模型生成（真实 API）
+        mark(2, "on");
+        line(3, "模型节点 2：调用 DeepSeek 生成回复草稿…", "mod");
+        var generated = await callModel(
+          "你是客服回复撰写器。根据给定字段写一条中文回复，80 字以内，语气简洁、致歉，" +
+          "说明处理时效（1-3 个工作日）。只输出回复正文，不要引号、不要解释。",
+          "工单字段：" + JSON.stringify(extracted) + "\n语气要求：简洁、致歉、说明处理时效。",
+          8000
+        );
+        if (token !== demoSeq) return;
+        if (generated.usage) {
+          usage.prompt += generated.usage.prompt_tokens || 0;
+          usage.completion += generated.usage.completion_tokens || 0;
+        }
+        var reply = String(generated.reply || "").trim().replace(/^["“]|["”]$/g, "");
+        push('<span class="dim">&nbsp;&nbsp;&nbsp;→ ' + esc(reply) + "</span>");
+        await wait(600);
+        if (token !== demoSeq) return;
+        mark(2, "done");
+
+        // 04 本地校验
+        mark(3, "on");
+        var problems = [];
+        if (!extracted.order_id) problems.push("缺少 order_id");
+        if (typeof extracted.refund_amount !== "number" || extracted.refund_amount <= 0) {
+          problems.push("refund_amount 不是正数");
+        }
+        if (!reply) problems.push("回复为空");
+        if (reply.length > 120) problems.push("回复超过 120 字");
+        BANNED.forEach(function (word) {
+          if (reply.indexOf(word) >= 0) problems.push("出现禁用词：" + word);
+        });
+        if (problems.length) {
+          line(4, "校验失败：" + problems.join("；"), "bad");
+          mark(3, "fail");
+          ok = false;
+        } else {
+          line(4, "校验通过：Schema 3/3，禁用词 0 处，长度 " + reply.length + " 字", "ok");
+          await wait(600);
+          if (token !== demoSeq) return;
+          mark(3, "done");
+        }
+
+        // 05 交付
+        if (ok) {
+          mark(4, "on");
+          var payload = {
+            order_id: extracted.order_id,
+            refund_amount: extracted.refund_amount,
+            reason: extracted.reason,
+            customer: extracted.customer,
+            reply: reply
+          };
+          result.textContent = JSON.stringify(payload, null, 2);
+          out.classList.add("show");
+          line(5, "交付：结果已写入工单系统", "ok");
+          await wait(500);
+          if (token !== demoSeq) return;
+          mark(4, "done");
+        }
+
+        push('<div class="dim">&nbsp;</div>');
+        push('<div class="dim">— 本次调用 —</div>');
+        push('<div class="dim">节点 5 · 真实模型调用 2 次 · tokens ' +
+             usage.prompt + " 发 / " + usage.completion + " 收</div>");
+        push('<div class="dim">输入是模拟数据；路径和输出格式由工作流写死</div>');
+      } catch (err) {
+        if (token !== demoSeq) return;
+        nodes.forEach(function (n) {
+          if (n.classList.contains("on")) {
+            n.classList.remove("on");
+            n.classList.add("fail");
+          }
+        });
+        push('<span class="bad">× 运行失败：' + esc(err && err.message ? err.message : err) + "</span>");
+      } finally {
+        if (token === demoSeq) {
+          running = false;
+          run.disabled = !apiReady;
+        }
+      }
+    });
+  }
+
+  /* ---------------- 演示 4：Agent 智能体 ---------------- */
+
+  function bindAgent(root) {
+    var nodes = {
+      model: root.querySelector('[data-loop="model"]'),
+      tool: root.querySelector('[data-loop="tool"]'),
+      observe: root.querySelector('[data-loop="observe"]'),
+      judge: root.querySelector('[data-loop="judge"]')
+    };
+    var log = root.querySelector(".agent-log");
+    var filesBar = root.querySelector("#agent-files");
+    var counter = root.querySelector("#agent-count");
+    var pill = root.querySelector("#agent-pill");
+    var next = root.querySelector('[data-act="agent-next"]');
+    var auto = root.querySelector('[data-act="agent-auto"]');
+    var reset = root.querySelector('[data-act="agent-reset"]');
+    var token = demoSeq;
+
+    var MAX_STEPS = 8;
+    var busy = false;
+    var finished = false;
+    var step = 0;
+    var usage = { prompt: 0, completion: 0 };
+
+    // 内存工作区：工具真的读写这里的数据
+    var FILES = {
+      "billing.py": [
+        "def refund(order_id):",
+        "    order = db.get(order_id)",
+        "    if order.status == 'paid':",
+        "        order.status = 'refunded'",
+        "        db.save(order)",
+        "        return True",
+        "    return False",
+        ""
+      ].join("\n"),
+      "README.md": "# billing\n\n退款相关逻辑在 billing.py。\n"
+    };
+    var touched = {};
+    var history = [];
+
+    var TOOLS = [
+      {
+        name: "read_file",
+        description: "读取工作区里的一个文件，返回全文。",
+        parameters: { path: { type: "string", required: true, description: "文件名" } }
+      },
+      {
+        name: "write_file",
+        description: "把内容整体写入一个文件（覆盖）。用于修复代码。",
+        parameters: {
+          path: { type: "string", required: true, description: "文件名" },
+          content: { type: "string", required: true, description: "新全文" }
+        }
+      },
+      {
+        name: "run_tests",
+        description: "运行内置测试，返回通过/失败与失败原因。",
+        parameters: {}
+      },
+      {
+        name: "finish",
+        description: "任务完成时调用，给出最终结论。",
+        parameters: { summary: { type: "string", required: true, description: "改了什么" } }
+      }
+    ];
+
+    var SYSTEM = [
+      "你是一个编程智能体，在内存工作区里工作。只能通过工具操作文件。",
+      "可用工具：read_file / write_file / run_tests / finish。",
+      "每次只输出一个 JSON 对象，不要解释、不要 markdown，也不要提前模拟后续步骤：",
+      '{"tool":"工具名","args":{...},"thought":"一句话说明为什么"}',
+      "我在你每次回复后会真实执行工具，并把结果作为下一条消息发给你。",
+      "目标：修复 billing.py 的 refund()，让它拒绝重复退款（已退款的订单不能再退），并保持原有正常流程。",
+      "先读文件再改；改完运行测试；测试通过后调用 finish。"
+    ].join("\n");
+
+    function setFiles() {
+      filesBar.innerHTML = Object.keys(FILES).map(function (name) {
+        var state = touched[name] || "";
+        return '<span class="agent-file ' + state + '">' + esc(name) + "</span>";
+      }).join("");
+    }
+
+    function resetNodes() {
+      Object.keys(nodes).forEach(function (k) {
+        nodes[k].classList.remove("on", "done", "fail");
+      });
+    }
+
+    function push(html) {
+      log.innerHTML += html;
+      log.scrollTop = log.scrollHeight;
+    }
+
+    // 内置测试：模拟一个真实项目的验收
+    function runTests() {
+      var src = FILES["billing.py"] || "";
+      var problems = [];
+      if (!/order\.status\s*==\s*['"]refunded['"]/.test(src)) {
+        problems.push("没有判断订单是否已退款");
+      }
+      if (!/def\s+refund\s*\(/.test(src)) problems.push("refund() 不见了");
+      if (!/return\s+False/.test(src)) problems.push("缺少失败返回");
+      if (problems.length) {
+        return { ok: false, output: "FAILED\n" + problems.map(function (p) { return "  - " + p; }).join("\n") };
+      }
+      return { ok: true, output: "PASSED (3 tests)\n  test_refund_paid ✓\n  test_refund_duplicate ✓\n  test_refund_unpaid ✓" };
+    }
+
+    function runTool(name, args) {
+      if (name === "read_file") {
+        var path = String(args.path || "").trim();
+        if (!(path in FILES)) {
+          return { ok: false, output: "ERROR: 没有这个文件：" + path + "（可用：" + Object.keys(FILES).join(", ") + "）" };
+        }
+        touched[path] = "read";
+        setFiles();
+        return { ok: true, output: FILES[path] };
+      }
+      if (name === "write_file") {
+        var p = String(args.path || "").trim();
+        var content = String(args.content == null ? "" : args.content);
+        if (!(p in FILES)) {
+          return { ok: false, output: "ERROR: 只能改已有文件：" + p };
+        }
+        FILES[p] = content;
+        touched[p] = "written";
+        setFiles();
+        return { ok: true, output: "已写入 " + p + "（" + content.split("\n").length + " 行）" };
+      }
+      if (name === "run_tests") {
+        var r = runTests();
+        return { ok: r.ok, output: r.output };
+      }
+      return { ok: false, output: "ERROR: 未知工具 " + name };
+    }
+
+    async function callModel(messages, maxTokens) {
+      var res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: messages, max_tokens: maxTokens, temperature: 0 })
+      });
+      var data = null;
+      try { data = await res.json(); } catch (e) { /* 非 JSON 响应 */ }
+      if (!res.ok || !data || !data.ok) {
+        throw new Error((data && data.error) || ("HTTP " + res.status));
+      }
+      return data;
+    }
+
+    async function advance() {
+      if (busy || finished) return;
+      busy = true;
+      next.disabled = true;
+      auto.disabled = true;
+      resetNodes();
+
+      try {
+        // 模型决策：带上完整循环历史
+        nodes.model.classList.add("on");
+        pill.textContent = "模型思考中…";
+        var messages = [{ role: "system", content: SYSTEM }].concat(history);
+        if (!history.length) {
+          var kickoff = {
+            role: "user",
+            content: "工作区文件：" + Object.keys(FILES).join("、") +
+              "\n当前 billing.py：\n```python\n" + FILES["billing.py"] + "```" +
+              "\n请决定下一步调用哪个工具。"
+          };
+          history.push(kickoff);
+          messages.push(kickoff);
+        }
+        var reply = await callModel(messages, 8000);
+        if (token !== demoSeq) return;
+        if (reply.usage) {
+          usage.prompt += reply.usage.prompt_tokens || 0;
+          usage.completion += reply.usage.completion_tokens || 0;
+        }
+
+        var decision;
+        try {
+          decision = parseJsonLoose(reply.reply);
+        } catch (err) {
+          nodes.model.classList.remove("on");
+          nodes.model.classList.add("fail");
+          push('<div class="log-step">Step ' + (step + 1) + " · 决策解析失败</div>" +
+               '<div class="log-judge">' + esc(reply.reply.slice(0, 160)) + "</div>");
+          finished = true;
+          pill.textContent = "已停止";
+          next.textContent = "已停止";
+          return;
+        }
+
+        step += 1;
+        counter.textContent = String(step);
+        var tool = String(decision.tool || "");
+        var thought = String(decision.thought || "");
+        history.push({ role: "assistant", content: JSON.stringify(decision) });
+        push('<div class="log-step">Step ' + step + " · " + esc(tool) + "</div>" +
+             (thought ? '<div class="log-judge">' + esc(thought) + "</div>" : ""));
+
+        // finish：结束
+        if (tool === "finish") {
+          nodes.model.classList.remove("on");
+          nodes.model.classList.add("done");
+          nodes.judge.classList.add("on");
+          await wait(260);
+          if (token !== demoSeq) return;
+          resetNodes();
+          push('<div class="log-obs">← ' + esc(String(decision.args && decision.args.summary || "任务完成")) + "</div>");
+          finished = true;
+          pill.textContent = "目标达成";
+          next.textContent = "目标达成";
+          push('<div class="log-judge">&nbsp;</div><div class="log-judge">— 本次运行 —</div>' +
+               '<div class="log-judge">真实模型调用 ' + step + " 次 · tokens " +
+               usage.prompt + " 发 / " + usage.completion + " 收</div>" +
+               '<div class="log-judge">工具调用 ' + (step - 1) + " 次 · 均在本页内存中执行</div>");
+          return;
+        }
+
+        // 工具执行
+        nodes.tool.classList.add("on");
+        var result = runTool(tool, decision.args || {});
+        await wait(320);
+        if (token !== demoSeq) return;
+
+        // 观察
+        nodes.observe.classList.add("on");
+        var shown = String(result.output);
+        if (shown.length > 260) shown = shown.slice(0, 260) + " …";
+        history.push({
+          role: "user",
+          content: (result.ok ? "TOOL OK" : "TOOL ERROR") + " " + tool +
+            "\n" + String(result.output).slice(0, 1800) +
+            "\n\n请决定下一步。"
+        });
+        push('<div class="log-tool">→ ' + esc(tool) + "(" +
+             esc(JSON.stringify(decision.args || {})) + ")</div>" +
+             '<div class="log-obs">← ' + esc(shown).replace(/\n/g, "<br>") + "</div>");
+        await wait(320);
+        if (token !== demoSeq) return;
+
+        // 判断
+        nodes.judge.classList.add("on");
+        await wait(240);
+        if (token !== demoSeq) return;
+        if (result.ok) {
+          push('<div class="log-judge">判断：工具成功，继续</div>');
+        } else {
+          push('<div class="log-judge">判断：工具报错，把错误反馈给模型后继续</div>');
+        }
+
+        if (step >= MAX_STEPS) {
+          finished = true;
+          pill.textContent = "达到步数上限";
+          next.textContent = "已达上限";
+          push('<div class="log-judge">× 达到 ' + MAX_STEPS + " 步上限，循环停止（真实 agent 需要步数预算）</div>");
+        }
+      } catch (err) {
+        if (token !== demoSeq) return;
+        resetNodes();
+        nodes.model.classList.add("fail");
+        push('<div class="log-judge">× 运行失败：' + esc(err && err.message ? err.message : err) + "</div>");
+        finished = true;
+        pill.textContent = "运行失败";
+        next.textContent = "运行失败";
+      } finally {
+        if (token === demoSeq) {
+          busy = false;
+          resetNodes();
+          if (!finished) {
+            next.disabled = false;
+            auto.disabled = false;
+            pill.textContent = "决策权：模型";
+          }
+        }
+      }
+    }
+
+    next.addEventListener("click", advance);
+
+    auto.addEventListener("click", async function () {
+      if (busy || finished) return;
+      while (!finished && token === demoSeq) {
+        await advance();
+        if (!finished) await wait(420);
+      }
+    });
+
+    reset.addEventListener("click", function () {
+      if (busy) return;
+      token = ++demoSeq;
+      step = 0;
+      finished = false;
+      usage = { prompt: 0, completion: 0 };
+      touched = {};
+      history = [];
+      FILES["billing.py"] = [
+        "def refund(order_id):",
+        "    order = db.get(order_id)",
+        "    if order.status == 'paid':",
+        "        order.status = 'refunded'",
+        "        db.save(order)",
+        "        return True",
+        "    return False",
+        ""
+      ].join("\n");
+      resetNodes();
+      log.innerHTML = '<div class="log-judge">已重置。工作区回到初始的 billing.py。</div>';
+      counter.textContent = "0";
+      pill.textContent = "决策权：模型";
+      next.disabled = false;
+      auto.disabled = false;
+      next.textContent = "推进一步";
+      setFiles();
+    });
+
+    setFiles();
+  }
+
+  /* ---------------- 演示 5：Agent 框架 ---------------- */
+
+  function bindFramework(root) {
+    var comps = Array.prototype.slice.call(root.querySelectorAll(".fw-comp"));
+    var title = root.querySelector("#fw-title");
+    var body = root.querySelector("#fw-body");
+
+    var data = {
+      loop: {
+        title: "执行循环",
+        text: "把「模型 → 工具 → 模型」封装成可复用的驱动器。换模型、换工具，循环本身不用重写。"
+      },
+      tools: {
+        title: "工具生态",
+        text: "统一的工具描述与调用协议。社区的搜索、浏览器、数据库工具可以按同一份契约接入。"
+      },
+      memory: {
+        title: "长期记忆",
+        text: "接上向量库或会话存储，让助手跨对话保留偏好、事实与历史结论。"
+      },
+      multi: {
+        title: "多 Agent",
+        text: "给不同角色分派任务，让它们互相传递消息、拆分目标、汇总结果。"
+      }
+    };
+
+    comps.forEach(function (comp) {
+      comp.addEventListener("click", function () {
+        comps.forEach(function (c) { c.classList.toggle("on", c === comp); });
+        var d = data[comp.getAttribute("data-comp")];
+        title.textContent = d.title;
+        body.textContent = d.text;
+      });
+    });
+  }
+
+  /* ---------------- 演示 6：Harness ---------------- */
+
+  function bindHarness(root) {
+    var rows = {
+      memory: root.querySelector('[data-facility="memory"]'),
+      compact: root.querySelector('[data-facility="compact"]'),
+      guard: root.querySelector('[data-facility="guard"]'),
+      capability: root.querySelector('[data-facility="capability"]')
+    };
+    var boxes = {
+      memory: rows.memory.querySelector("input"),
+      compact: rows.compact.querySelector("input"),
+      guard: rows.guard.querySelector("input"),
+      capability: rows.capability.querySelector("input")
+    };
+    var count = root.querySelector("#facility-count");
+    var log = root.querySelector(".term-body");
+    var run = root.querySelector('[data-act="harness-run"]');
+    var token = demoSeq;
+    var running = false;
+
+    function updateCount() {
+      var on = Object.keys(boxes).filter(function (k) { return boxes[k].checked; }).length;
+      count.textContent = on + " / 4";
+    }
+    Object.keys(boxes).forEach(function (k) {
+      boxes[k].addEventListener("change", updateCount);
+    });
+
+    run.addEventListener("click", async function () {
+      if (running) return;
+      running = true;
+      run.disabled = true;
+      Object.keys(boxes).forEach(function (k) { boxes[k].disabled = true; });
+      Object.keys(rows).forEach(function (k) { rows[k].classList.remove("is-pass", "is-fail"); });
+
+      var flags = {
+        memory: boxes.memory.checked,
+        compact: boxes.compact.checked,
+        guard: boxes.guard.checked,
+        capability: boxes.capability.checked
+      };
+      var failures = 0;
+
+      function push(text, cls) {
+        log.innerHTML += '<div' + (cls ? ' class="' + cls + '"' : "") + ">" + text + "</div>";
+        log.scrollTop = log.scrollHeight;
+      }
+      function mark(key, ok) {
+        rows[key].classList.add(ok ? "is-pass" : "is-fail");
+      }
+
+      log.innerHTML = "";
+      run.textContent = "运行中…";
+      push("任务：重构 legacy/billing（12 个文件）", "dim");
+      await wait(380);
+      if (token !== demoSeq) return;
+
+      push("✓ 读取入口文件 billing.py", "ok");
+      await wait(380);
+      if (token !== demoSeq) return;
+
+      if (flags.memory) {
+        push("✓ 进程重启 → 从会话日志恢复，继续第 3 步", "ok");
+      } else {
+        push("× 进程重启 → 会话丢失，从第 1 步重来", "bad");
+        failures += 1;
+      }
+      mark("memory", flags.memory);
+      await wait(420);
+      if (token !== demoSeq) return;
+
+      push("· 修改到第 6 个文件，上下文占用 91%", "dim");
+      await wait(380);
+      if (token !== demoSeq) return;
+
+      if (flags.compact) {
+        push("✓ 压缩旧区段：保留关键决策与未完成清单", "ok");
+      } else {
+        push("× 早期约束被挤出窗口 → 改错了一个文件", "bad");
+        failures += 1;
+      }
+      mark("compact", flags.compact);
+      await wait(420);
+      if (token !== demoSeq) return;
+
+      push("· 模型准备执行 rm -rf build/", "warn");
+      await wait(420);
+      if (token !== demoSeq) return;
+
+      if (flags.guard) {
+        push("✓ 审批拦截 + 沙箱拒绝 → 模型改用安全清理脚本", "ok");
+      } else {
+        push("× 危险命令被执行 → 工作区文件被误删", "bad");
+        failures += 1;
+      }
+      mark("guard", flags.guard);
+      await wait(420);
+      if (token !== demoSeq) return;
+
+      push("· 需要项目自带的 lint 规则", "dim");
+      await wait(380);
+      if (token !== demoSeq) return;
+
+      if (flags.capability) {
+        push("✓ 加载插件 lint-check，自动执行", "ok");
+      } else {
+        push("! 没有对应工具 → 只能中断等人工处理", "warn");
+        failures += 1;
+      }
+      mark("capability", flags.capability);
+      await wait(420);
+      if (token !== demoSeq) return;
+
+      push('<div class="gap"></div>');
+      if (failures === 0) {
+        push("✓ 12 步完成 · 改动可回滚 · 全程可审计", "ok");
+      } else if (failures === 4) {
+        push("× 只走到第 8 步 · 4 处故障 · 任务失败", "bad");
+      } else {
+        push("× 完成 8 / 12 步 · " + failures + " 处故障 · 需要人工兜底", "bad");
+      }
+
+      running = false;
+      run.disabled = false;
+      run.textContent = "再跑一次";
+      Object.keys(boxes).forEach(function (k) { boxes[k].disabled = false; });
+    });
+
+    updateCount();
+  }
+})();
 </script>
 
 </body>
