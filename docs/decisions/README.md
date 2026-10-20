@@ -98,3 +98,4 @@
 - [0054 装配单支持 YAML：数据与代码白名单分开](0054-yaml-manifest.md)（P4 M3 起步）
 - [0055 批量脚本改源码的教训：不在未提交的工作区上做机械重写](0055-batch-script-lesson.md)（P4 恢复记录）
 - [0056 分发形态：pip install p4-harness 后 import harness，启动器随 core 分发](0056-packaging-and-public-surface.md)（P4 M3）
+- [0057 两级门禁：离线绿与真实 API 绿必须分开汇报](0057-two-tier-test-gates.md)（P4 M3）

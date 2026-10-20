@@ -46,3 +46,6 @@ known-first-party = ["core", "plugins", "manifests", "harness", "app"]
 testpaths = ["tests"]
 # 顶层包就在本目录（core/plugins/...）：pytest 从任意位置跑都把项目根放进 sys.path。
 pythonpath = ["."]
+# `-ra`：默认跑完后列出跳过原因——真实 API 用例被跳过时，结果里必须看得见
+# "34 skipped"，不能把"离线全绿"读成"真实 API 也绿"（决策 0057）。
+addopts = "-ra"

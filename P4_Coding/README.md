@@ -7,7 +7,11 @@ P4 是**一个项目**（不再是 P2/P3 那样的阶段副本目录）：插件
 - **定调决策**：[0041](../docs/decisions/0041-p4-substantiation.md)（为什么自研底座 / 三类插件的判据 / 为什么不再用阶段副本）
 - **基座边界**：[0042](../docs/decisions/0042-p4-base-boundary.md)（已采纳：非插件只有 core 一处——框架 + 引导（自带启动器）；树 / 装配单 / 热插拔是 loader 插件）
 - **重写方法**：[0043](../docs/decisions/0043-p4-rewrite-from-scratch.md)（全部从零写、P3 只作参考、逐个小步）
-- **当前状态**：**M1 完成 + M2 完成**（500 用例）：基座八步 / 动态 inject / 插件级依赖 / LLM 能力组（含工具调用）/ 提示词组 / 会话与项目组 / 工具面 / **Agent 三件套**（`agent` + `agent-loop` + `agent-admin`，跑通一个真 turn）/ **YAML 装配单**（launcher + 数据，改产品形态不改代码）
+- **当前状态**：**M1 / M2 完成，M3 部分落地**（**两级门禁**：离线 **536 passed**
+  + 真实 DeepSeek API **34 passed**，两者分开计数）：基座八步 / 动态 inject /
+  插件级依赖 / LLM 能力组（含工具调用）/ 提示词组 / 会话与项目组 / 工具面 /
+  **Agent 三件套**（`agent` + `agent-loop` + `agent-admin`）/ **YAML 装配单**
+  （launcher + 数据，改产品形态不改代码）
 - **素材来源**：P3 **不搬代码**（语义对照 + 教训清单），见 PLAN 第 5 节
 
 ## 目录（规划，随里程碑长出）
@@ -36,6 +40,28 @@ P4 是**一个项目**（不再是 P2/P3 那样的阶段副本目录）：插件
 
     # 长链路 / 并行会话 / 会话内编辑（离线，含并发压力）
     python -m pytest tests/test_long_chain_and_concurrency.py -q
+
+## 门禁与汇报口径（0057）
+
+这里有两套门禁，**任何时候都要分开说，不能合并成一句"全绿"**：
+
+| 门禁 | 命令 | 覆盖 | 什么时候跑 |
+|---|---|---|---|
+| **离线门禁** | `python -m pytest tests -q` | 全部机制 / 功能目标 / 并发；模型走剧本，不联网 | 每次改动 |
+| **真实 API 门禁** | `python -m pytest tests/test_real_api.py --real -q` | 34 条功能验收，直接打 DeepSeek（联网 + 计费） | 里程碑节点、阶段收尾 |
+
+汇报时使用固定措辞：
+
+    ✓ 离线门禁通过：536 passed, 34 skipped（real）
+    ✓ 真实 API 门禁通过：34 passed
+    ✗ 真实 API 门禁未运行（只跑了离线）
+
+离线结果里的 `34 skipped` 就是真实 API 用例被跳过的数量——看到它，就不该
+把结果说成"全部通过"。默认 `-ra` 会把跳过原因打出来，防止误读。
+
+真实的 `test_real_api.py` 里有一个用例（重试恢复）刻意用故障注入包住真实
+transport——那是为了造"第一次断线"，网络那一层仍然是真实的；其余 34 条都是
+端到端真实调用。
 
     python app.py                                   # 交互式（离线剧本）
     python app.py --realtime --yes --ask "你好"      # 真实模型
