@@ -4371,7 +4371,7 @@
     line-height: 1.5;
   }
 
-  /* ---------------- 第五章第 7 页：插件设计三问 ---------------- */
+  /* ---------------- 第五章第 7 页：插件设计核心思想 ---------------- */
 
   .design-body {
     display: flex;
@@ -4380,24 +4380,6 @@
     margin-top: 16px;
     min-height: 0;
   }
-
-  .design-head-row {
-    flex: none;
-    display: grid;
-    grid-template-columns: 108px 300px minmax(0, 1fr);
-    gap: 14px;
-    align-items: end;
-    padding: 0 2px 6px;
-    border-bottom: 1px solid var(--line-strong);
-  }
-  .design-head-row span {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-  .design-head-row .q { color: var(--accent-a); }
 
   .design-row {
     flex: 1;
@@ -4568,16 +4550,317 @@
     overflow-wrap: anywhere;
   }
 
-  .design-note {
+  /* ---------------- 第五章第 8–11 页：插件设计技巧 ---------------- */
+
+  .tip-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin-top: 10px;
+  }
+
+  .tip-lede {
     flex: none;
-    padding: 9px 14px;
-    border-radius: 9px;
-    background: rgba(14, 143, 125, 0.06);
-    font-size: 12.5px;
-    line-height: 1.55;
+    max-width: 1180px;
+    margin-bottom: 14px;
+    font-size: 15px;
+    line-height: 1.6;
     color: var(--ink-2);
   }
-  .design-note b { color: #0b6f62; font-weight: 600; }
+  .tip-lede b { color: var(--ink); font-weight: 650; }
+
+  /* 一张卡承载全部内容，内部只用细线分隔 */
+  .tip-card {
+    flex: none;
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    padding: 0 26px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 12px 34px rgba(20, 40, 80, 0.055);
+    overflow: hidden;
+  }
+
+  .tip-thead {
+    flex: none;
+    display: grid;
+    grid-template-columns: 26px 220px minmax(0, 1fr);
+    gap: 14px;
+    padding: 13px 0 10px;
+    border-bottom: 1px solid var(--line-strong);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+  }
+  .tip-thead.two {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0;
+  }
+  .tip-thead.two span:last-child { padding-left: 30px; }
+
+  .tip-rows {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tip-row {
+    display: grid;
+    padding: 21px 0;
+    grid-template-columns: 26px 220px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+  }
+  .tip-row:last-child { border-bottom: 0; }
+  .tip-row .rn {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--accent-a);
+  }
+  .tip-row .rt {
+    font-size: 16.5px;
+    font-weight: 650;
+    color: var(--ink);
+  }
+  .tip-row .rd {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+  .tip-row .rd code {
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: #eef2f8;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-2);
+  }
+
+  /* 两栏成对的行：左项右后果，中缝一条细线 */
+  .tip-row.pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0;
+  }
+  .tip-row.pair > .pc {
+    display: flex;
+    align-items: baseline;
+    gap: 11px;
+    padding-right: 26px;
+  }
+  .tip-row.pair > .pc + .pc {
+    padding-left: 30px;
+    padding-right: 0;
+    border-left: 1px solid var(--line);
+  }
+  .tip-row.pair .rn {
+    flex: none;
+  }
+  .tip-row.pair .rt { flex: none; }
+  .tip-row.pair .rd { margin-left: auto; text-align: right; }
+  .tip-row.pair > .pc + .pc .rd {
+    margin-left: 0;
+    text-align: left;
+  }
+
+  /* 形态对比：一条从左到右由绿转蓝的带子，不用线也不用箭头 */
+  .tip-spectrum {
+    flex: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0;
+    margin: 16px 0 0;
+    border-radius: 12px;
+    background: linear-gradient(
+      90deg,
+      rgba(14, 143, 125, 0.085) 0%,
+      rgba(255, 255, 255, 0) 46%,
+      rgba(47, 108, 232, 0.04) 54%,
+      rgba(47, 108, 232, 0.12) 100%
+    );
+  }
+  .tip-spectrum > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 15px 20px;
+  }
+  .tip-spectrum > div:last-child { text-align: right; }
+  .tip-spectrum b { font-size: 17px; font-weight: 750; letter-spacing: -0.015em; }
+  .tip-spectrum .sp-l b { color: #0b6f62; }
+  .tip-spectrum .sp-r b { color: #234f9e; }
+  .tip-spectrum span {
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .tip-spectrum .sp-l span { color: rgba(11, 111, 98, 0.68); }
+  .tip-spectrum .sp-r span { color: rgba(35, 79, 158, 0.7); }
+
+  /* 拆分对比：一卡两栏，中间立一条分隔线 */
+  .tip-split {
+    flex: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+    margin: 16px 0 0;
+  }
+  .tip-split .col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .tip-split .col:first-child { padding-right: 30px; }
+  .tip-split .col:last-child { padding-left: 30px; }
+  .tip-split .vline {
+    background: var(--line);
+    margin: 4px 0;
+  }
+  .col-h {
+    flex: none;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .col-h b { font-size: 14.5px; font-weight: 700; color: var(--ink); }
+  .col-h span {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+  }
+  .col-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 6px 0;
+  }
+  .kv {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 22px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .kv:last-child { border-bottom: 0; }
+  .kv .k {
+    flex: none;
+    font-size: 15px;
+    font-weight: 650;
+    color: var(--ink);
+  }
+  .kv .v {
+    margin-left: auto;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .slot-panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 4px 18px;
+    border-radius: 10px;
+    background: rgba(28, 52, 96, 0.035);
+  }
+  .slot {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid rgba(28, 52, 96, 0.08);
+  }
+  .slot:last-child { border-bottom: 0; }
+  .slot .s-name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .slot .s-key {
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(14, 143, 125, 0.08);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: #0b6f62;
+  }
+  .col-note {
+    flex: none;
+    padding: 12px 0 2px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--faint, #98a4ba);
+  }
+
+  /* 六项边际功能：一卡两栏三行 */
+  .tip-edge {
+    flex: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    margin: 4px 0 0;
+  }
+  .tip-edge .cell {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    padding: 21px 26px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tip-edge .cell:nth-child(odd) {
+    border-right: 1px solid var(--line);
+    padding-left: 0;
+  }
+  .tip-edge .cell:nth-child(even) { padding-right: 0; }
+  .tip-edge .cell:nth-last-child(-n + 2) { border-bottom: 0; }
+  .tip-edge .cell b {
+    font-size: 16.5px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .tip-edge .cell span {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+  .tip-edge .cell em {
+    font-style: normal;
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+
+  /* 范例位：卡内一条安静的底栏 */
+  .tip-eg {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0 14px;
+    border-top: 1px solid var(--line-strong);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--faint, #98a4ba);
+  }
+  .tip-eg .eg-tag {
+    flex: none;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(28, 52, 96, 0.055);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
 
   /* ---------------- 弹窗 ---------------- */
 
@@ -5733,7 +6016,7 @@
           <span class="toc-title">DeepSeek Harness 的前世今生<span class="toc-sub">万物皆插件</span></span>
           <span class="toc-go" aria-hidden="true">→</span>
         </button>
-        <button class="toc-item" data-chapter="5" data-title="DSH 源码框架与二次开发范例"
+        <button class="toc-item" data-chapter="5" data-title="DSH 源码框架介绍与二次开发范例"
                 aria-label="打开第 5 章：DSH 源码框架介绍与二次开发范例">
           <span class="toc-num">05</span>
           <span class="toc-title">DSH 源码框架介绍与二次开发范例</span>
@@ -7044,14 +7327,14 @@
     </section>
 
     <!-- ==================== 第五章 · 第 1 页：装好并跑起来 ==================== -->
-    <section class="page page-chapter" data-page="p05a" aria-label="第五章：DSH 源码框架与二次开发范例">
+    <section class="page page-chapter" data-page="p05a" aria-label="第五章：DSH 源码框架介绍与二次开发范例">
 
       <header class="chapter-head">
         <div>
           <div class="breadcrumb">
             <span class="n">05</span>
             <span class="bar"></span>
-            <span>DSH 源码框架与二次开发范例</span>
+            <span>DSH 源码框架介绍与二次开发范例</span>
           </div>
           <h2 class="chapter-title">安装与源码构建</h2>
         </div>
@@ -7145,14 +7428,14 @@
     </section>
 
     <!-- ==================== 第五章 · 第 2 页：安装插件 ==================== -->
-    <section class="page page-chapter" data-page="p05b" aria-label="第五章：DSH 源码框架与二次开发范例">
+    <section class="page page-chapter" data-page="p05b" aria-label="第五章：DSH 源码框架介绍与二次开发范例">
 
       <header class="chapter-head">
         <div>
           <div class="breadcrumb">
             <span class="n">05</span>
             <span class="bar"></span>
-            <span>DSH 源码框架与二次开发范例</span>
+            <span>DSH 源码框架介绍与二次开发范例</span>
           </div>
           <h2 class="chapter-title">安装插件</h2>
         </div>
@@ -7214,14 +7497,14 @@
     </section>
 
     <!-- ==================== 第五章 · 第 3 页：命令行安装 ==================== -->
-    <section class="page page-chapter" data-page="p05c" aria-label="第五章：DSH 源码框架与二次开发范例">
+    <section class="page page-chapter" data-page="p05c" aria-label="第五章：DSH 源码框架介绍与二次开发范例">
 
       <header class="chapter-head">
         <div>
           <div class="breadcrumb">
             <span class="n">05</span>
             <span class="bar"></span>
-            <span>DSH 源码框架与二次开发范例</span>
+            <span>DSH 源码框架介绍与二次开发范例</span>
           </div>
           <h2 class="chapter-title">命令行方式</h2>
         </div>
@@ -7296,14 +7579,14 @@
     </section>
 
     <!-- ==================== 第五章 · 第 4 页：插件市场 ==================== -->
-    <section class="page page-chapter" data-page="p05d" aria-label="第五章：DSH 源码框架与二次开发范例">
+    <section class="page page-chapter" data-page="p05d" aria-label="第五章：DSH 源码框架介绍与二次开发范例">
 
       <header class="chapter-head">
         <div>
           <div class="breadcrumb">
             <span class="n">05</span>
             <span class="bar"></span>
-            <span>DSH 源码框架与二次开发范例</span>
+            <span>DSH 源码框架介绍与二次开发范例</span>
           </div>
           <h2 class="chapter-title">插件市场安装</h2>
         </div>
@@ -7367,14 +7650,14 @@
     </section>
 
     <!-- ==================== 第五章 · 第 5 页：源码结构 ==================== -->
-    <section class="page page-chapter" data-page="p05e" aria-label="第五章：DSH 源码框架与二次开发范例">
+    <section class="page page-chapter" data-page="p05e" aria-label="第五章：DSH 源码框架介绍与二次开发范例">
 
       <header class="chapter-head">
         <div>
           <div class="breadcrumb">
             <span class="n">05</span>
             <span class="bar"></span>
-            <span>DSH 源码框架与二次开发范例</span>
+            <span>DSH 源码框架介绍与二次开发范例</span>
           </div>
           <h2 class="chapter-title">源码结构与切入点</h2>
         </div>
@@ -7500,20 +7783,20 @@
     </section>
 
     <!-- ==================== 第五章 · 第 6 页：Web 装配结构 ==================== -->
-    <section class="page page-chapter" data-page="p05f" aria-label="第五章：DSH 源码框架与二次开发范例">
+    <section class="page page-chapter" data-page="p05f" aria-label="第五章：DSH 源码框架介绍与二次开发范例">
 
       <header class="chapter-head">
         <div>
           <div class="breadcrumb">
             <span class="n">05</span>
             <span class="bar"></span>
-            <span>DSH 源码框架与二次开发范例</span>
+            <span>DSH 源码框架介绍与二次开发范例</span>
           </div>
           <h2 class="chapter-title">装配形态一览</h2>
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
-          <button class="back-btn next-btn" data-next="p05g" aria-label="下一页：插件设计三问">下一页 →</button>
+          <button class="back-btn next-btn" data-next="p05g" aria-label="下一页：插件设计核心思想">下一页 →</button>
         </div>
       </header>
 
@@ -7813,33 +8096,28 @@
 
     </section>
 
-    <!-- ==================== 第五章 · 第 7 页：插件设计三问 ==================== -->
-    <section class="page page-chapter" data-page="p05g" aria-label="第五章：DSH 源码框架与二次开发范例">
+    <!-- ==================== 第五章 · 第 7 页：插件设计核心思想 ==================== -->
+    <section class="page page-chapter" data-page="p05g" aria-label="第五章：DSH 源码框架介绍与二次开发范例">
 
       <header class="chapter-head head-inline">
         <div>
           <div class="breadcrumb">
             <span class="n">05</span>
             <span class="bar"></span>
-            <span>DSH 源码框架与二次开发范例</span>
+            <span>DSH 源码框架介绍与二次开发范例</span>
           </div>
           <div class="title-row">
-            <h2 class="chapter-title">插件设计三问</h2>
+            <h2 class="chapter-title">插件设计核心思想</h2>
             <p class="chapter-sub">以「跨会话长期记忆」为例</p>
           </div>
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn next-btn" data-next="p05h" aria-label="下一页：先确定服务形态">下一页 →</button>
         </div>
       </header>
 
       <div class="chapter-body design-body">
-
-        <div class="design-head-row">
-          <span>阶段</span>
-          <span class="q">先问自己</span>
-          <span>落到这个记忆插件上</span>
-        </div>
 
         <div class="design-row r1">
           <div class="design-tag">
@@ -7914,8 +8192,279 @@
           </div>
         </div>
 
-        <div class="design-note">
-          三问的顺序不能反：先定<b>目的</b>，再定<b>手段</b>，最后才谈<b>三份视图怎么对齐</b>。反过来做，就会写出「功能都对，但用户不想用」的插件。
+      </div>
+
+      <footer class="chapter-foot">
+        <span>DeepSeek Harness · MIT · github.com/deepseek-ai/deepseek-harness</span>
+        <span class="keys">
+          <span class="kbd">←</span> 上一页
+          <span class="kbd">Esc</span> 返回封面
+        </span>
+      </footer>
+
+    </section>
+
+    <!-- ==================== 第五章 · 第 8 页：技巧一 服务形态 ==================== -->
+    <section class="page page-chapter" data-page="p05h" aria-label="第五章：插件设计技巧 · 先确定服务形态">
+
+      <header class="chapter-head head-inline">
+        <div>
+          <div class="breadcrumb">
+            <span class="n">05</span>
+            <span class="bar"></span>
+            <span>DSH 源码框架介绍与二次开发范例</span>
+          </div>
+          <div class="title-row">
+            <h2 class="chapter-title">先确定服务形态</h2>
+            <p class="chapter-sub">技巧 01 / 04</p>
+          </div>
+        </div>
+        <div class="chapter-meta">
+          <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn next-btn" data-next="p05i" aria-label="下一页：先划定插件规模">下一页 →</button>
+        </div>
+      </header>
+
+      <div class="chapter-body tip-body">
+
+        <p class="tip-lede">先判断插件改动的位置：只增加一项周边能力，还是改动系统已有的执行流程。</p>
+
+        <div class="tip-card">
+
+          <div class="tip-spectrum">
+            <div class="sp-l">
+              <b>边缘服务</b>
+              <span>新增入口或提示，不改动既有流程</span>
+            </div>
+            <div class="sp-r">
+              <b>改动系统本身</b>
+              <span>改变循环、存储与对外可见行为</span>
+            </div>
+          </div>
+
+          <div class="tip-thead"><span></span><span>判据</span><span>DSH 扩展点</span></div>
+
+          <div class="tip-rows">
+            <div class="tip-row">
+              <span class="rn">01</span><span class="rt">是否持久化</span>
+              <span class="rd">新增 <code>SessionEvent</code> 类型，写入会话日志，重启后可重建。</span>
+            </div>
+            <div class="tip-row">
+              <span class="rn">02</span><span class="rt">是否调用模型</span>
+              <span class="rd">消费 <code>ctx.llm</code>。</span>
+            </div>
+            <div class="tip-row">
+              <span class="rn">03</span><span class="rt">是否介入循环</span>
+              <span class="rd">订阅 <code>agent/*</code> 或 <code>tools/*</code>，在轮次与工具执行上挂接判断。</span>
+            </div>
+            <div class="tip-row">
+              <span class="rn">04</span><span class="rt">是否增加工具</span>
+              <span class="rd">在 <code>ctx.tools.register</code> 注册，schema 进入提示词。</span>
+            </div>
+          </div>
+
+          <div class="tip-eg">
+            <span class="eg-tag">范例</span>
+            <span>待补：一个真实插件的形态判定与结论。</span>
+          </div>
+
+        </div>
+
+      </div>
+
+      <footer class="chapter-foot">
+        <span>DeepSeek Harness · MIT · github.com/deepseek-ai/deepseek-harness</span>
+        <span class="keys">
+          <span class="kbd">←</span> 上一页
+          <span class="kbd">Esc</span> 返回封面
+        </span>
+      </footer>
+
+    </section>
+
+    <!-- ==================== 第五章 · 第 9 页：技巧二 插件规模 ==================== -->
+    <section class="page page-chapter" data-page="p05i" aria-label="第五章：插件设计技巧 · 先划定插件规模">
+
+      <header class="chapter-head head-inline">
+        <div>
+          <div class="breadcrumb">
+            <span class="n">05</span>
+            <span class="bar"></span>
+            <span>DSH 源码框架介绍与二次开发范例</span>
+          </div>
+          <div class="title-row">
+            <h2 class="chapter-title">先划定插件规模</h2>
+            <p class="chapter-sub">技巧 02 / 04</p>
+          </div>
+        </div>
+        <div class="chapter-meta">
+          <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn next-btn" data-next="p05j" aria-label="下一页：先出设计文档">下一页 →</button>
+        </div>
+      </header>
+
+      <div class="chapter-body tip-body">
+
+        <p class="tip-lede">单一插件承担多项职责、流程过长或交互复杂时，应拆分为多个插件。</p>
+
+        <div class="tip-card">
+
+          <div class="tip-split">
+
+            <div class="col">
+              <div class="col-h"><b>职责集中</b><span>COUPLED</span></div>
+              <div class="col-body">
+                <div class="kv"><span class="k">存储</span><span class="v">持久化</span></div>
+                <div class="kv"><span class="k">检索</span><span class="v">全量历史</span></div>
+                <div class="kv"><span class="k">提醒</span><span class="v">定时触发</span></div>
+                <div class="kv"><span class="k">界面</span><span class="v">UI 层</span></div>
+              </div>
+              <p class="col-note">修改任一职责都需重新加载整个插件。</p>
+            </div>
+
+            <div class="vline"></div>
+
+            <div class="col">
+              <div class="col-h"><b>按服务槽位拆分</b><span>ONE CONTRACT</span></div>
+              <div class="col-body">
+                <div class="slot-panel">
+                  <div class="slot"><span class="s-name">memory-store</span><span class="s-key">ctx.memory</span></div>
+                  <div class="slot"><span class="s-name">memory-recall</span><span class="s-key">ctx.reminder</span></div>
+                  <div class="slot"><span class="s-name">memory-ui</span><span class="s-key">ctx.ui</span></div>
+                </div>
+              </div>
+              <p class="col-note">各自独立装卸；替换提醒只影响 memory-recall。</p>
+            </div>
+
+          </div>
+
+          <div class="tip-eg">
+            <span class="eg-tag">范例</span>
+            <span>待补：拆分前后的插件树与各条依赖边对应的槽位。</span>
+          </div>
+
+        </div>
+
+      </div>
+
+      <footer class="chapter-foot">
+        <span>DeepSeek Harness · MIT · github.com/deepseek-ai/deepseek-harness</span>
+        <span class="keys">
+          <span class="kbd">←</span> 上一页
+          <span class="kbd">Esc</span> 返回封面
+        </span>
+      </footer>
+
+    </section>
+
+    <!-- ==================== 第五章 · 第 10 页：技巧三 设计文档 ==================== -->
+    <section class="page page-chapter" data-page="p05j" aria-label="第五章：插件设计技巧 · 先出设计文档">
+
+      <header class="chapter-head head-inline">
+        <div>
+          <div class="breadcrumb">
+            <span class="n">05</span>
+            <span class="bar"></span>
+            <span>DSH 源码框架介绍与二次开发范例</span>
+          </div>
+          <div class="title-row">
+            <h2 class="chapter-title">先出设计文档，再施工</h2>
+            <p class="chapter-sub">技巧 03 / 04</p>
+          </div>
+        </div>
+        <div class="chapter-meta">
+          <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn next-btn" data-next="p05k" aria-label="下一页：让 AI 补边际功能">下一页 →</button>
+        </div>
+      </header>
+
+      <div class="chapter-body tip-body">
+
+        <p class="tip-lede">先确定需求边界，产出设计文档，再按文档实现。</p>
+
+        <div class="tip-card">
+
+          <div class="tip-thead two"><span>文档的四项内容</span><span>缺失的后果</span></div>
+
+          <div class="tip-rows">
+            <div class="tip-row pair">
+              <div class="pc"><span class="rn">01</span><span class="rt">验收标准</span><span class="rd">完成条件，一句话可判定</span></div>
+              <div class="pc"><span class="rd">范围不清，实现中途返工。</span></div>
+            </div>
+            <div class="tip-row pair">
+              <div class="pc"><span class="rn">02</span><span class="rt">数据形状</span><span class="rd">持久化字段与生命周期</span></div>
+              <div class="pc"><span class="rd">后期需要持久化，内存结构重写。</span></div>
+            </div>
+            <div class="tip-row pair">
+              <div class="pc"><span class="rn">03</span><span class="rt">三份视图</span><span class="rd">模型、系统、用户的可见范围</span></div>
+              <div class="pc"><span class="rd">功能完成，界面无法接入。</span></div>
+            </div>
+            <div class="tip-row pair">
+              <div class="pc"><span class="rn">04</span><span class="rt">依赖图</span><span class="rd">inject 关系与卸载顺序</span></div>
+              <div class="pc"><span class="rd">安装正常，卸载回卷失败。</span></div>
+            </div>
+          </div>
+
+          <div class="tip-eg">
+            <span class="eg-tag">范例</span>
+            <span>待补：一份真实设计文档的节选及其与代码的对应关系。</span>
+          </div>
+
+        </div>
+
+      </div>
+
+      <footer class="chapter-foot">
+        <span>DeepSeek Harness · MIT · github.com/deepseek-ai/deepseek-harness</span>
+        <span class="keys">
+          <span class="kbd">←</span> 上一页
+          <span class="kbd">Esc</span> 返回封面
+        </span>
+      </footer>
+
+    </section>
+
+    <!-- ==================== 第五章 · 第 11 页：技巧四 边际功能 ==================== -->
+    <section class="page page-chapter" data-page="p05k" aria-label="第五章：插件设计技巧 · 让 AI 补边际功能">
+
+      <header class="chapter-head head-inline">
+        <div>
+          <div class="breadcrumb">
+            <span class="n">05</span>
+            <span class="bar"></span>
+            <span>DSH 源码框架介绍与二次开发范例</span>
+          </div>
+          <div class="title-row">
+            <h2 class="chapter-title">让 AI 补边际功能</h2>
+            <p class="chapter-sub">技巧 04 / 04</p>
+          </div>
+        </div>
+        <div class="chapter-meta">
+          <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn next-btn" data-next="cover" aria-label="返回目录">返回目录</button>
+        </div>
+      </header>
+
+      <div class="chapter-body tip-body">
+
+        <p class="tip-lede">以下六项通常不在显式需求内，需单独要求。</p>
+
+        <div class="tip-card short">
+
+          <div class="tip-edge">
+            <div class="cell"><b>取消</b><span>中断时保留<em>已生成内容</em>，不得整段丢弃。</span></div>
+            <div class="cell"><b>预算与步数</b><span>超限检查在<em>步边界</em>执行，避免遗留无结果的 tool_calls。</span></div>
+            <div class="cell"><b>并发</b><span>实例被多个会话共用，<em>共享状态需加锁</em>。</span></div>
+            <div class="cell"><b>会话隔离</b><span>工具执行携带<em>会话标识</em>，策略不得跨会话生效。</span></div>
+            <div class="cell"><b>失败结果</b><span>失败携带<em>原因</em>投影给模型，不得丢弃为 null。</span></div>
+            <div class="cell"><b>卸载回卷</b><span><em>注册与注销成对</em>，卸载时完整回卷。</span></div>
+          </div>
+
+          <div class="tip-eg">
+            <span class="eg-tag">范例</span>
+            <span>待补：对应的测试用例与故障记录。</span>
+          </div>
+
         </div>
 
       </div>
@@ -8482,7 +9031,11 @@
     p05d: document.querySelector('[data-page="p05d"]'),
     p05e: document.querySelector('[data-page="p05e"]'),
     p05f: document.querySelector('[data-page="p05f"]'),
-    p05g: document.querySelector('[data-page="p05g"]')
+    p05g: document.querySelector('[data-page="p05g"]'),
+    p05h: document.querySelector('[data-page="p05h"]'),
+    p05i: document.querySelector('[data-page="p05i"]'),
+    p05j: document.querySelector('[data-page="p05j"]'),
+    p05k: document.querySelector('[data-page="p05k"]')
   };
   var currentPage = "cover";
 
@@ -9710,7 +10263,39 @@
       return;
     }
     if (e.key === "ArrowRight" && currentPage === "p05g") {
-      go("cover");
+      go("p05h");
+      return;
+    }
+    if (e.key === "ArrowRight" && currentPage === "p05h") {
+      go("p05i");
+      return;
+    }
+    if (e.key === "ArrowRight" && currentPage === "p05i") {
+      go("p05j");
+      return;
+    }
+    if (e.key === "ArrowRight" && currentPage === "p05j") {
+      go("p05k");
+      return;
+    }
+    if (e.key === "ArrowRight" && currentPage === "p05k") {
+      // 最后一页：再往右翻不动，避免误触跳回封面。
+      return;
+    }
+    if (e.key === "ArrowLeft" && currentPage === "p05k") {
+      go("p05j");
+      return;
+    }
+    if (e.key === "ArrowLeft" && currentPage === "p05j") {
+      go("p05i");
+      return;
+    }
+    if (e.key === "ArrowLeft" && currentPage === "p05i") {
+      go("p05h");
+      return;
+    }
+    if (e.key === "ArrowLeft" && currentPage === "p05h") {
+      go("p05g");
       return;
     }
     if (e.key === "ArrowLeft" && currentPage === "p05g") {
