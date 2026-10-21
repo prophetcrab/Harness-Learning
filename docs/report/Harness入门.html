@@ -3261,15 +3261,16 @@
   }
   .arch-row {
     display: grid;
-    grid-template-columns: 48px 62px minmax(0, 1fr);
-    gap: 8px;
+    grid-template-columns: 50px 86px minmax(0, 1fr);
+    gap: 9px;
   }
   .arch-row .t { color: #5d7599; }
   .arch-row .g {
-    font-size: 11px;
-    letter-spacing: 0.07em;
+    font-size: 10.5px;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
     color: #9db8f0;
+    white-space: nowrap;
   }
   .arch-row.mount .g { color: #6ff0d6; }
   .arch-row.ev .g { color: #7cc4ff; }
@@ -3912,6 +3913,671 @@
   .mk-shot-modal .market-card { width: 812px; height: 838px; overflow: visible; }
   .mk-shot-modal .market-panels { padding: 14px; height: 100%; }
   .mk-shot-modal .shot-img { object-fit: contain; }
+
+  /* ---------------- 第五章第 5 页：源码结构 ---------------- */
+
+  .tree-body {
+    display: grid;
+    grid-template-columns: 600px minmax(0, 1fr);
+    gap: 26px;
+    align-items: stretch;
+    margin-top: 16px;
+    min-height: 0;
+  }
+
+  .tree-card,
+  .files-card {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 4px 20px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.66);
+    box-shadow: 0 12px 34px rgba(20, 40, 80, 0.055);
+    overflow: hidden;
+  }
+
+  .tree-head {
+    flex: none;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 11px 0 9px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tree-head b { font-size: 14px; font-weight: 600; color: var(--ink); }
+  .tree-head span {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .tree {
+    flex: none;
+    padding: 10px 0 6px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.85;
+    color: var(--ink-2);
+    white-space: pre;
+  }
+  .tree .d { color: var(--ink); font-weight: 600; }
+  .tree .g1 { color: #0b6f62; font-weight: 600; }
+  .tree .g2 { color: #234f9e; font-weight: 600; }
+  .tree .c { color: var(--muted); }
+  .tree .root { color: var(--ink); font-weight: 700; }
+
+  .tree-sub {
+    flex: none;
+    margin-top: 2px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--accent-a);
+    text-transform: uppercase;
+  }
+
+  .pkg-tree {
+    flex: 1;
+    min-height: 0;
+    padding: 6px 0 4px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.8;
+    color: var(--ink-2);
+    white-space: pre;
+  }
+  .pkg-tree .d { color: var(--ink); font-weight: 600; }
+  .pkg-tree .c { color: var(--muted); }
+
+  .tree-foot {
+    flex: none;
+    padding: 9px 0 12px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+  .tree-foot code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: #eef2f8;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-2);
+  }
+
+  .files {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+  .file-row {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 10px;
+    align-content: center;
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+  }
+  .file-row:first-child { border-top: 0; }
+  .file-num {
+    padding-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: rgba(47, 108, 232, 0.85);
+  }
+  .file-top {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .file-path {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+  }
+  .file-tag {
+    padding: 1px 7px;
+    border-radius: 5px;
+    background: rgba(14, 143, 125, 0.1);
+    font-size: 11px;
+    color: #0b6f62;
+    white-space: nowrap;
+  }
+  .file-why {
+    margin-top: 5px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+  .file-why code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: #eef2f8;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-2);
+  }
+
+  .files-foot {
+    flex: none;
+    padding: 10px 0 12px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+  .files-foot code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: #eef2f8;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-2);
+  }
+
+  /* ---------------- 第五章第 6 页：Web 装配结构 ---------------- */
+
+  .wa-body {
+    display: grid;
+    grid-template-columns: 470px minmax(0, 1fr);
+    gap: 26px;
+    align-items: stretch;
+    margin-top: 16px;
+    min-height: 0;
+  }
+
+  .layer-card {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 4px 20px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.66);
+    box-shadow: 0 12px 34px rgba(20, 40, 80, 0.055);
+    overflow: hidden;
+  }
+
+  .layer-list {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 0;
+  }
+
+  .layer {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    align-content: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: #fff;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  }
+  .layer:hover { border-color: var(--line-strong); background: #fbfcfe; }
+  .layer.is-active {
+    background: #fff;
+    box-shadow: 0 6px 18px rgba(20, 40, 80, 0.09);
+  }
+  .layer.l-web.is-active { background: rgba(47, 108, 232, 0.05); }
+  .layer.l-base.is-active { background: rgba(185, 198, 217, 0.16); }
+  .layer .lname {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+  }
+  .layer .lnote {
+    margin-top: 3px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .layer .lcount {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .layer .lcount b { color: var(--ink-2); font-weight: 600; }
+
+  .layer-foot {
+    flex: none;
+    padding: 11px 0 13px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+  .layer-foot b { color: var(--ink-2); font-weight: 600; }
+
+  .layer.l-base {
+    border-left: 3px solid #b9c6d9;
+    background: rgba(185, 198, 217, 0.09);
+  }
+
+  .ltag.ltag-base {
+    background: rgba(28, 52, 96, 0.08);
+    color: var(--ink-2);
+  }
+
+  .layer-split {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 2px 4px;
+  }
+  .layer-split i {
+    flex: 1;
+    height: 1px;
+    background: var(--line-strong);
+    opacity: 0.55;
+  }
+  .layer-split em {
+    font-family: var(--font-mono);
+    font-style: normal;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .layer.l-web { border-left: 3px solid #2f6ce8; background: rgba(47, 108, 232, 0.035); }
+  .layer.l-headless { border-left: 3px solid #7c8db0; }
+  .layer.l-sdk { border-left: 3px solid #0e8f7d; }
+  .layer.l-sdkmin { border-left: 3px solid #d99420; }
+  .layer.l-acp { border-left: 3px solid #8a6fd0; }
+
+  .ltag {
+    display: inline-block;
+    margin-left: 7px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(47, 108, 232, 0.1);
+    font-family: var(--font-sans, system-ui, sans-serif);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--accent-b);
+    vertical-align: 1px;
+  }
+
+  .layer-arrow {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 14px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .layer-arrow i {
+    width: 1px; height: 14px;
+    background: var(--line-strong);
+  }
+
+  .zone-grid {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1.15fr 1fr 1fr;
+    gap: 10px;
+    align-content: stretch;
+    padding: 4px 0;
+  }
+
+  .mode-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+
+  .mode-panel {
+    display: none;
+    flex: 1;
+    min-height: 0;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 4px 0;
+  }
+  .mode-panel.on { display: grid; }
+
+  .mode-panel.web-panel.on {
+    grid-template-rows: 1.15fr 1fr 1fr;
+    align-content: stretch;
+  }
+  .mode-panel.base-panel.on {
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+    align-content: stretch;
+    gap: 10px;
+  }
+  .mode-panel.base-panel .zone { padding: 9px 15px; gap: 3px; }
+  .mode-panel.base-panel .zone-why { font-size: 11.5px; }
+  .mode-panel.base-panel .zone-chips span { padding: 1px 6px; }
+  .mode-panel.slim-panel.on {
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    align-content: stretch;
+    gap: 10px;
+  }
+  .mode-panel.slim-panel .zone { padding: 14px 18px; }
+  .mode-panel.slim-panel .zone-why { font-size: 12px; }
+  .mode-panel.slim-panel .zone-cmd {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .mode-panel .zone { justify-content: center; }
+  .mode-panel.slim-panel .zone { padding: 16px 18px; }
+  .mode-panel .zone-cmd {
+    margin-top: 2px;
+    padding: 5px 9px;
+    border-radius: 6px;
+    background: #0f1c33;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: #c6d7ee;
+    overflow-wrap: anywhere;
+  }
+  .mode-panel .zone-cmd .p { color: #6ff0d6; }
+  .zone {
+    padding: 12px 15px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+  }
+  .zone.z-wide { grid-column: span 2; }
+  .zone-top {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+  }
+  .zone-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .zone-count {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .zone-count b { color: var(--accent-b); font-weight: 600; }
+  .zone-why {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+  .zone-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 1px;
+  }
+  .zone-chips span {
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: #f1f5fa;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .zone.z-ui { border-left: 3px solid #2f6ce8; }
+  .zone.z-host { border-left: 3px solid #0e8f7d; }
+  .zone.z-tool { border-left: 3px solid #d99420; }
+  .zone.z-trans { border-left: 3px solid #7c8db0; }
+  .zone.z-misc { border-left: 3px solid #b9c6d9; }
+
+  .wa-foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0 12px;
+    border-top: 1px solid var(--line);
+  }
+  .wa-foot .note {
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* ---------------- 第五章第 7 页：插件设计三问 ---------------- */
+
+  .design-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+    min-height: 0;
+  }
+
+  .design-head-row {
+    flex: none;
+    display: grid;
+    grid-template-columns: 108px 300px minmax(0, 1fr);
+    gap: 14px;
+    align-items: end;
+    padding: 0 2px 6px;
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .design-head-row span {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .design-head-row .q { color: var(--accent-a); }
+
+  .design-row {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 108px 300px minmax(0, 1fr);
+    gap: 14px;
+    align-items: stretch;
+  }
+
+  .design-tag {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    padding: 12px 0 12px 14px;
+    border-left: 3px solid var(--line-strong);
+  }
+  .design-tag .n {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--accent-a);
+  }
+  .design-tag .t {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .design-row.r1 .design-tag { border-left-color: #2f6ce8; }
+  .design-row.r2 .design-tag { border-left-color: #0e8f7d; }
+  .design-row.r3 .design-tag { border-left-color: #d99420; }
+
+  .design-q {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 16px;
+    border-radius: 11px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.72);
+  }
+  .design-q p {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-2);
+  }
+  .design-q p b { color: var(--ink); font-weight: 600; }
+  .design-q small {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+
+  .design-a {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 7px;
+    padding: 12px 18px;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    background: #fff;
+    box-shadow: 0 8px 22px rgba(20, 40, 80, 0.05);
+    min-width: 0;
+  }
+  .design-a .lead {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.45;
+    color: var(--ink);
+  }
+  .design-a .lead em {
+    font-style: normal;
+    color: var(--accent-b);
+  }
+  .design-a ul {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 18px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .design-a li {
+    position: relative;
+    padding-left: 11px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+  .design-a li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 7px;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--line-strong);
+  }
+  .design-a li b { color: var(--ink-2); font-weight: 600; }
+  .design-a .one {
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+  .design-a .one b { color: var(--ink-2); font-weight: 600; }
+
+  .design-out {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .design-out span {
+    padding: 2px 8px;
+    border-radius: 5px;
+    background: #f1f5fa;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-2);
+  }
+
+  .design-map {
+    flex: none;
+    margin-top: 2px;
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    gap: 14px;
+    align-items: stretch;
+  }
+  .design-map .lbl {
+    display: flex;
+    align-items: center;
+    padding-left: 17px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .design-map .items {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .design-map .it {
+    padding: 9px 12px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.72);
+  }
+  .design-map .it b {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+  .design-map .it span {
+    display: block;
+    margin-top: 3px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+  }
+
+  .design-note {
+    flex: none;
+    padding: 9px 14px;
+    border-radius: 9px;
+    background: rgba(14, 143, 125, 0.06);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink-2);
+  }
+  .design-note b { color: #0b6f62; font-weight: 600; }
 
   /* ---------------- 弹窗 ---------------- */
 
@@ -6643,6 +7309,7 @@
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn next-btn" data-next="p05e" aria-label="下一页：源码结构与切入点">下一页 →</button>
         </div>
       </header>
 
@@ -6685,6 +7352,570 @@
             <button class="zoom" data-mk-zoom>放大查看 ↗</button>
           </div>
           <img class="plug-shot-img" src="dsh-market.png" alt="dshmarket 插件市场：发现页与插件卡片" data-mk-zoom>
+        </div>
+
+      </div>
+
+      <footer class="chapter-foot">
+        <span>DeepSeek Harness · MIT · github.com/deepseek-ai/deepseek-harness</span>
+        <span class="keys">
+          <span class="kbd">←</span> 上一页
+          <span class="kbd">Esc</span> 返回封面
+        </span>
+      </footer>
+
+    </section>
+
+    <!-- ==================== 第五章 · 第 5 页：源码结构 ==================== -->
+    <section class="page page-chapter" data-page="p05e" aria-label="第五章：DSH 源码框架与二次开发范例">
+
+      <header class="chapter-head">
+        <div>
+          <div class="breadcrumb">
+            <span class="n">05</span>
+            <span class="bar"></span>
+            <span>DSH 源码框架与二次开发范例</span>
+          </div>
+          <h2 class="chapter-title">源码结构与切入点</h2>
+        </div>
+        <div class="chapter-meta">
+          <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn next-btn" data-next="p05f" aria-label="下一页：Web 装配结构">下一页 →</button>
+        </div>
+      </header>
+
+      <div class="chapter-body tree-body">
+
+        <div class="tree-card">
+          <div class="tree-head">
+            <b>仓库结构</b>
+            <span>monorepo · pnpm workspace</span>
+          </div>
+
+<div class="tree"><span class="root">deepseek-harness/</span>
+├─ <span class="d">apps/</span>                 <span class="c">可执行入口 · 5 个</span>
+│  ├─ <span class="d">cli/src/</span>            <span class="c">bin · profile-boot · plugin</span>
+│  └─ <span class="d">web/</span>                <span class="c">Web UI 宿主</span>
+├─ <span class="d">packages/</span>            <span class="c">52 组 · 342 个包</span>
+│  ├─ <span class="g1">core/</span>              <span class="c">tools · agent · session</span>
+│  ├─ <span class="g1">boot/</span>              <span class="c">app-boot · plugin-manager</span>
+│  ├─ <span class="g2">bundle/</span>            <span class="c">base · web-app · headless</span>
+│  ├─ <span class="g2">extensions/</span>        <span class="c">tool-cordis（创造模式）</span>
+│  └─ <span class="g2">experimental/</span>      <span class="c">默认关闭的可选包</span>
+├─ <span class="d">vendor/</span>              <span class="c">13 个上游 Cordis 包</span>
+├─ <span class="d">docs/</span>                <span class="c">develop · cookbook · 配置目录</span>
+└─ <span class="d">python/</span>              <span class="c">Python SDK 运行时</span></div>
+
+          <div class="tree-sub">单个包的内部结构</div>
+
+<div class="pkg-tree"><span class="d">packages/fs/tool-fs/</span>
+├─ <span class="d">src/</span>          <span class="c">源码，apply 写在这里</span>
+├─ <span class="d">lib/</span>          <span class="c">构建产物（tsdown 生成，不入库）</span>
+├─ <span class="d">tests/</span>        <span class="c">测试</span>
+├─ <span class="d">locale/</span>       <span class="c">界面文案</span>
+├─ <span class="d">package.json</span>  <span class="c">main / exports / dsh 声明</span>
+└─ <span class="d">tsconfig.json</span></div>
+
+          <div class="tree-foot">写插件只动 <code>src/</code>；<code>lib/</code> 是 <code>pnpm run build</code> 的产物，改完源码要重新构建。</div>
+        </div>
+
+        <div class="files-card">
+          <div class="tree-head">
+            <b>做自定义插件，先看这五个地方</b>
+            <span>按动手顺序</span>
+          </div>
+
+          <div class="files">
+
+            <div class="file-row">
+              <span class="file-num">01</span>
+              <div>
+                <div class="file-top">
+                  <span class="file-path">docs/user/develop/basic/</span>
+                  <span class="file-tag">教程</span>
+                </div>
+                <p class="file-why">官方三篇：第一个插件 → 加一个工具 → 让它可配置。最短路径，先照着抄一遍。</p>
+              </div>
+            </div>
+
+            <div class="file-row">
+              <span class="file-num">02</span>
+              <div>
+                <div class="file-top">
+                  <span class="file-path">packages/core/tools/src/schema.ts</span>
+                  <span class="file-tag">写工具</span>
+                </div>
+                <p class="file-why"><code>defineTool</code> 在这：参数 schema、校验、结果渲染，一个函数里全声明完。</p>
+              </div>
+            </div>
+
+            <div class="file-row">
+              <span class="file-num">03</span>
+              <div>
+                <div class="file-top">
+                  <span class="file-path">packages/bundle/web-app/cordis.patch.yml</span>
+                  <span class="file-tag">装配单</span>
+                </div>
+                <p class="file-why">589 行的真实样板：怎么按 <code>id</code> 覆盖 base 的行，怎么用 <code>insert</code> 插新行。</p>
+              </div>
+            </div>
+
+            <div class="file-row">
+              <span class="file-num">04</span>
+              <div>
+                <div class="file-top">
+                  <span class="file-path">packages/boot/app-boot/src/profile.ts</span>
+                  <span class="file-tag">profile</span>
+                </div>
+                <p class="file-why"><code>PROFILE_TEMPLATES</code> 与 <code>OPTIONAL_BUNDLES</code>：哪些包装完就能开，哪些要自己挂。</p>
+              </div>
+            </div>
+
+            <div class="file-row">
+              <span class="file-num">05</span>
+              <div>
+                <div class="file-top">
+                  <span class="file-path">docs/config-catalog.zh.md</span>
+                  <span class="file-tag">配置字典</span>
+                </div>
+                <p class="file-why">每个包在 <code>cordis.yml</code> 里能写哪些键、默认值是什么，全在这份目录里查。</p>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="files-foot">写插件本身只需要一个 <code>apply(ctx)</code>；剩下这些都是围绕它怎么被挂进树、怎么配。</div>
+        </div>
+
+      </div>
+
+      <footer class="chapter-foot">
+        <span>DeepSeek Harness · MIT · github.com/deepseek-ai/deepseek-harness</span>
+        <span class="keys">
+          <span class="kbd">←</span> 上一页
+          <span class="kbd">Esc</span> 返回封面
+        </span>
+      </footer>
+
+    </section>
+
+    <!-- ==================== 第五章 · 第 6 页：Web 装配结构 ==================== -->
+    <section class="page page-chapter" data-page="p05f" aria-label="第五章：DSH 源码框架与二次开发范例">
+
+      <header class="chapter-head">
+        <div>
+          <div class="breadcrumb">
+            <span class="n">05</span>
+            <span class="bar"></span>
+            <span>DSH 源码框架与二次开发范例</span>
+          </div>
+          <h2 class="chapter-title">装配形态一览</h2>
+        </div>
+        <div class="chapter-meta">
+          <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn next-btn" data-next="p05g" aria-label="下一页：插件设计三问">下一页 →</button>
+        </div>
+      </header>
+
+      <div class="chapter-body wa-body">
+
+        <div class="layer-card">
+          <div class="tree-head">
+            <b>六种装配形态</b>
+            <span>点一行，看它的结构</span>
+          </div>
+
+          <div class="layer-list">
+
+            <button type="button" class="layer l-base" data-mode="base">
+              <div>
+                <div class="lname">base<span class="ltag ltag-base">内核</span></div>
+                <div class="lnote">公共底座：模型、工具、会话、沙箱、审批</div>
+              </div>
+              <span class="lcount"><b>96</b> 个插件</span>
+            </button>
+
+            <div class="layer-split"><i></i><em>在其之上叠出入口</em><i></i></div>
+
+            <button type="button" class="layer l-web is-active" data-mode="web">
+              <div>
+                <div class="lname">web<span class="ltag">在用</span></div>
+                <div class="lnote">给人用的图形界面：开网页就能对话、看工具调用</div>
+              </div>
+              <span class="lcount"><b>186</b> 个插件</span>
+            </button>
+
+            <button type="button" class="layer l-headless" data-mode="headless">
+              <div>
+                <div class="lname">headless</div>
+                <div class="lnote">给脚本用的一次性执行：一句话进，结果出，然后退出</div>
+              </div>
+              <span class="lcount"><b>98</b> 个插件</span>
+            </button>
+
+            <button type="button" class="layer l-sdk" data-mode="sdk">
+              <div>
+                <div class="lname">sdk</div>
+                <div class="lnote">给程序调用：宿主进程通过标准输入输出收发请求</div>
+              </div>
+              <span class="lcount"><b>100</b> 个插件</span>
+            </button>
+
+            <button type="button" class="layer l-sdkmin" data-mode="sdkminimal">
+              <div>
+                <div class="lname">sdk-minimal</div>
+                <div class="lnote">最小可嵌入形态：不依赖 base，把整棵树塞进别人的进程</div>
+              </div>
+              <span class="lcount"><b>35</b> 个插件</span>
+            </button>
+
+            <button type="button" class="layer l-acp" data-mode="acp">
+              <div>
+                <div class="lname">acp</div>
+                <div class="lnote">给编辑器接入：IDE 按 Agent Client Protocol 驱动它</div>
+              </div>
+              <span class="lcount"><b>98</b> 个插件</span>
+            </button>
+
+          </div>
+
+          <div class="layer-foot">
+            除 sdk-minimal 外，其余四种都叠在 base 的 <b>96</b> 个插件上；只有 web 带浏览器层。
+          </div>
+        </div>
+
+        <div class="layer-card mode-card">
+          <div class="tree-head">
+            <b data-mode-title>web：90 个插件 + 25 处覆盖</b>
+            <span data-mode-sub>覆盖指改已有插件的开关或参数</span>
+          </div>
+
+          <div class="mode-body">
+
+            <div class="mode-panel base-panel" data-mode-panel="base">
+              <div class="zone z-misc"><div class="zone-top"><span class="zone-name">模型接入</span><span class="zone-count"><b>7</b></span></div>
+                <div class="zone-why">接哪家模型、怎么路由、失败怎么重试。</div>
+                <div class="zone-chips"><span>llm</span><span>llm-deepseek</span><span>agent-default-model</span></div></div>
+              <div class="zone z-misc"><div class="zone-top"><span class="zone-name">会话与存储</span><span class="zone-count"><b>14</b></span></div>
+                <div class="zone-why">对话怎么落盘、怎么回放、怎么投影成视图。</div>
+                <div class="zone-chips"><span>session</span><span>session-persistence-jsonl</span><span>storage</span></div></div>
+              <div class="zone z-misc"><div class="zone-top"><span class="zone-name">运行时骨架</span><span class="zone-count"><b>10</b></span></div>
+                <div class="zone-why">agent、轮次循环、工具注册表、系统提示词。</div>
+                <div class="zone-chips"><span>agent</span><span>agent-loop</span><span>system-prompt</span></div></div>
+              <div class="zone z-tool"><div class="zone-top"><span class="zone-name">工具</span><span class="zone-count"><b>18</b></span></div>
+                <div class="zone-why">文件、Shell、搜索、子智能体、工作流。</div>
+                <div class="zone-chips"><span>tool-fs</span><span>tool-bash</span><span>tool-web</span></div></div>
+              <div class="zone z-host"><div class="zone-top"><span class="zone-name">安全与控制</span><span class="zone-count"><b>13</b></span></div>
+                <div class="zone-why">沙箱、审批、权限、凭据、超时。</div>
+                <div class="zone-chips"><span>sandbox</span><span>approval</span><span>permission</span></div></div>
+              <div class="zone z-trans"><div class="zone-top"><span class="zone-name">上下文与压缩</span><span class="zone-count"><b>9</b></span></div>
+                <div class="zone-why">token 计量、压缩、结果裁剪、大文件卸载。</div>
+                <div class="zone-chips"><span>token-meter</span><span>compaction-basic</span><span>image-offload</span></div></div>
+              <div class="zone z-ui"><div class="zone-top"><span class="zone-name">技能与命令</span><span class="zone-count"><b>8</b></span></div>
+                <div class="zone-why">skill 加载、斜杠命令、计划模式。</div>
+                <div class="zone-chips"><span>skill</span><span>commands</span><span>plan-mode</span></div></div>
+              <div class="zone z-misc"><div class="zone-top"><span class="zone-name">其余配件</span><span class="zone-count"><b>17</b></span></div>
+                <div class="zone-why">设置、插件管理、遥测、Web 检索。</div>
+                <div class="zone-chips"><span>settings</span><span>config-editor</span><span>mcp-resources</span></div></div>
+            </div>
+
+            <div class="mode-panel web-panel on" data-mode-panel="web">
+              <div class="zone z-ui z-wide">
+                <div class="zone-top">
+                  <span class="zone-name">浏览器界面</span>
+                  <span class="zone-count"><b>51</b> 个插件，全部 ui-*</span>
+                </div>
+                <div class="zone-why">你在屏幕上看到的一切：布局、会话、聊天、侧栏、设置页，每个区域一个插件。</div>
+                <div class="zone-chips">
+                  <span>ui-layout</span><span>ui-session</span><span>ui-chat</span><span>ui-sidebar</span><span>ui-settings</span><span>ui-tool</span><span>ui-approval</span><span>ui-plan</span><span>ui-trajectory</span><span>ui-agent-preset</span><span>ui-cordis</span>
+                </div>
+              </div>
+              <div class="zone z-host">
+                <div class="zone-top">
+                  <span class="zone-name">宿主控制器</span>
+                  <span class="zone-count"><b>17</b> 个插件</span>
+                </div>
+                <div class="zone-why">浏览器看不见的后端：会话生命周期、工作区、任务、终端。</div>
+                <div class="zone-chips">
+                  <span>session-controller</span><span>workspace-controller</span><span>job-controller</span><span>terminal-controller</span><span>settings-controller</span>
+                </div>
+              </div>
+              <div class="zone z-tool">
+                <div class="zone-top">
+                  <span class="zone-name">工具行覆盖</span>
+                  <span class="zone-count"><b>25</b> 处覆盖</span>
+                </div>
+                <div class="zone-why">工具本身在 base 里，这里只改它们在 Web 端的开关与参数。</div>
+                <div class="zone-chips">
+                  <span>tool-fs</span><span>tool-bash</span><span>tool-web</span><span>tool-subagent</span><span>tool-todo</span><span>plan-mode</span><span>compaction-basic</span>
+                </div>
+              </div>
+              <div class="zone z-trans">
+                <div class="zone-top">
+                  <span class="zone-name">入口与传输</span>
+                  <span class="zone-count"><b>10</b> 个插件</span>
+                </div>
+                <div class="zone-why">从命令行参数到 WebSocket：请求怎么进来、前端模块怎么下发。</div>
+                <div class="zone-chips">
+                  <span>web-startup</span><span>webserver</span><span>connection</span><span>api-remotes</span><span>modules</span><span>client-hmr</span>
+                </div>
+              </div>
+              <div class="zone z-misc">
+                <div class="zone-top">
+                  <span class="zone-name">其余配件</span>
+                  <span class="zone-count"><b>12</b> 个插件</span>
+                </div>
+                <div class="zone-why">语言、快捷键、静态资源、反馈与导出这类横向能力。</div>
+                <div class="zone-chips">
+                  <span>locale</span><span>shortcuts</span><span>resources</span><span>message-feedback</span><span>session-log-download</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="mode-panel slim-panel" data-mode-panel="headless">
+              <div class="zone z-ui z-wide">
+                <div class="zone-top">
+                  <span class="zone-name">本层新增</span>
+                  <span class="zone-count"><b>2</b> 个插件</span>
+                </div>
+                <div class="zone-why">一个解析命令行参数，一个跑完任务把结果打印出来。</div>
+                <div class="zone-chips"><span>headless-startup</span><span>headless-runner</span></div>
+              </div>
+              <div class="zone z-misc z-wide">
+                <div class="zone-top"><span class="zone-name">怎么起</span><span class="zone-count">一次一个任务</span></div>
+                <div class="zone-cmd"><span class="p">$</span> dsh headless "把 tests 跑一遍，失败就修"</div>
+                <div class="zone-cmd"><span class="p">$</span> dsh headless --json "..." <span style="color:#7d93b8"># 输出运行事件</span></div>
+              </div>
+              <div class="zone z-tool">
+                <div class="zone-top">
+                  <span class="zone-name">本层关闭</span>
+                  <span class="zone-count"><b>4</b> 个插件</span>
+                </div>
+                <div class="zone-why">一次性执行用不上热重载和账号体系。</div>
+                <div class="zone-chips"><span>hmr</span><span>credentials</span><span>authorization</span><span>deepseek-account</span></div>
+              </div>
+              <div class="zone z-host">
+                <div class="zone-top">
+                  <span class="zone-name">继承 base</span>
+                  <span class="zone-count"><b>96</b> 个插件</span>
+                </div>
+                <div class="zone-why">模型、工具、会话、沙箱全部沿用，一个不改。</div>
+                <div class="zone-chips"><span>agent-loop</span><span>tool-fs</span><span>sandbox</span></div>
+              </div>
+            </div>
+
+            <div class="mode-panel slim-panel" data-mode-panel="sdk">
+              <div class="zone z-ui z-wide">
+                <div class="zone-top">
+                  <span class="zone-name">本层新增</span>
+                  <span class="zone-count"><b>4</b> 个插件</span>
+                </div>
+                <div class="zone-why">JSON-RPC 服务端，外加两个给 SDK 场景补的工作区能力。</div>
+                <div class="zone-chips"><span>sdk-app-startup</span><span>sdk-jsonrpc-server</span><span>workspace-dependencies</span><span>skill-office</span></div>
+              </div>
+              <div class="zone z-misc z-wide">
+                <div class="zone-top"><span class="zone-name">怎么起</span><span class="zone-count">宿主进程拉起来</span></div>
+                <div class="zone-cmd"><span class="p">$</span> dsh --profile sdk</div>
+                <div class="zone-cmd"><span style="color:#7d93b8"># Python 侧：SDK 启动 dsh --profile sdk 并走 JSON-RPC</span></div>
+              </div>
+              <div class="zone z-tool">
+                <div class="zone-top">
+                  <span class="zone-name">本层关闭</span>
+                  <span class="zone-count"><b>2</b> 个插件</span>
+                </div>
+                <div class="zone-why">标题生成和热重载交给宿主自己处理。</div>
+                <div class="zone-chips"><span>session-title-llm</span><span>hmr</span></div>
+              </div>
+              <div class="zone z-host">
+                <div class="zone-top">
+                  <span class="zone-name">继承 base</span>
+                  <span class="zone-count"><b>96</b> 个插件</span>
+                </div>
+                <div class="zone-why">与 Web 共用同一套内核，只是入口换成 stdio。</div>
+                <div class="zone-chips"><span>agent-loop</span><span>tool-fs</span><span>session</span></div>
+              </div>
+            </div>
+
+            <div class="mode-panel base-panel" data-mode-panel="sdkminimal">
+              <div class="zone z-ui"><div class="zone-top"><span class="zone-name">入口与协议</span><span class="zone-count"><b>2</b></span></div>
+                <div class="zone-why">JSON-RPC 服务端，进程启动即监听。</div>
+                <div class="zone-chips"><span>sdk-app-startup</span><span>sdk-jsonrpc-server</span></div></div>
+              <div class="zone z-misc"><div class="zone-top"><span class="zone-name">模型</span><span class="zone-count"><b>4</b></span></div>
+                <div class="zone-why">一个 DeepSeek 适配器，带重试。</div>
+                <div class="zone-chips"><span>llm</span><span>llm-deepseek</span><span>llm-retry</span></div></div>
+              <div class="zone z-misc"><div class="zone-top"><span class="zone-name">会话与持久化</span><span class="zone-count"><b>6</b></span></div>
+                <div class="zone-why">JSONL 落盘，投影成可读视图。</div>
+                <div class="zone-chips"><span>session</span><span>sessions</span><span>session-projection</span></div></div>
+              <div class="zone z-misc"><div class="zone-top"><span class="zone-name">运行时骨架</span><span class="zone-count"><b>8</b></span></div>
+                <div class="zone-why">agent、循环、工具表、提示词。</div>
+                <div class="zone-chips"><span>agent</span><span>agent-loop</span><span>system-prompt</span></div></div>
+              <div class="zone z-tool"><div class="zone-top"><span class="zone-name">工具与终端</span><span class="zone-count"><b>8</b></span></div>
+                <div class="zone-why">文件读写加一条持久 shell。</div>
+                <div class="zone-chips"><span>tool-fs</span><span>pty</span><span>terminal-bash</span></div></div>
+              <div class="zone z-host"><div class="zone-top"><span class="zone-name">安全与后端</span><span class="zone-count"><b>3</b></span></div>
+                <div class="zone-why">本地沙箱与文件系统后端。</div>
+                <div class="zone-chips"><span>sandbox</span><span>sandbox-policy</span><span>filesystem</span></div></div>
+              <div class="zone z-trans"><div class="zone-top"><span class="zone-name">上下文</span><span class="zone-count"><b>3</b></span></div>
+                <div class="zone-why">计量、压缩、大图卸载。</div>
+                <div class="zone-chips"><span>token-meter</span><span>compaction-basic</span><span>image-offload</span></div></div>
+              <div class="zone z-misc"><div class="zone-top"><span class="zone-name">其余</span><span class="zone-count"><b>1</b></span></div>
+                <div class="zone-why">包清单，供宿主查版本。</div>
+                <div class="zone-chips"><span>package-inventory</span></div></div>
+            </div>
+
+            <div class="mode-panel slim-panel" data-mode-panel="acp">
+              <div class="zone z-ui z-wide">
+                <div class="zone-top">
+                  <span class="zone-name">本层新增</span>
+                  <span class="zone-count"><b>2</b> 个插件</span>
+                </div>
+                <div class="zone-why">一个起 ACP 服务，一个把编辑器请求翻译成 agent 轮次。</div>
+                <div class="zone-chips"><span>acp-app-startup</span><span>acp</span></div>
+              </div>
+              <div class="zone z-misc z-wide">
+                <div class="zone-top"><span class="zone-name">怎么起</span><span class="zone-count">由编辑器启动</span></div>
+                <div class="zone-cmd"><span class="p">$</span> dsh --profile acp</div>
+                <div class="zone-cmd"><span style="color:#7d93b8"># 编辑器按 ACP 配置这个命令，通过 stdio 通信</span></div>
+              </div>
+              <div class="zone z-tool">
+                <div class="zone-top">
+                  <span class="zone-name">本层关闭</span>
+                  <span class="zone-count"><b>2</b> 个插件</span>
+                </div>
+                <div class="zone-why">编辑器自己会出标题、自己管重载。</div>
+                <div class="zone-chips"><span>session-title-llm</span><span>hmr</span></div>
+              </div>
+              <div class="zone z-host">
+                <div class="zone-top">
+                  <span class="zone-name">继承 base</span>
+                  <span class="zone-count"><b>96</b> 个插件</span>
+                </div>
+                <div class="zone-why">同一套内核，入口换成 JSON-RPC over stdio。</div>
+                <div class="zone-chips"><span>agent-loop</span><span>tool-fs</span><span>approval</span></div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="wa-foot">
+            <span class="note" data-mode-note>想加东西：能落进上面某一块，就写个插件行插进去。</span>
+          </div>
+        </div>
+      </div>
+
+      <footer class="chapter-foot">
+        <span>DeepSeek Harness · MIT · github.com/deepseek-ai/deepseek-harness</span>
+        <span class="keys">
+          <span class="kbd">←</span> 上一页
+          <span class="kbd">Esc</span> 返回封面
+        </span>
+      </footer>
+
+    </section>
+
+    <!-- ==================== 第五章 · 第 7 页：插件设计三问 ==================== -->
+    <section class="page page-chapter" data-page="p05g" aria-label="第五章：DSH 源码框架与二次开发范例">
+
+      <header class="chapter-head head-inline">
+        <div>
+          <div class="breadcrumb">
+            <span class="n">05</span>
+            <span class="bar"></span>
+            <span>DSH 源码框架与二次开发范例</span>
+          </div>
+          <div class="title-row">
+            <h2 class="chapter-title">插件设计三问</h2>
+            <p class="chapter-sub">以「跨会话长期记忆」为例</p>
+          </div>
+        </div>
+        <div class="chapter-meta">
+          <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+        </div>
+      </header>
+
+      <div class="chapter-body design-body">
+
+        <div class="design-head-row">
+          <span>阶段</span>
+          <span class="q">先问自己</span>
+          <span>落到这个记忆插件上</span>
+        </div>
+
+        <div class="design-row r1">
+          <div class="design-tag">
+            <span class="n">01</span>
+            <span class="t">定义</span>
+          </div>
+          <div class="design-q">
+            <p>这个插件是做什么的？</p>
+            <p>我做这个插件要<b>得到什么</b>？</p>
+            <small>用户的直接目的；做成什么样算达成。</small>
+          </div>
+          <div class="design-a">
+            <p class="lead">让 AI 跨会话记得「我要做的事」，并在合适的时候让我自己想起来。</p>
+            <ul>
+              <li><b>谁</b> 单个用户，日常、跨会话</li>
+              <li><b>场景</b> 每天开工前 / 会话里说「帮我记一下」</li>
+              <li><b>得到</b> 不用翻旧会话；搁置的事自己回来</li>
+              <li><b>不做</b> 不自动执行、不多人共享、不做通用知识库</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="design-row r2">
+          <div class="design-tag">
+            <span class="n">02</span>
+            <span class="t">画像</span>
+          </div>
+          <div class="design-q">
+            <p><b>事实</b>：运行后留下什么痕迹？哪些要持久化？</p>
+            <p><b>行为</b>：改造已有流程，还是新增能力？</p>
+            <p><b>能力</b>：为了完成什么任务？</p>
+          </div>
+          <div class="design-a">
+            <p class="one"><b>事实</b> · 任务本体（内容、状态、来源会话、时间）、记忆状态（强度、忽略次数）、反馈（做了 / 忽略 / 推迟）、偏好（免打扰时段）</p>
+            <p class="one"><b>行为</b> · 主要是改造：记忆是对话的副产物，不需要「去用某个功能」；只有一句「我最近在干什么」是新能力</p>
+            <p class="one"><b>能力</b> · 一句话验收：<em>「现在我可以不用记事了。」</em></p>
+          </div>
+        </div>
+
+        <div class="design-row r3">
+          <div class="design-tag">
+            <span class="n">03</span>
+            <span class="t">投影</span>
+          </div>
+          <div class="design-q">
+            <p>模型看到了什么？</p>
+            <p>系统看到了什么？</p>
+            <p>用户看到了什么？</p>
+            <small>三份视图必须来自同一份事实。</small>
+          </div>
+          <div class="design-a">
+            <div class="design-out">
+              <span>模型 · 只取相关的几条</span>
+              <span>用户 · 每日一条建议</span>
+              <span>系统 · 会话日志</span>
+            </div>
+            <ul>
+              <li><b>全景 ≠ 全量注入</b>：曲线本质是检索排序</li>
+              <li><b>每个建议能一键「做了 / 别提了」</b></li>
+              <li><b>抽错能删、太吵能调频</b>：静默失败最伤信任</li>
+              <li><b>用户看见而 AI 想不起来 = 骗人</b></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="design-map">
+          <span class="lbl">落到 DSH</span>
+          <div class="items">
+            <div class="it"><b>定义</b><span>验收标准写进 README</span></div>
+            <div class="it"><b>画像</b><span>SessionEvent 日志 + 事件订阅 / ctx.tools.register</span></div>
+            <div class="it"><b>投影</b><span>render · presentResult · presentationMeta</span></div>
+          </div>
+        </div>
+
+        <div class="design-note">
+          三问的顺序不能反：先定<b>目的</b>，再定<b>手段</b>，最后才谈<b>三份视图怎么对齐</b>。反过来做，就会写出「功能都对，但用户不想用」的插件。
         </div>
 
       </div>
@@ -7248,7 +8479,10 @@
     p05a: document.querySelector('[data-page="p05a"]'),
     p05b: document.querySelector('[data-page="p05b"]'),
     p05c: document.querySelector('[data-page="p05c"]'),
-    p05d: document.querySelector('[data-page="p05d"]')
+    p05d: document.querySelector('[data-page="p05d"]'),
+    p05e: document.querySelector('[data-page="p05e"]'),
+    p05f: document.querySelector('[data-page="p05f"]'),
+    p05g: document.querySelector('[data-page="p05g"]')
   };
   var currentPage = "cover";
 
@@ -8017,6 +9251,72 @@
 
   /* ---------------- Cordis 整体架构（单图合并动画） ---------------- */
 
+  /* ---------------- 装配形态切换 ---------------- */
+
+  (function modeSwitch() {
+    var tabs = Array.prototype.slice.call(document.querySelectorAll("[data-mode]"));
+    var panels = {};
+    Array.prototype.forEach.call(document.querySelectorAll("[data-mode-panel]"), function (p) {
+      panels[p.getAttribute("data-mode-panel")] = p;
+    });
+    var titleEl = document.querySelector("[data-mode-title]");
+    var subEl = document.querySelector("[data-mode-sub]");
+    var noteEl = document.querySelector("[data-mode-note]");
+
+    var meta = {
+      base: {
+        title: "base：96 个插件",
+        sub: "内核本身，不含任何入口",
+        note: "底座单独起不来：它没有界面、没有命令行、没有协议服务，得由入口层把它带起来。"
+      },
+      web: {
+        title: "web：90 个插件 + 25 处覆盖",
+        sub: "覆盖指改已有插件的开关或参数",
+        note: "想加东西：能落进上面某一块，就写个插件行插进去。"
+      },
+      headless: {
+        title: "headless：2 个新增 + 4 处关闭",
+        sub: "叠在 base 之上，只换入口",
+        note: "入口只有一个：命令行参数进，stdout 出，跑完就退出。"
+      },
+      sdk: {
+        title: "sdk：4 个新增 + 2 处关闭",
+        sub: "叠在 base 之上，加一个 JSON-RPC 服务端",
+        note: "入口只有一个：宿主进程通过 stdio 收发 JSON-RPC。"
+      },
+      sdkminimal: {
+        title: "sdk-minimal：35 个插件，自成一体",
+        sub: "不叠 base，这就是完整的一棵树",
+        note: "没有底座可继承，所以会话、模型、工具、沙箱都得自己列全。"
+      },
+      acp: {
+        title: "acp：2 个新增 + 2 处关闭",
+        sub: "叠在 base 之上，只换入口",
+        note: "入口只有一个：编辑器按 Agent Client Protocol 驱动它。"
+      }
+    };
+
+    function select(key) {
+      if (!panels[key]) return;
+      tabs.forEach(function (t) {
+        t.classList.toggle("is-active", t.getAttribute("data-mode") === key);
+      });
+      Object.keys(panels).forEach(function (k) {
+        panels[k].classList.toggle("on", k === key);
+      });
+      var m = meta[key];
+      if (m) {
+        if (titleEl) titleEl.textContent = m.title;
+        if (subEl) subEl.textContent = m.sub;
+        if (noteEl) noteEl.textContent = m.note;
+      }
+    }
+
+    tabs.forEach(function (t) {
+      t.addEventListener("click", function () { select(t.getAttribute("data-mode")); });
+    });
+  })();
+
   var archModal = document.getElementById("arch-modal");
   var archOpen = false;
   var archTimers = [];
@@ -8398,7 +9698,31 @@
       return;
     }
     if (e.key === "ArrowRight" && currentPage === "p05d") {
+      go("p05e");
+      return;
+    }
+    if (e.key === "ArrowRight" && currentPage === "p05e") {
+      go("p05f");
+      return;
+    }
+    if (e.key === "ArrowRight" && currentPage === "p05f") {
+      go("p05g");
+      return;
+    }
+    if (e.key === "ArrowRight" && currentPage === "p05g") {
       go("cover");
+      return;
+    }
+    if (e.key === "ArrowLeft" && currentPage === "p05g") {
+      go("p05f");
+      return;
+    }
+    if (e.key === "ArrowLeft" && currentPage === "p05f") {
+      go("p05e");
+      return;
+    }
+    if (e.key === "ArrowLeft" && currentPage === "p05e") {
+      go("p05d");
       return;
     }
     if (e.key === "ArrowLeft" && currentPage === "p05d") {
