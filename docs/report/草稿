@@ -268,5 +268,37 @@ AI	本次请求相关的那几条，不是全部	全景 ≠ 全量注入；曲�
 
 page 24 经验之谈
 
-如果准备对Deepseek Harness进行自定义开发，那么最好准备一个备用的Harness用来救Deepseek Harness ——过高的装配自由度导致DSH容易把自己改出问题
+如果准备对Deepseek Harness进行自定义开发，那么最好准备一个备用的Harness用来救Deepseek Harness ——过高的装配自由度导致DSH容易把自己改出问题。
 
+对于单次性介入的插件，可以直接描述需求让AI来做，但是对于需要介入系统当前运行态的插件，最好确定好需求和边界后再开始做。
+
+在使用AI进行插件开发的时候，可以加一句提示词：模块设计尽量解耦，不要怕代码复用，避免依赖关系难以管理可以有效延长可用周期
+
+
+Harness产品这一章在市面上的 Harness这一页后面新添加一页
+
+Harness可以为我们提供什么能力：
+
+MCP
+tool管理
+skills管理
+沙箱和安全保证
+会话管理
+记录持久化
+hooks
+PC操作能力
+任务规划
+智能体调度
+模型接入管理
+任务预设管理
+
+等等
+
+
+Harness-Learning
+从零开始的Harness学习路径
+
+项目仓库：https://github.com/prophetcrab/Harness-Learning
+项目说明：从第一次调用大模型API开始，到形成一个完整的Harness工具
+
+P0 

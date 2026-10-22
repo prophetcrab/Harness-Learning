@@ -4862,6 +4862,449 @@
     color: var(--muted);
   }
 
+  /* ---------------- 第六章第 1 页：经验之谈 ---------------- */
+
+  .exp-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin-top: 14px;
+  }
+
+  .exp-lede {
+    flex: none;
+    max-width: 1180px;
+    margin-bottom: 12px;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--ink-2);
+  }
+  .exp-lede b { color: var(--ink); font-weight: 600; }
+
+  .exp-card {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0 26px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 12px 34px rgba(20, 40, 80, 0.055);
+    overflow: hidden;
+  }
+
+  .exp-row {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 30px 246px minmax(0, 1fr);
+    gap: 16px;
+    align-items: center;
+    padding: 16px 0;
+    border-top: 1px solid var(--line);
+  }
+  .exp-row:first-child { border-top: 0; }
+
+  .exp-num {
+    align-self: start;
+    padding-top: 3px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+  }
+  .exp-row.r1 .exp-num { color: rgba(47, 108, 232, 0.9); }
+  .exp-row.r2 .exp-num { color: rgba(14, 143, 125, 0.9); }
+  .exp-row.r3 .exp-num { color: rgba(201, 130, 28, 0.95); }
+
+  .exp-title {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .exp-title b {
+    font-size: 17px;
+    font-weight: 650;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .exp-title span {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+
+  .exp-detail {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .exp-detail p {
+    font-size: 13.5px;
+    line-height: 1.62;
+    color: var(--ink-2);
+  }
+  .exp-detail p b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .exp-detail p em {
+    font-style: normal;
+    color: #a9682a;
+    font-weight: 600;
+  }
+  .exp-detail code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: #eef2f8;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-2);
+  }
+
+  .exp-prompt {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 9px;
+    background: #0f1c33;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: #c6d7ee;
+  }
+  .exp-prompt .k {
+    flex: none;
+    padding-top: 1px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: #6ff0d6;
+  }
+  .exp-prompt .txt { min-width: 0; }
+  .exp-prompt .hl { color: #ffd479; }
+
+  /* ---------------- 第三章第 2 页：Harness 提供的能力 ---------------- */
+
+  .capa-wrap {
+    display: flex;
+    flex-direction: column;
+    margin-top: 18px;
+    min-height: 0;
+  }
+
+  .capa-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    min-height: 0;
+  }
+
+  .capa-col {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 4px 20px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.66);
+    box-shadow: 0 12px 34px rgba(20, 40, 80, 0.055);
+    overflow: hidden;
+  }
+
+  .capa-head {
+    flex: none;
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    padding: 13px 0 11px;
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .capa-head .n {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--accent-a);
+  }
+  .capa-head b {
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: -0.005em;
+    color: var(--ink);
+  }
+  .capa-head span {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .capa-list {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .capa-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px 0;
+    border-top: 1px solid var(--line);
+  }
+  .capa-item:first-child { border-top: 0; }
+
+  .capa-item b {
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    color: var(--ink);
+  }
+  .capa-item span {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+  .capa-item span em {
+    font-style: normal;
+    color: var(--ink-2);
+  }
+
+  .capa-foot {
+    flex: none;
+    width: 100%;
+    margin-top: 14px;
+    padding: 10px 16px;
+    border-radius: 9px;
+    background: rgba(14, 143, 125, 0.06);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink-2);
+  }
+  .capa-foot b { color: #0b6f62; font-weight: 600; }
+
+  /* ---------------- 第六章第 2 页：Harness-Learning 项目 ---------------- */
+
+  .proj-body {
+    display: flex;
+    flex-direction: column;
+    margin-top: 14px;
+    min-height: 0;
+  }
+
+  .proj-grid {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr) 430px;
+    gap: 18px;
+  }
+
+  .proj-col {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 4px 20px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.66);
+    box-shadow: 0 12px 34px rgba(20, 40, 80, 0.055);
+    overflow: hidden;
+  }
+
+  .proj-head {
+    flex: none;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 11px 0 9px;
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .proj-head .n {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--accent-a);
+  }
+  .proj-head b {
+    font-size: 14px;
+    font-weight: 650;
+    color: var(--ink);
+  }
+
+  /* 左：定位 + 数字 */
+  .proj-lede {
+    flex: none;
+    padding: 12px 0 10px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ink-2);
+  }
+  .proj-lede b { color: var(--ink); font-weight: 600; }
+
+  .proj-stats {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .stat {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 6px 0;
+    border-top: 1px solid var(--line);
+  }
+  .stat:first-child { border-top: 0; }
+  .stat .v {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    color: var(--ink);
+  }
+  .stat .v em {
+    font-style: normal;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .stat .k {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* 中：五级推进 */
+  .pstage-list {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .pstage {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 6px 0;
+    border-top: 1px solid var(--line);
+  }
+  .pstage:first-child { border-top: 0; }
+  .pstage .p {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .pstage.s0 .p { color: #7c8db0; }
+  .pstage.s1 .p { color: #2f6ce8; }
+  .pstage.s2 .p { color: #0e8f7d; }
+  .pstage.s3 .p { color: #d99420; }
+  .pstage.s4 .p { color: #b5478f; }
+  .pstage .c { min-width: 0; }
+  .pstage .t {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .pstage .t small {
+    margin-left: 7px;
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--muted);
+  }
+  .pstage .d {
+    margin-top: 2px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+  .pstage .d em {
+    font-style: normal;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-2);
+  }
+
+  /* 右：三个决定 */
+  .dec-list {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .dec {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px 0;
+    border-top: 1px solid var(--line);
+  }
+  .dec:first-child { border-top: 0; }
+  .dec b {
+    font-size: 13.5px;
+    font-weight: 650;
+    color: var(--ink);
+  }
+  .dec p {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+  .dec p code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: #eef2f8;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-2);
+  }
+
+  /* 底：三条纪律 */
+  .proj-rules {
+    flex: none;
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .rule {
+    padding: 9px 14px;
+    border-radius: 9px;
+    background: rgba(14, 143, 125, 0.06);
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink-2);
+  }
+  .rule b {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 650;
+    color: #0b6f62;
+  }
+  .rule span {
+    display: block;
+    margin-top: 2px;
+    color: var(--muted);
+  }
+
   /* ---------------- 弹窗 ---------------- */
 
   .modal-root {
@@ -6666,7 +7109,7 @@
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
-          <button class="back-btn next-btn" data-next="p04a" aria-label="下一页：Koishi">下一页 →</button>
+          <button class="back-btn next-btn" data-next="p03b" aria-label="下一页：Harness 能提供什么">下一页 →</button>
         </div>
       </header>
 
@@ -6749,6 +7192,122 @@
 
       <footer class="chapter-foot">
         <span>以上形态依据各产品官方文档，快照：2026 年 10 月</span>
+        <span class="keys">
+          <span class="kbd">←</span> 上一页
+          <span class="kbd">Esc</span> 返回封面
+        </span>
+      </footer>
+
+    </section>
+
+    <!-- ==================== 第三章 · 第 2 页：Harness 提供的能力 ==================== -->
+    <section class="page page-chapter" data-page="p03b" aria-label="第三章：Harness 产品">
+
+      <header class="chapter-head head-inline">
+        <div>
+          <div class="breadcrumb">
+            <span class="n">03</span>
+            <span class="bar"></span>
+            <span>HARNESS 产品</span>
+          </div>
+          <div class="title-row">
+            <h2 class="chapter-title">Harness 能提供什么</h2>
+          </div>
+        </div>
+        <div class="chapter-meta">
+          <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn next-btn" data-next="p04a" aria-label="下一页：Koishi">下一页 →</button>
+        </div>
+      </header>
+
+      <div class="chapter-body capa-wrap">
+        <div class="capa-body">
+
+          <div class="capa-col">
+            <div class="capa-head">
+              <span class="n">01</span>
+              <b>接入</b>
+            </div>
+            <div class="capa-list">
+              <div class="capa-item">
+                <b>MCP</b>
+                <span>按统一协议接入外部服务，一次接入即可获得其提供的全部工具</span>
+              </div>
+              <div class="capa-item">
+                <b>模型接入管理</b>
+                <span>多供应商并存，按任务切换路由，重试与上下文长度独立配置</span>
+              </div>
+              <div class="capa-item">
+                <b>工具管理</b>
+                <span>统一注册工具与参数声明，增删能力不需改动框架本体</span>
+              </div>
+              <div class="capa-item">
+                <b>技能管理</b>
+                <span>把可复用的操作流程写成文件，按需加载，不常驻占用上下文</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="capa-col">
+            <div class="capa-head">
+              <span class="n">02</span>
+              <b>执行与安全</b>
+            </div>
+            <div class="capa-list">
+              <div class="capa-item">
+                <b>沙箱与安全保证</b>
+                <span>危险动作先经策略判定再执行，权限边界写在配置里而非提示词里</span>
+              </div>
+              <div class="capa-item">
+                <b>Hooks</b>
+                <span>在请求前、工具调用前、结束后等固定节点插入自定义逻辑</span>
+              </div>
+              <div class="capa-item">
+                <b>PC 操作能力</b>
+                <span>读写文件、执行命令、控制浏览器与桌面，使 agent 能操作真实环境</span>
+              </div>
+              <div class="capa-item">
+                <b>任务规划</b>
+                <span>先拆解目标为步骤再执行，过程对人可见、可随时中断</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="capa-col">
+            <div class="capa-head">
+              <span class="n">03</span>
+              <b>编排与记录</b>
+            </div>
+            <div class="capa-list">
+              <div class="capa-item">
+                <b>智能体调度</b>
+                <span>子代理分工、并行执行与结果回收，单轮覆盖更大工作量</span>
+              </div>
+              <div class="capa-item">
+                <b>任务预设管理</b>
+                <span>把一类任务的动作顺序固化为模板，复用时只替换输入与参数</span>
+              </div>
+              <div class="capa-item">
+                <b>会话管理</b>
+                <span>多会话并存、分支与恢复，上下文按预算裁剪而非无限增长</span>
+              </div>
+              <div class="capa-item">
+                <b>记录持久化</b>
+                <span>请求、调用与结果全程留痕，故障可回放、责任可追溯</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="capa-foot">
+          这是一份品类级的常见能力清单，不是某个产品的功能表。具体到某个 Harness，可用范围取决于它默认开放了哪些能力、以及扩展机制做到什么程度。
+        </div>
+
+      </div>
+
+      <footer class="chapter-foot">
+        <span>DeepSeek Harness · MIT · github.com/deepseek-ai/deepseek-harness</span>
         <span class="keys">
           <span class="kbd">←</span> 上一页
           <span class="kbd">Esc</span> 返回封面
@@ -8441,7 +9000,7 @@
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
-          <button class="back-btn next-btn" data-next="cover" aria-label="返回目录">返回目录</button>
+          <button class="back-btn next-btn" data-next="p06a" aria-label="下一页：经验之谈">下一页 →</button>
         </div>
       </header>
 
@@ -8471,6 +9030,229 @@
 
       <footer class="chapter-foot">
         <span>DeepSeek Harness · MIT · github.com/deepseek-ai/deepseek-harness</span>
+        <span class="keys">
+          <span class="kbd">←</span> 上一页
+          <span class="kbd">Esc</span> 返回封面
+        </span>
+      </footer>
+
+    </section>
+
+    <!-- ==================== 第六章 · 第 1 页：经验之谈 ==================== -->
+    <section class="page page-chapter" data-page="p06a" aria-label="第六章：总结与经验分享">
+
+      <header class="chapter-head head-inline">
+        <div>
+          <div class="breadcrumb">
+            <span class="n">06</span>
+            <span class="bar"></span>
+            <span>总结与经验分享</span>
+          </div>
+          <div class="title-row">
+            <h2 class="chapter-title">经验之谈</h2>
+          </div>
+        </div>
+        <div class="chapter-meta">
+          <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn next-btn" data-next="p06b" aria-label="下一页：Harness-Learning 项目">下一页 →</button>
+        </div>
+      </header>
+
+      <div class="chapter-body exp-body">
+
+        <p class="exp-lede">DSH 的装配自由度很高，这是它最大的优点，也是它最容易出事的地方。</p>
+
+        <div class="exp-card">
+
+          <div class="exp-row r1">
+            <span class="exp-num">01</span>
+            <div class="exp-title">
+              <b>先留一个能救命的 Harness</b>
+              <span>开工之前就要准备好</span>
+            </div>
+            <div class="exp-detail">
+              <p>装配自由度越高，越容易把自己改到起不来。留一个<em>未经改动的 Harness</em>，专门用来救被你改坏的那一个。</p>
+              <p>它需要是独立安装、独立 profile、能单独启动的。改坏之后的第一件事不是排错，是<em>先恢复可用</em>。</p>
+            </div>
+          </div>
+
+          <div class="exp-row r2">
+            <span class="exp-num">02</span>
+            <div class="exp-title">
+              <b>按介入深度分两种做法</b>
+              <span>一次性介入 vs 介入运行态</span>
+            </div>
+            <div class="exp-detail">
+              <p><b>一次性介入</b>的插件——跑完就结束、不改动系统状态——可以直接描述需求让 AI 做，试错成本低。</p>
+              <p><b>介入当前运行态</b>的插件——挂事件、改循环、动会话状态——推荐先定清需求与边界再动手。<em>这类插件出错不是报错，是静默把系统带到奇怪的状态</em>。</p>
+            </div>
+          </div>
+
+          <div class="exp-row r3">
+            <span class="exp-num">03</span>
+            <div class="exp-title">
+              <b>让 AI 写代码时，加一句约束</b>
+              <span>直接影响插件的可用周期</span>
+            </div>
+            <div class="exp-detail">
+              <p>模块之间尽量解耦，不要为了「少写几行」把两处逻辑拧在一起。依赖关系一旦缠起来，改一处就要牵动一片。</p>
+              <div class="exp-prompt">
+                <span class="k">提示词</span>
+                <span class="txt">模块设计尽量解耦，<span class="hl">不要怕代码复用</span>，避免依赖关系难以管理。</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <footer class="chapter-foot">
+        <span>DeepSeek Harness · MIT · github.com/deepseek-ai/deepseek-harness</span>
+        <span class="keys">
+          <span class="kbd">←</span> 上一页
+          <span class="kbd">Esc</span> 返回封面
+        </span>
+      </footer>
+
+    </section>
+
+    <!-- ==================== 第六章 · 第 2 页：Harness-Learning 项目 ==================== -->
+    <section class="page page-chapter" data-page="p06b" aria-label="第六章：总结与经验分享">
+
+      <header class="chapter-head head-inline">
+        <div>
+          <div class="breadcrumb">
+            <span class="n">06</span>
+            <span class="bar"></span>
+            <span>总结与经验分享</span>
+          </div>
+          <div class="title-row">
+            <h2 class="chapter-title">把 Harness 重写一遍</h2>
+            <p class="chapter-sub">Harness-Learning 项目</p>
+          </div>
+        </div>
+        <div class="chapter-meta">
+          <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+        </div>
+      </header>
+
+      <div class="chapter-body proj-body">
+
+        <div class="proj-grid">
+
+          <div class="proj-col">
+            <div class="proj-head">
+              <span class="n">01</span>
+              <b>在做的事</b>
+            </div>
+            <p class="proj-lede">参考 DeepSeek Harness 的机制，<b>用 Python 从零重写</b>一个 agent harness。只读参考，不抄代码。</p>
+            <div class="proj-stats">
+              <div class="stat">
+                <div class="v">5</div>
+                <div class="k">个阶段：P0 预热 → P4 实质化</div>
+              </div>
+              <div class="stat">
+                <div class="v">4.1<em> 万行</em></div>
+                <div class="k">Python 代码 / 140 个文件</div>
+              </div>
+              <div class="stat">
+                <div class="v">570<em> 用例</em></div>
+                <div class="k">536 离线 + 34 真实 API</div>
+              </div>
+              <div class="stat">
+                <div class="v">57<em> 份</em></div>
+                <div class="k">决策记录</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="proj-col">
+            <div class="proj-head">
+              <span class="n">02</span>
+              <b>五级推进</b>
+            </div>
+            <div class="pstage-list">
+              <div class="pstage s0">
+                <span class="p">P0</span>
+                <div class="c">
+                  <div class="t">预热<small>单文件</small></div>
+                  <div class="d">模型调用、工具调用、循环、文件沙箱逐个跑通 · <em>4 练习 / 15 用例</em></div>
+                </div>
+              </div>
+              <div class="pstage s1">
+                <span class="p">P1</span>
+                <div class="c">
+                  <div class="t">骨架<small>结构化</small></div>
+                  <div class="d">把机制拆成协议、管线、事件三层 · <em>5 练习 / 79 用例</em></div>
+                </div>
+              </div>
+              <div class="pstage s2">
+                <span class="p">P2</span>
+                <div class="c">
+                  <div class="t">产品化<small>接缝与组装</small></div>
+                  <div class="d">提示词装配、能力接缝、配置组装、服务化 · <em>11 阶段全绿</em></div>
+                </div>
+              </div>
+              <div class="pstage s3">
+                <span class="p">P3</span>
+                <div class="c">
+                  <div class="t">插件化<small>整体重表达</small></div>
+                  <div class="d">服务 / 事件 / effect / inject，二十个插件 · <em>423 用例</em></div>
+                </div>
+              </div>
+              <div class="pstage s4">
+                <span class="p">P4</span>
+                <div class="c">
+                  <div class="t">实质化<small>从零重写</small></div>
+                  <div class="d">不再搬 P3 代码，底座 + 三类插件做成一个可用产品 · <em>570 用例</em></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="proj-col">
+            <div class="proj-head">
+              <span class="n">03</span>
+              <b>P4 的三个决定</b>
+            </div>
+            <div class="dec-list">
+              <div class="dec">
+                <b>非插件只有一处</b>
+                <p>整个仓库只有一个 <code>core/</code>：框架加启动器，三个文件。<code>loader</code>、装配树、会话、工具，全是插件。</p>
+              </div>
+              <div class="dec">
+                <b>装配单是数据</b>
+                <p>换产品形态不改代码，只换一份 YAML。插件工厂仍是白名单——数据不能凭空造插件。</p>
+              </div>
+              <div class="dec">
+                <b>插件分三类角色</b>
+                <p>base 打底，application 决定用户从哪进来，capability 提供能力。没有运行中的应用化插件，启动器直接拒绝。</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="proj-rules">
+          <div class="rule">
+            <b>无验收不开始</b>
+            <span>动手前先写下这一阶段的验收命令，它就是「完成」的定义。</span>
+          </div>
+          <div class="rule">
+            <b>无笔记不算完成</b>
+            <span>每个阶段留一份决策记录：背景、决策、备选、后果。</span>
+          </div>
+          <div class="rule">
+            <b>门禁不绿不前进</b>
+            <span>离线门禁与真实 API 门禁分开计数，不合并成一句「全绿」。</span>
+          </div>
+        </div>
+
+      </div>
+
+      <footer class="chapter-foot">
+        <span>Harness-Learning · Python 3.13 · 参考实现 DeepSeek Harness</span>
         <span class="keys">
           <span class="kbd">←</span> 上一页
           <span class="kbd">Esc</span> 返回封面
@@ -9020,6 +9802,7 @@
     p02b: document.querySelector('[data-page="p02b"]'),
     p02c: document.querySelector('[data-page="p02c"]'),
     p03: document.querySelector('[data-page="p03"]'),
+    p03b: document.querySelector('[data-page="p03b"]'),
     p04a: document.querySelector('[data-page="p04a"]'),
     p04b: document.querySelector('[data-page="p04b"]'),
     p04c: document.querySelector('[data-page="p04c"]'),
@@ -9035,7 +9818,9 @@
     p05h: document.querySelector('[data-page="p05h"]'),
     p05i: document.querySelector('[data-page="p05i"]'),
     p05j: document.querySelector('[data-page="p05j"]'),
-    p05k: document.querySelector('[data-page="p05k"]')
+    p05k: document.querySelector('[data-page="p05k"]'),
+    p06a: document.querySelector('[data-page="p06a"]'),
+    p06b: document.querySelector('[data-page="p06b"]')
   };
   var currentPage = "cover";
 
@@ -9102,6 +9887,8 @@
         go("p04a");
       } else if (n === 5) {
         go("p05a");
+      } else if (n === 6) {
+        go("p06a");
       } else {
         toast("第 0" + n + " 章 · " + btn.getAttribute("data-title") + " 还在整理中");
       }
@@ -10215,6 +11002,10 @@
       return;
     }
     if (e.key === "ArrowRight" && currentPage === "p03") {
+      go("p03b");
+      return;
+    }
+    if (e.key === "ArrowRight" && currentPage === "p03b") {
       go("p04a");
       return;
     }
@@ -10279,7 +11070,23 @@
       return;
     }
     if (e.key === "ArrowRight" && currentPage === "p05k") {
+      go("p06a");
+      return;
+    }
+    if (e.key === "ArrowRight" && currentPage === "p06a") {
+      go("p06b");
+      return;
+    }
+    if (e.key === "ArrowRight" && currentPage === "p06b") {
       // 最后一页：再往右翻不动，避免误触跳回封面。
+      return;
+    }
+    if (e.key === "ArrowLeft" && currentPage === "p06b") {
+      go("p06a");
+      return;
+    }
+    if (e.key === "ArrowLeft" && currentPage === "p06a") {
+      go("p05k");
       return;
     }
     if (e.key === "ArrowLeft" && currentPage === "p05k") {
@@ -10343,6 +11150,10 @@
       return;
     }
     if (e.key === "ArrowLeft" && currentPage === "p04a") {
+      go("p03");
+      return;
+    }
+    if (e.key === "ArrowLeft" && currentPage === "p03b") {
       go("p03");
       return;
     }
