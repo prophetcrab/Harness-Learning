@@ -301,4 +301,8 @@ Harness-Learning
 项目仓库：https://github.com/prophetcrab/Harness-Learning
 项目说明：从第一次调用大模型API开始，到形成一个完整的Harness工具
 
-P0 
+P0 API调用，工具调用，ReAct循环，外部检索，设备操作
+P1 最小Harness骨架：API协议，工具管线，智能体编排，组装
+P2 Harness能力补全：提示词装配，会话记录追溯，文件操作，沙盒审批，shell工具，插件协议，RPC
+P3 Hanrss能力拓展：自拓展工具，用量和预算，运行仪表盘，插件热插拔
+P4 插件化内核：一个模仿cordis的Harness内核框架，有上下文管理，事件分发，装配单检查和启动器构成

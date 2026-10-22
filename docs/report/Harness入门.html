@@ -4490,6 +4490,14 @@
     color: var(--muted);
   }
   .design-a .one b { color: var(--ink-2); font-weight: 600; }
+  .design-a code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: #eef2f8;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-2);
+  }
 
   .design-out {
     display: flex;
@@ -4527,6 +4535,12 @@
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
+  }
+  .doc-link {
+    text-decoration: none;
+  }
+  .design-map .items.four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .design-map .it {
     padding: 9px 12px;
@@ -5091,219 +5105,439 @@
   }
   .capa-foot b { color: #0b6f62; font-weight: 600; }
 
-  /* ---------------- 第六章第 2 页：Harness-Learning 项目 ---------------- */
+  /* ---------------- 第六章第 2 页：Harness-Learning 学习路径 ---------------- */
 
-  .proj-body {
-    display: flex;
-    flex-direction: column;
-    margin-top: 14px;
-    min-height: 0;
-  }
-
-  .proj-grid {
-    flex: 1;
-    min-height: 0;
+  .path-body {
     display: grid;
-    grid-template-columns: 300px minmax(0, 1fr) 430px;
-    gap: 18px;
+    grid-template-columns: 404px minmax(0, 1fr);
+    gap: 26px;
+    margin-top: 16px;
+    min-height: 0;
   }
 
-  .proj-col {
-    min-height: 0;
+  /* 左：仓库信息卡 */
+  .path-intro {
+    align-self: start;
     display: flex;
     flex-direction: column;
-    padding: 4px 20px;
-    border-radius: 16px;
+    padding: 0 26px;
+    border-radius: 18px;
     border: 1px solid rgba(255, 255, 255, 0.95);
-    background: rgba(255, 255, 255, 0.66);
-    box-shadow: 0 12px 34px rgba(20, 40, 80, 0.055);
+    background: rgba(255, 255, 255, 0.68);
+    box-shadow: 0 14px 38px rgba(20, 40, 80, 0.06);
     overflow: hidden;
   }
 
-  .proj-head {
+  .path-repo {
+    flex: none;
+    padding: 26px 0 22px;
+    border-bottom: 1px solid var(--line);
+  }
+  .path-repo .cap {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: var(--accent-a);
+  }
+  .path-repo .url {
+    margin-top: 10px;
+    padding: 11px 13px;
+    border-radius: 8px;
+    background: #0f1c33;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.55;
+    color: #c6d7ee;
+    white-space: nowrap;
+  }
+  .path-repo .url .s { color: #6ff0d6; }
+
+  .path-facts {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 22px 0 24px;
+  }
+  .path-fact + .path-fact {
+    margin-top: 22px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+  }
+  .path-fact .k {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--accent-a);
+  }
+  .path-fact .v {
+    display: block;
+    margin-top: 8px;
+    font-size: 16.5px;
+    line-height: 1.7;
+    color: var(--ink-2);
+  }
+
+  /* 右：五级卡 */
+  .levels {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .levels-head {
     flex: none;
     display: flex;
     align-items: baseline;
-    gap: 8px;
-    padding: 11px 0 9px;
+    gap: 10px;
+    padding: 0 2px 10px;
     border-bottom: 1px solid var(--line-strong);
   }
-  .proj-head .n {
+  .levels-head b { font-size: 13px; font-weight: 650; color: var(--ink); }
+  .levels-head span {
+    margin-left: auto;
     font-family: var(--font-mono);
     font-size: 11px;
     letter-spacing: 0.1em;
-    color: var(--accent-a);
-  }
-  .proj-head b {
-    font-size: 14px;
-    font-weight: 650;
-    color: var(--ink);
-  }
-
-  /* 左：定位 + 数字 */
-  .proj-lede {
-    flex: none;
-    padding: 12px 0 10px;
-    font-size: 13px;
-    line-height: 1.6;
-    color: var(--ink-2);
-  }
-  .proj-lede b { color: var(--ink); font-weight: 600; }
-
-  .proj-stats {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .stat {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 2px;
-    padding: 6px 0;
-    border-top: 1px solid var(--line);
-  }
-  .stat:first-child { border-top: 0; }
-  .stat .v {
-    font-family: var(--font-mono);
-    font-size: 22px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    line-height: 1.1;
-    color: var(--ink);
-  }
-  .stat .v em {
-    font-style: normal;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--muted);
-  }
-  .stat .k {
-    font-size: 12px;
     color: var(--muted);
   }
 
-  /* 中：五级推进 */
-  .pstage-list {
+  .level-list {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
+    gap: 9px;
+    padding: 12px 0 0;
   }
-  .pstage {
+
+  .level {
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr);
-    gap: 10px;
+    grid-template-columns: 78px minmax(0, 1fr);
     align-items: center;
-    padding: 6px 0;
-    border-top: 1px solid var(--line);
+    gap: 16px;
+    padding: 10px 20px 10px 18px;
+    border-radius: 13px;
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    background: #fff;
+    box-shadow: 0 6px 18px rgba(20, 40, 80, 0.045);
+    border-left-width: 3px;
+    border-left-style: solid;
   }
-  .pstage:first-child { border-top: 0; }
-  .pstage .p {
+  .level.l0 { border-left-color: #7c8db0; }
+  .level.l1 { border-left-color: #2f6ce8; }
+  .level.l2 { border-left-color: #0e8f7d; }
+  .level.l3 { border-left-color: #d99420; }
+  .level.l4 { border-left-color: #b5478f; }
+
+  .level .tag {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .level .tag .p {
     font-family: var(--font-mono);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1;
   }
-  .pstage.s0 .p { color: #7c8db0; }
-  .pstage.s1 .p { color: #2f6ce8; }
-  .pstage.s2 .p { color: #0e8f7d; }
-  .pstage.s3 .p { color: #d99420; }
-  .pstage.s4 .p { color: #b5478f; }
-  .pstage .c { min-width: 0; }
-  .pstage .t {
-    font-size: 13.5px;
-    font-weight: 600;
+  .level.l0 .p { color: #7c8db0; }
+  .level.l1 .p { color: #2f6ce8; }
+  .level.l2 .p { color: #0e8f7d; }
+  .level.l3 .p { color: #d99420; }
+  .level.l4 .p { color: #b5478f; }
+  .level .tag .n {
+    padding-left: 2px;
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+
+  .level .c { min-width: 0; }
+  .level .t {
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: -0.005em;
     color: var(--ink);
   }
-  .pstage .t small {
-    margin-left: 7px;
-    font-size: 11.5px;
-    font-weight: 400;
-    color: var(--muted);
+  .level .chips {
+    margin-top: 7px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
   }
-  .pstage .d {
-    margin-top: 2px;
-    font-size: 12px;
-    line-height: 1.45;
-    color: var(--muted);
-  }
-  .pstage .d em {
-    font-style: normal;
+  .level .chips span {
+    padding: 2px 9px;
+    border-radius: 5px;
+    background: #f1f5fa;
     font-family: var(--font-mono);
     font-size: 11.5px;
+    line-height: 1.6;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .level.l4 .chips span { background: rgba(181, 71, 143, 0.07); }
+
+  /* ---------------- 插件定义文档弹窗 ---------------- */
+
+  .doc-modal .arch-card {
+    width: 1180px;
+    height: 812px;
+  }
+  .doc-modal .arch-title { font-size: 24px; }
+  .doc-modal .arch-sub { padding-bottom: 4px; }
+
+  .doc-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 6px 4px 0;
+  }
+  .doc-scroll::-webkit-scrollbar { width: 8px; }
+  .doc-scroll::-webkit-scrollbar-thumb {
+    background: rgba(28, 52, 96, 0.16);
+    border-radius: 4px;
+  }
+  .doc-scroll::-webkit-scrollbar-track { background: transparent; }
+
+  .doc-inner {
+    padding: 22px 44px 26px 40px;
+  }
+
+  .doc-inner .doc-note {
+    margin-bottom: 22px;
+    padding: 11px 15px;
+    border-radius: 9px;
+    border-left: 3px solid rgba(47, 108, 232, 0.45);
+    background: rgba(47, 108, 232, 0.05);
+    font-size: 13px;
+    line-height: 1.7;
     color: var(--ink-2);
   }
 
-  /* 右：三个决定 */
-  .dec-list {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .dec {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 4px;
-    padding: 8px 0;
-    border-top: 1px solid var(--line);
-  }
-  .dec:first-child { border-top: 0; }
-  .dec b {
-    font-size: 13.5px;
-    font-weight: 650;
+  .doc-inner h2 {
+    margin: 30px 0 14px;
+    padding-left: 13px;
+    border-left: 3px solid var(--accent-a);
+    font-family: var(--font-display);
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.3;
     color: var(--ink);
   }
-  .dec p {
-    font-size: 12px;
-    line-height: 1.5;
-    color: var(--muted);
+  .doc-inner h2:first-of-type { margin-top: 6px; }
+
+  .doc-inner h3 {
+    margin: 22px 0 9px;
+    font-size: 15.5px;
+    font-weight: 650;
+    letter-spacing: -0.005em;
+    color: var(--ink);
   }
-  .dec p code {
+
+  .doc-inner p {
+    font-size: 13.5px;
+    line-height: 1.78;
+    color: var(--ink-2);
+  }
+  .doc-inner p + p { margin-top: 9px; }
+
+  .doc-inner .doc-strong {
+    margin: 16px 0 7px;
+    font-size: 12.5px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    color: var(--accent-a);
+  }
+
+  .doc-inner ul,
+  .doc-inner ol {
+    margin-top: 8px;
+    padding-left: 20px;
+    font-size: 13.5px;
+    line-height: 1.78;
+    color: var(--ink-2);
+  }
+  .doc-inner ul { list-style: none; }
+  .doc-inner ul > li {
+    position: relative;
+    padding-left: 12px;
+    margin-top: 5px;
+  }
+  .doc-inner ul > li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 9px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--line-strong);
+  }
+  .doc-inner ol {
+    list-style: decimal;
+    padding-left: 22px;
+  }
+  .doc-inner ol > li { margin-top: 6px; }
+  .doc-inner li ul {
+    margin-top: 5px;
+    font-size: 12.5px;
+    line-height: 1.7;
+  }
+  .doc-inner li ul > li::before { background: rgba(28, 52, 96, 0.18); }
+
+  .doc-inner b { color: var(--ink); font-weight: 600; }
+
+  .doc-inner code {
     padding: 1px 5px;
     border-radius: 4px;
     background: #eef2f8;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 11.5px;
     color: var(--ink-2);
+    overflow-wrap: anywhere;
   }
 
-  /* 底：三条纪律 */
-  .proj-rules {
-    flex: none;
-    margin-top: 12px;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-  }
-  .rule {
-    padding: 9px 14px;
-    border-radius: 9px;
-    background: rgba(14, 143, 125, 0.06);
+  .doc-table {
+    width: 100%;
+    margin-top: 10px;
+    border-collapse: collapse;
     font-size: 12.5px;
-    line-height: 1.5;
-    color: var(--ink-2);
+    line-height: 1.6;
   }
-  .rule b {
-    display: block;
-    font-size: 12.5px;
-    font-weight: 650;
-    color: #0b6f62;
-  }
-  .rule span {
-    display: block;
-    margin-top: 2px;
+  .doc-table th {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line-strong);
+    background: rgba(246, 249, 253, 0.9);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-align: left;
     color: var(--muted);
   }
+  .doc-table td {
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    color: var(--ink-2);
+  }
+  .doc-table tbody tr:last-child td { border-bottom: 0; }
+  .doc-table td:first-child { color: var(--ink); font-weight: 500; }
+
+  .doc-foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 40px 14px;
+    border-top: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+
+  /* ---------------- 本机 dsh web 弹窗 ---------------- */
+
+  .dsh-btn {
+    border-color: rgba(47, 108, 232, 0.4);
+    color: var(--accent-b);
+  }
+  .dsh-btn:hover { border-color: var(--accent-b); background: #fff; }
+  .dsh-btn::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #b9c6d9;
+  }
+  .dsh-btn.is-live::before { background: #0e8f7d; box-shadow: 0 0 0 3px rgba(14, 143, 125, 0.14); }
+
+  .dsh-modal .arch-card {
+    width: 1400px;
+    height: 840px;
+  }
+  .dsh-modal .arch-sub {
+    max-width: 460px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dsh-hint {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .dsh-open {
+    margin-left: 14px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    color: var(--accent-b);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(47, 108, 232, 0.28);
+    white-space: nowrap;
+  }
+  .dsh-open:hover { border-bottom-color: var(--accent-b); }
+
+  .dsh-stage {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    display: flex;
+  }
+
+  .dsh-wait {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: #fff;
+    z-index: 2;
+  }
+  .dsh-wait[hidden] { display: none; }
+  .dsh-wait b {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .dsh-wait span {
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .dsh-wait.is-error b { color: #b5478f; }
+  .dsh-wait.is-error span {
+    max-width: 640px;
+    text-align: center;
+    line-height: 1.6;
+    color: #8a3a6c;
+  }
+  .dsh-spinner {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid rgba(47, 108, 232, 0.18);
+    border-top-color: var(--accent-b);
+    animation: dsh-spin 0.8s linear infinite;
+  }
+  .dsh-wait.is-error .dsh-spinner { display: none; }
+  @keyframes dsh-spin { to { transform: rotate(360deg); } }
+
+  .dsh-frame {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    border: 0;
+    background: #fff;
+  }
+  .dsh-frame[hidden] { display: none; }
 
   /* ---------------- 弹窗 ---------------- */
 
@@ -7899,6 +8133,7 @@
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn dsh-btn" data-dsh-open aria-label="打开本机 dsh web">打开 dsh →</button>
           <button class="back-btn" data-build aria-label="查看构建成功后的运行界面">查看运行界面 →</button>
           <button class="back-btn next-btn" data-next="p05b" aria-label="下一页：安装插件">下一页 →</button>
         </div>
@@ -8000,6 +8235,7 @@
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn dsh-btn" data-dsh-open aria-label="打开本机 dsh web">打开 dsh →</button>
           <button class="back-btn next-btn" data-next="p05c" aria-label="下一页：命令行方式">下一页 →</button>
         </div>
       </header>
@@ -8069,6 +8305,7 @@
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn dsh-btn" data-dsh-open aria-label="打开本机 dsh web">打开 dsh →</button>
           <button class="back-btn next-btn" data-next="p05d" aria-label="下一页：插件市场安装">下一页 →</button>
         </div>
       </header>
@@ -8151,6 +8388,7 @@
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn dsh-btn" data-dsh-open aria-label="打开本机 dsh web">打开 dsh →</button>
           <button class="back-btn next-btn" data-next="p05e" aria-label="下一页：源码结构与切入点">下一页 →</button>
         </div>
       </header>
@@ -8222,6 +8460,7 @@
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn dsh-btn" data-dsh-open aria-label="打开本机 dsh web">打开 dsh →</button>
           <button class="back-btn next-btn" data-next="p05f" aria-label="下一页：Web 装配结构">下一页 →</button>
         </div>
       </header>
@@ -8355,6 +8594,7 @@
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn dsh-btn" data-dsh-open aria-label="打开本机 dsh web">打开 dsh →</button>
           <button class="back-btn next-btn" data-next="p05g" aria-label="下一页：插件设计核心思想">下一页 →</button>
         </div>
       </header>
@@ -8667,11 +8907,13 @@
           </div>
           <div class="title-row">
             <h2 class="chapter-title">插件设计核心思想</h2>
-            <p class="chapter-sub">以「跨会话长期记忆」为例</p>
+            <p class="chapter-sub">以 dsh-task-memory 的实现文档为例</p>
           </div>
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn dsh-btn" data-dsh-open aria-label="打开本机 dsh web">打开 dsh →</button>
+          <button class="back-btn doc-link" data-doc-open>完整文档 →</button>
           <button class="back-btn next-btn" data-next="p05h" aria-label="下一页：先确定服务形态">下一页 →</button>
         </div>
       </header>
@@ -8689,12 +8931,12 @@
             <small>用户的直接目的；做成什么样算达成。</small>
           </div>
           <div class="design-a">
-            <p class="lead">让 AI 跨会话记得「我要做的事」，并在合适的时候让我自己想起来。</p>
+            <p class="lead">给 DSH 增加一份跨会话、跨重启的「任务 + 长期事实」记忆。</p>
             <ul>
-              <li><b>谁</b> 单个用户，日常、跨会话</li>
-              <li><b>场景</b> 每天开工前 / 会话里说「帮我记一下」</li>
-              <li><b>得到</b> 不用翻旧会话；搁置的事自己回来</li>
-              <li><b>不做</b> 不自动执行、不多人共享、不做通用知识库</li>
+              <li><b>记什么</b> 待办、截止、承诺；偏好、人物、项目、决定、约束</li>
+              <li><b>怎么记</b> 回合结束自动抽取，失败只记日志、不打断对话</li>
+              <li><b>怎么忆</b> 按曲线排序注入，搁置的事自己回到该想起的集合</li>
+              <li><b>不做</b> 不存对话原文、不做通用 RAG、不自动执行任务</li>
             </ul>
           </div>
         </div>
@@ -8710,9 +8952,9 @@
             <p><b>能力</b>：为了完成什么任务？</p>
           </div>
           <div class="design-a">
-            <p class="one"><b>事实</b> · 任务本体（内容、状态、来源会话、时间）、记忆状态（强度、忽略次数）、反馈（做了 / 忽略 / 推迟）、偏好（免打扰时段）</p>
-            <p class="one"><b>行为</b> · 主要是改造：记忆是对话的副产物，不需要「去用某个功能」；只有一句「我最近在干什么」是新能力</p>
-            <p class="one"><b>能力</b> · 一句话验收：<em>「现在我可以不用记事了。」</em></p>
+            <p class="one"><b>事实</b> · 一个账本 <code>state.json</code>：<code>tasks[]</code>（状态 / 优先级 / 提及 / 忽略）、<code>facts[]</code>（类别 / 重要度 / 提及）、<code>digest</code>（简报绑定）。强度与闲置天数是算出来的，落盘只有输入量</p>
+            <p class="one"><b>行为</b> · 只走文档化扩展点：<code>session/event</code>、<code>agent/assistant-stream</code>、<code>systemPrompt.section()</code>、宿主 schedule；另加 7 个工具、3 个命令</p>
+            <p class="one"><b>能力</b> · 记 · 忆 · 维 · 提 · 呈——五个动词覆盖全部范围</p>
           </div>
         </div>
 
@@ -8729,25 +8971,26 @@
           </div>
           <div class="design-a">
             <div class="design-out">
-              <span>模型 · 只取相关的几条</span>
-              <span>用户 · 每日一条建议</span>
-              <span>系统 · 会话日志</span>
+              <span>模型 · ≤12 条任务 / 2400 字符 + ≤8 条事实</span>
+              <span>用户 · /tasks /memories /brief</span>
+              <span>宿主 · state.json + schedule + 日志</span>
             </div>
             <ul>
-              <li><b>全景 ≠ 全量注入</b>：曲线本质是检索排序</li>
-              <li><b>每个建议能一键「做了 / 别提了」</b></li>
-              <li><b>抽错能删、太吵能调频</b>：静默失败最伤信任</li>
-              <li><b>用户看见而 AI 想不起来 = 骗人</b></li>
+              <li><b>可重建</b>：提示小节由 store 派生，随请求进日志</li>
+              <li><b>不扩事件</b>：自动抽取在对话外跑，不新增会话事件类型</li>
+              <li><b>可核对</b>：id、来源会话、强度、提及次数、闲置天数</li>
+              <li><b>同源</b>：用户看见而模型想不起来 = 骗人</li>
             </ul>
           </div>
         </div>
 
         <div class="design-map">
-          <span class="lbl">落到 DSH</span>
-          <div class="items">
-            <div class="it"><b>定义</b><span>验收标准写进 README</span></div>
-            <div class="it"><b>画像</b><span>SessionEvent 日志 + 事件订阅 / ctx.tools.register</span></div>
-            <div class="it"><b>投影</b><span>render · presentResult · presentationMeta</span></div>
+          <span class="lbl">代价与边界</span>
+          <div class="items four">
+            <div class="it"><b>运行成本</b><span>每回合 1 次抽取（可关）· 简报每天 1 次</span></div>
+            <div class="it"><b>卸载残留</b><span>state.json 保留 · schedule 记录需手动清</span></div>
+            <div class="it"><b>降级</b><span>无 schedule 无简报 · 非 Web 回退文本</span></div>
+            <div class="it"><b>失败形态</b><span>六种全部「只降级、不打断」</span></div>
           </div>
         </div>
 
@@ -8780,6 +9023,7 @@
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn dsh-btn" data-dsh-open aria-label="打开本机 dsh web">打开 dsh →</button>
           <button class="back-btn next-btn" data-next="p05i" aria-label="下一页：先划定插件规模">下一页 →</button>
         </div>
       </header>
@@ -8858,6 +9102,7 @@
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn dsh-btn" data-dsh-open aria-label="打开本机 dsh web">打开 dsh →</button>
           <button class="back-btn next-btn" data-next="p05j" aria-label="下一页：先出设计文档">下一页 →</button>
         </div>
       </header>
@@ -8933,6 +9178,7 @@
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn dsh-btn" data-dsh-open aria-label="打开本机 dsh web">打开 dsh →</button>
           <button class="back-btn next-btn" data-next="p05k" aria-label="下一页：让 AI 补边际功能">下一页 →</button>
         </div>
       </header>
@@ -9000,6 +9246,7 @@
         </div>
         <div class="chapter-meta">
           <button class="back-btn" data-back aria-label="返回封面">← 返回封面</button>
+          <button class="back-btn dsh-btn" data-dsh-open aria-label="打开本机 dsh web">打开 dsh →</button>
           <button class="back-btn next-btn" data-next="p06a" aria-label="下一页：经验之谈">下一页 →</button>
         </div>
       </header>
@@ -9117,7 +9364,7 @@
 
     </section>
 
-    <!-- ==================== 第六章 · 第 2 页：Harness-Learning 项目 ==================== -->
+    <!-- ==================== 第六章 · 第 2 页：Harness-Learning 学习路径 ==================== -->
     <section class="page page-chapter" data-page="p06b" aria-label="第六章：总结与经验分享">
 
       <header class="chapter-head head-inline">
@@ -9128,8 +9375,8 @@
             <span>总结与经验分享</span>
           </div>
           <div class="title-row">
-            <h2 class="chapter-title">把 Harness 重写一遍</h2>
-            <p class="chapter-sub">Harness-Learning 项目</p>
+            <h2 class="chapter-title">Harness-Learning</h2>
+            <p class="chapter-sub">从零开始的 Harness 学习路径</p>
           </div>
         </div>
         <div class="chapter-meta">
@@ -9137,115 +9384,101 @@
         </div>
       </header>
 
-      <div class="chapter-body proj-body">
+      <div class="chapter-body path-body">
 
-        <div class="proj-grid">
+        <div class="path-intro">
 
-          <div class="proj-col">
-            <div class="proj-head">
-              <span class="n">01</span>
-              <b>在做的事</b>
-            </div>
-            <p class="proj-lede">参考 DeepSeek Harness 的机制，<b>用 Python 从零重写</b>一个 agent harness。只读参考，不抄代码。</p>
-            <div class="proj-stats">
-              <div class="stat">
-                <div class="v">5</div>
-                <div class="k">个阶段：P0 预热 → P4 实质化</div>
-              </div>
-              <div class="stat">
-                <div class="v">4.1<em> 万行</em></div>
-                <div class="k">Python 代码 / 140 个文件</div>
-              </div>
-              <div class="stat">
-                <div class="v">570<em> 用例</em></div>
-                <div class="k">536 离线 + 34 真实 API</div>
-              </div>
-              <div class="stat">
-                <div class="v">57<em> 份</em></div>
-                <div class="k">决策记录</div>
-              </div>
-            </div>
+          <div class="path-repo">
+            <div class="cap">项目仓库</div>
+            <div class="url"><span class="s">https://</span>github.com/prophetcrab/Harness-Learning</div>
           </div>
 
-          <div class="proj-col">
-            <div class="proj-head">
-              <span class="n">02</span>
-              <b>五级推进</b>
+          <div class="path-facts">
+            <div class="path-fact">
+              <span class="k">说明</span>
+              <span class="v">从第一次调用大模型 API，到形成一个完整的 Harness。</span>
             </div>
-            <div class="pstage-list">
-              <div class="pstage s0">
-                <span class="p">P0</span>
-                <div class="c">
-                  <div class="t">预热<small>单文件</small></div>
-                  <div class="d">模型调用、工具调用、循环、文件沙箱逐个跑通 · <em>4 练习 / 15 用例</em></div>
-                </div>
-              </div>
-              <div class="pstage s1">
-                <span class="p">P1</span>
-                <div class="c">
-                  <div class="t">骨架<small>结构化</small></div>
-                  <div class="d">把机制拆成协议、管线、事件三层 · <em>5 练习 / 79 用例</em></div>
-                </div>
-              </div>
-              <div class="pstage s2">
-                <span class="p">P2</span>
-                <div class="c">
-                  <div class="t">产品化<small>接缝与组装</small></div>
-                  <div class="d">提示词装配、能力接缝、配置组装、服务化 · <em>11 阶段全绿</em></div>
-                </div>
-              </div>
-              <div class="pstage s3">
-                <span class="p">P3</span>
-                <div class="c">
-                  <div class="t">插件化<small>整体重表达</small></div>
-                  <div class="d">服务 / 事件 / effect / inject，二十个插件 · <em>423 用例</em></div>
-                </div>
-              </div>
-              <div class="pstage s4">
-                <span class="p">P4</span>
-                <div class="c">
-                  <div class="t">实质化<small>从零重写</small></div>
-                  <div class="d">不再搬 P3 代码，底座 + 三类插件做成一个可用产品 · <em>570 用例</em></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="proj-col">
-            <div class="proj-head">
-              <span class="n">03</span>
-              <b>P4 的三个决定</b>
-            </div>
-            <div class="dec-list">
-              <div class="dec">
-                <b>非插件只有一处</b>
-                <p>整个仓库只有一个 <code>core/</code>：框架加启动器，三个文件。<code>loader</code>、装配树、会话、工具，全是插件。</p>
-              </div>
-              <div class="dec">
-                <b>装配单是数据</b>
-                <p>换产品形态不改代码，只换一份 YAML。插件工厂仍是白名单——数据不能凭空造插件。</p>
-              </div>
-              <div class="dec">
-                <b>插件分三类角色</b>
-                <p>base 打底，application 决定用户从哪进来，capability 提供能力。没有运行中的应用化插件，启动器直接拒绝。</p>
-              </div>
+            <div class="path-fact">
+              <span class="k">参考</span>
+              <span class="v">DeepSeek Harness</span>
             </div>
           </div>
 
         </div>
 
-        <div class="proj-rules">
-          <div class="rule">
-            <b>无验收不开始</b>
-            <span>动手前先写下这一阶段的验收命令，它就是「完成」的定义。</span>
+        <div class="levels">
+          <div class="levels-head">
+            <b>五级推进</b>
+            <span>P0 → P4</span>
           </div>
-          <div class="rule">
-            <b>无笔记不算完成</b>
-            <span>每个阶段留一份决策记录：背景、决策、备选、后果。</span>
-          </div>
-          <div class="rule">
-            <b>门禁不绿不前进</b>
-            <span>离线门禁与真实 API 门禁分开计数，不合并成一句「全绿」。</span>
+
+          <div class="level-list">
+
+            <div class="level l0">
+              <div class="tag">
+                <span class="p">P0</span>
+                <span class="n">起点</span>
+              </div>
+              <div class="c">
+                <div class="t">先把这几件事逐个跑通</div>
+                <div class="chips">
+                  <span>API 调用</span><span>工具调用</span><span>ReAct 循环</span><span>外部检索</span><span>设备操作</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="level l1">
+              <div class="tag">
+                <span class="p">P1</span>
+                <span class="n">骨架</span>
+              </div>
+              <div class="c">
+                <div class="t">最小 Harness 骨架</div>
+                <div class="chips">
+                  <span>API 协议</span><span>工具管线</span><span>智能体编排</span><span>组装</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="level l2">
+              <div class="tag">
+                <span class="p">P2</span>
+                <span class="n">补全</span>
+              </div>
+              <div class="c">
+                <div class="t">Harness 能力补全</div>
+                <div class="chips">
+                  <span>提示词装配</span><span>会话记录追溯</span><span>文件操作</span><span>沙盒审批</span><span>shell 工具</span><span>插件协议</span><span>RPC</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="level l3">
+              <div class="tag">
+                <span class="p">P3</span>
+                <span class="n">拓展</span>
+              </div>
+              <div class="c">
+                <div class="t">Harness 能力拓展</div>
+                <div class="chips">
+                  <span>自拓展工具</span><span>用量和预算</span><span>运行仪表盘</span><span>插件热插拔</span><span>WebUI</span><span>多会话并发</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="level l4">
+              <div class="tag">
+                <span class="p">P4</span>
+                <span class="n">内核</span>
+              </div>
+              <div class="c">
+                <div class="t">插件化内核</div>
+                <div class="chips">
+                  <span>上下文管理</span><span>事件分发</span><span>装配单检查</span><span>启动器</span><span>仿 Cordis</span>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -9260,6 +9493,183 @@
       </footer>
 
     </section>
+
+    <!-- 插件定义文档弹窗 -->
+    <div class="arch-modal doc-modal" id="doc-modal" aria-hidden="true">
+      <div class="arch-backdrop" data-doc-close></div>
+      <div class="arch-card" role="dialog" aria-modal="true" aria-label="记忆插件定义文档">
+        <header class="arch-head">
+          <h3 class="arch-title">记忆插件定义</h3>
+          <span class="arch-sub">dsh-task-memory 0.2.0 · plugin-definition.md</span>
+          <button class="arch-close" data-doc-close aria-label="关闭">×</button>
+        </header>
+
+        <div class="doc-scroll">
+          <div class="doc-inner">
+
+            <p class="doc-note">按「定义 / 画像 / 投影」模板（外加定稿模板的第四段「代价与边界」）填写，内容对应当前已安装的 <code>dsh-task-memory</code> 0.2.0。</p>
+
+            <h2>1 · 定义</h2>
+
+            <h3>这个插件是做什么的？</h3>
+            <p>给当前 DSH profile 增加一份跨会话、跨重启的「任务 + 长期事实」记忆：</p>
+            <ul>
+              <li>任务带遗忘 / 再激活曲线，会自己回到「该重新想起」的集合；</li>
+              <li>事实按类别（偏好 / 人物 / 项目 / 决定 / 约束 / 事实）保存，带记忆强度；</li>
+              <li>每轮对话结束后由后台小模型自动判断并写入，定期合并去重；</li>
+              <li>向模型提供有界的记忆上下文与查询工具，向用户提供命令、每日简报、时点提醒和 <code>/brief</code> 视觉简报；</li>
+              <li>模型、用户、宿主看到的是同一份事实（同一 <code>state.json</code>）。</li>
+            </ul>
+
+            <h3>我做这个插件要得到什么？</h3>
+            <ol>
+              <li><b>跨会话不失忆</b>：重启、新会话后模型仍知道待办、截止时间、承诺，以及用户的偏好、项目背景、已做决定和约束。</li>
+              <li><b>低打扰的自动维护</b>：不依赖「模型想起来才记」，回合结束自动抽取；失败只记日志，绝不打断对话。</li>
+              <li><b>可核对、可删除</b>：记忆有 id、来源会话、记忆强度、提及次数、闲置天数；用户能查（<code>/memories</code>）能删（<code>/memories forget</code>）。</li>
+              <li><b>每天可执行的回顾</b>：09:00 文字简报 + <code>/brief</code> 会话内视觉简报（LLM 合成，失败回退本地模板）。</li>
+              <li><b>可审计、可迁移</b>：一个账本文件 + 宿主 schedule 存储，不依赖外部服务。</li>
+            </ol>
+
+            <h2>2 · 画像</h2>
+
+            <h3>a. 事实：运行痕迹与持久化</h3>
+            <p class="doc-strong">必须持久化</p>
+            <ol>
+              <li><code>$DSH_HOME/task-memory/state.json</code>（权威账本，临时文件 + rename 原子写）：
+                <ul>
+                  <li><code>tasks[]</code>：<code>id / title / status / priority / dueAt? / note? / createdAt / updatedAt / lastTouchedAt / lastShownAt? / touches / ignores / doneAt? / droppedAt? / reminderId? / reminderAt? / reminderSessionId? / sourceSessionId?</code></li>
+                  <li><code>facts[]</code>：<code>id / kind / title / detail? / importance / mentions / lastSeenAt / createdAt / updatedAt / sourceSessionId?</code></li>
+                  <li><code>digest</code>：<code>enabled / scheduleId / sessionId / time / timeZone / promptVersion / updatedAt</code>（每日简报绑定）</li>
+                  <li><code>consolidation.lastAt</code>：上次事实整理时间</li>
+                  <li><code>report</code>：当日视觉简报缓存（<code>dateKey / source / generatedAt / headline / insight / focus / facts / sections…</code>）；可丢弃重建，不属于权威记忆</li>
+                  <li><code>version</code>：文档版本</li>
+                </ul>
+              </li>
+              <li><code>$DSH_HOME/storages/schedule.json</code>（宿主 schedule 服务所有）：每天 09:00 简报记录 + 每条任务的一次性提醒记录；插件只持有 <code>scheduleId</code>，不直接写该文件。</li>
+              <li>文件系统痕迹：损坏文档备份 <code>state.json.corrupt-&lt;时间戳&gt;.json</code>；写盘临时文件（正常完成后消失）。</li>
+            </ol>
+
+            <p class="doc-strong">派生、不落盘</p>
+            <p>任务的记忆强度（由 <code>touches / ignores / lastTouchedAt</code> 计算）、事实的记忆强度（由 <code>importance / mentions / lastSeenAt</code> 计算）、闲置天数、排序分数。落盘的是输入量，强度是投影。</p>
+
+            <p class="doc-strong">日志痕迹</p>
+            <p><code>info</code>：抽取写入数量、整理合并 / 删除数量；<code>warn</code>：抽取 / 整理失败、简报回退、digest 绑定失败、状态损坏 / 条目被跳过。除标识和计数外不额外打印记忆内容。</p>
+
+            <p class="doc-strong">会话痕迹</p>
+            <ul>
+              <li>工具调用（<code>task_remember / task_list / task_update / task_brief / memory_remember / memory_list / memory_extract</code>）与命令（<code>/tasks</code>、<code>/memories</code>、<code>/brief</code>）作为既有 session 事件被记录；</li>
+              <li>自动抽取在对话之外运行，<b>不新增 session 事件类型、不写对话</b>；</li>
+              <li>系统提示小节由 store 派生，随请求装配写入日志，因此模型可见内容可重建。</li>
+            </ul>
+
+            <p class="doc-strong">不持久化 / 不拥有</p>
+            <p>对话原文（只保留结构化记忆与界内片段）、抽取计时器与缓冲（进程内内存）、UI 卡片状态与渲染状态。</p>
+
+            <h3>b. 行为：挂已有流程，还是新增能力</h3>
+            <p><b>两者都有，且只走文档化扩展点：</b></p>
+            <ul>
+              <li><b>挂在已有流程上</b>：<code>session/event</code>（<code>user/message</code>、<code>turn/end</code>）后自动抽取；<code>agent/assistant-stream</code> 累积助手文本；<code>systemPrompt.section()</code> 注入记忆小节；宿主 <code>schedule</code> 服务承载每日简报与提醒绑定；会话事件驱动 digest 重绑；浏览器半用 <code>conversation.chat.commandview</code> 挂聊天命令渲染点。</li>
+              <li><b>主动新增入口</b>：7 个工具、3 个命令、<code>/brief</code> 视觉简报卡片、每日 09:00 简报回合、一次性时点提醒、回环报告路由（<code>GET /task-memory/report</code>、<code>POST …/refresh</code>）。</li>
+            </ul>
+            <p><b>触发方式：</b>回合结束（事件，1.5s 防抖）、每日定时、用户命令 / 工具、插件加载（digest 对账）、读取报告（懒生成）。</p>
+            <p><b>不触发条件：</b>无用户来源消息的回合（schedule 投递、subagent）、短于 30 字的回合、<code>autoExtract=false</code>、没有 <code>schedule</code> 服务的 profile（无简报 / 提醒）、非 Web（无视觉卡片，<code>/brief</code> 回退文本）。</p>
+            <p><b>边界：</b>不修改 agent-loop，不新增 session 事件类型，不新增可复用服务（纯消费者）。</p>
+
+            <h3>c. 能力：为完成什么任务而生</h3>
+            <ul>
+              <li><b>记</b>：从对话中自动识别「要做的事」和「值得长期保留的事实」，低置信宁可不记。</li>
+              <li><b>忆</b>：跨会话把任务 / 事实按有界预算注入模型上下文，并提供查询工具。</li>
+              <li><b>维</b>：任务遗忘 / 再激活、事实记忆强度、事实整理（合并 / 去重 / 删除）、用户手动完成 / 推迟 / 放弃 / 删除。</li>
+              <li><b>提</b>：时点提醒、每日简报。</li>
+              <li><b>呈</b>：文字简报、会话内视觉 <code>/brief</code>（LLM 合成 + 本地回退）。</li>
+              <li><b>非目标</b>：通用 RAG / 知识库；不存对话原文；不做多进程共享存储；模型没有直接删除事实的常规工具（删除走用户命令、抽取 <code>forget</code> 或整理）。</li>
+            </ul>
+
+            <h2>3 · 投影</h2>
+
+            <h3>模型看到了什么</h3>
+            <ul>
+              <li>系统提示小节 <code>## 跨会话长期记忆</code>：写入规则 + 当前任务（按紧迫度，≤12 条 / 2400 字符，含 id）+ 长期事实（按记忆强度，≤8 条，含 id 与强度百分比）。</li>
+              <li>7 个工具的定义与结果；<code>task_brief</code> 返回确定性文本简报；<code>memory_list</code> 返回带强度的结构化事实。</li>
+              <li>每日 09:00 digest 回合：宿主投递的固定 prompt（要求调用 <code>task_brief</code> 并原样输出）。</li>
+              <li><code>/brief</code> 命令的文本结果（<code>reportText</code>）作为会话命令输出；视觉卡片本身不进模型上下文。</li>
+              <li><b>看不到</b>：自动抽取 / 整理的后台请求（脱离会话、无会话身份）、<code>state.json</code> 内部细节、报告缓存、UI 状态。</li>
+            </ul>
+
+            <h3>系统（宿主）看到了什么</h3>
+            <ul>
+              <li>插件纤维与注册：tools / commands / systemPrompt / schedule 绑定 / HTTP 报告路由 / client <code>commandview</code>。</li>
+              <li><code>state.json</code> 与宿主 <code>schedule.json</code> 中的记录；运行日志（info / warn）。</li>
+              <li>报告路由（仅回环，拒绝跨站）与其 JSON 响应。</li>
+              <li><b>可检查证据</b>：state 字段、schedule 记录 id、日志行（<code>extraction stored</code> / <code>consolidation</code> / <code>fell back</code>）、路由响应、当前工具列表。</li>
+            </ul>
+
+            <h3>用户看到了什么</h3>
+            <ul>
+              <li>模型回答中的记忆效果；工具调用记录。</li>
+              <li><code>/tasks</code>（未完成任务 + 编号 + 记忆强度 + 简报开关）、<code>/tasks brief</code>、<code>/tasks report</code>、<code>/tasks add|done|later|drop</code>、<code>/tasks digest on|off</code>。</li>
+              <li><code>/memories</code>（事实 + ★重要度 + 记忆强度% + 提及次数 + 闲置天数）、<code>/memories forget &lt;id&gt;</code>。</li>
+              <li><code>/brief</code> 会话内视觉简报（统计卡、今日焦点、记忆洞察、风险、一句话、任务全景，带刷新按钮）；每天 09:00 的文字简报；时点提醒消息。</li>
+              <li>没有侧边栏入口：视觉简报只出现在会话里。</li>
+            </ul>
+
+            <h3>失败形态（三视角同时看）</h3>
+            <table class="doc-table">
+              <thead>
+                <tr><th>失败</th><th>模型</th><th>宿主</th><th>用户</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>抽取 / 整理失败</td><td>无感</td><td>日志 warn，记录原因</td><td>无感</td></tr>
+                <tr><td>报告 LLM 失败 / 超时 / 关闭</td><td><code>/brief</code> 文本仍可用</td><td>日志 warn，缓存标记 <code>source=fallback</code></td><td>卡片保留内容并标注「本地回退」</td></tr>
+                <tr><td><code>state.json</code> 损坏</td><td>记忆清空但可继续用</td><td>先备份 <code>.corrupt-*</code> 再空账本启动 + warn</td><td>表现为记忆清空（可查日志）</td></tr>
+                <tr><td>无 <code>schedule</code></td><td>无简报回合</td><td>digest 绑定不执行</td><td><code>/tasks digest</code> 报错，无提醒 / 简报</td></tr>
+                <tr><td>非 Web / 无 <code>webServer</code></td><td>无变化</td><td>不注册报告路由</td><td><code>/brief</code> 返回文本版</td></tr>
+                <tr><td>单进程并发</td><td>无变化</td><td>无跨进程锁（与 DSH JSON 存储一致）</td><td>同左</td></tr>
+              </tbody>
+            </table>
+
+            <h2>4 · 代价与边界</h2>
+            <ul>
+              <li><b>每次运行成本</b>：每完成回合 1 次小模型抽取请求（可关）；事实整理每 20 条新事实或每天 1 次；视觉简报每天 1 次 + 每次手动刷新；digest 回合是一次对话模型回合（schedule 语义）。</li>
+              <li><b>失败表现</b>：见上表，全部「只降级、不打断」。</li>
+              <li><b>卸载残留</b>：<code>state.json</code> 保留；宿主 <code>schedule</code> 中的提醒记录不会随插件卸载自动删除（先 <code>/tasks digest off</code> 或手动清理）；client 卡片随模块卸载消失；工具 / 命令 / 系统提示小节随纤维卸载撤销。</li>
+              <li><b>降级形态</b>：<code>autoExtract=false</code> → 仅显式工具；<code>reportEnabled=false</code> → 本地模板；无 <code>schedule</code> → 无简报 / 提醒；无 <code>webServer</code> → 文本简报；辅助模型不可用 → 抽取跳过、简报回退模板。</li>
+            </ul>
+
+          </div>
+        </div>
+
+        <div class="doc-foot">
+          <span>dsh-task-memory · docs/plugin-definition.md</span>
+          <span class="n">122 行</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 本机 dsh web 弹窗 -->
+    <div class="arch-modal dsh-modal" id="dsh-modal" aria-hidden="true">
+      <div class="arch-backdrop" data-dsh-close></div>
+      <div class="arch-card" role="dialog" aria-modal="true" aria-label="本机 DeepSeek Harness">
+        <header class="arch-head">
+          <h3 class="arch-title">本机 dsh web</h3>
+          <span class="arch-sub" data-dsh-url>正在检测…</span>
+          <div class="arch-legend">
+            <span class="dsh-hint" data-dsh-hint></span>
+          </div>
+          <a class="dsh-open" data-dsh-blank href="#" target="_blank" rel="noopener">新标签打开 ↗</a>
+          <button class="arch-close" data-dsh-close aria-label="关闭">×</button>
+        </header>
+
+        <div class="dsh-stage">
+          <div class="dsh-wait" data-dsh-wait>
+            <div class="dsh-spinner"></div>
+            <b data-dsh-wait-title>正在检测本机 dsh…</b>
+            <span data-dsh-wait-note>已经在运行就直接接入，没运行会先启动它</span>
+          </div>
+          <iframe class="dsh-frame" data-dsh-frame title="本机 DeepSeek Harness Web UI" hidden></iframe>
+        </div>
+      </div>
+    </div>
 
     <!-- Cordis 时空管理动画弹窗（静态） -->
     <div class="cordis-modal" id="cordis-modal" aria-hidden="true">
@@ -10657,6 +11067,160 @@
     });
   })();
 
+  /* ---------------- 插件定义文档弹窗 ---------------- */
+
+  var docModal = document.getElementById("doc-modal");
+  var docOpened = false;
+
+  function openDoc() {
+    if (!docModal) return;
+    docOpened = true;
+    lastFocus = document.activeElement;
+    docModal.classList.add("is-open");
+    docModal.setAttribute("aria-hidden", "false");
+    var sc = docModal.querySelector(".doc-scroll");
+    if (sc) sc.scrollTop = 0;
+    setTimeout(function () {
+      var x = docModal.querySelector(".arch-close");
+      if (x) x.focus();
+    }, 40);
+  }
+
+  function closeDoc() {
+    if (!docModal) return;
+    docOpened = false;
+    docModal.classList.remove("is-open");
+    docModal.setAttribute("aria-hidden", "true");
+    if (lastFocus && typeof lastFocus.focus === "function") lastFocus.focus();
+  }
+
+  document.querySelectorAll("[data-doc-open]").forEach(function (btn) {
+    btn.addEventListener("click", openDoc);
+  });
+  document.querySelectorAll("[data-doc-close]").forEach(function (el) {
+    el.addEventListener("click", closeDoc);
+  });
+
+  /* ---------------- 本机 dsh web：检测 / 启动 / 嵌入 ---------------- */
+
+  var dshModal = document.getElementById("dsh-modal");
+  var dshOpened = false;
+  var dshBusy = false;
+
+  function dshEls() {
+    return {
+      wait: dshModal.querySelector("[data-dsh-wait]"),
+      waitTitle: dshModal.querySelector("[data-dsh-wait-title]"),
+      waitNote: dshModal.querySelector("[data-dsh-wait-note]"),
+      frame: dshModal.querySelector("[data-dsh-frame]"),
+      url: dshModal.querySelector("[data-dsh-url]"),
+      hint: dshModal.querySelector("[data-dsh-hint]"),
+      blank: dshModal.querySelector("[data-dsh-blank]")
+    };
+  }
+
+  function dshShowWait(title, note, isError) {
+    var e = dshEls();
+    e.wait.hidden = false;
+    e.wait.classList.toggle("is-error", !!isError);
+    e.waitTitle.textContent = title;
+    e.waitNote.textContent = note || "";
+    e.frame.hidden = true;
+  }
+
+  function dshShowFrame(url) {
+    var e = dshEls();
+    e.wait.hidden = true;
+    e.frame.hidden = false;
+    if (e.frame.dataset.loaded !== url) {
+      e.frame.src = url;
+      e.frame.dataset.loaded = url;
+    }
+    e.url.textContent = url.replace(/token=[A-Za-z0-9_-]+/, "token=…");
+    e.url.title = url;
+    e.blank.href = url;
+  }
+
+  function dshMarkButtons(live) {
+    document.querySelectorAll(".dsh-btn").forEach(function (b) {
+      b.classList.toggle("is-live", !!live);
+    });
+  }
+
+  async function dshOpen() {
+    if (!dshModal) return;
+    dshOpened = true;
+    lastFocus = document.activeElement;
+    dshModal.classList.add("is-open");
+    dshModal.setAttribute("aria-hidden", "false");
+    dshEls().hint.textContent = "检测中…";
+    dshShowWait("正在检测本机 dsh…", "已经在运行就直接接入，没运行会先启动它");
+
+    if (dshBusy) return;
+    dshBusy = true;
+
+    try {
+      var res = await fetch("/api/dsh", { cache: "no-store" });
+      var data = await res.json();
+
+      if (data && data.running && data.url) {
+        dshMarkButtons(true);
+        dshEls().hint.textContent = "已运行 · 直接接入";
+        dshShowFrame(data.url);
+        return;
+      }
+
+      dshEls().hint.textContent = "未运行 · 正在启动";
+      dshShowWait("正在启动 dsh web…", "首次启动需要几秒到几十秒，起来后自动接入");
+
+      var started = await fetch("/api/dsh/start", { method: "POST" });
+      var booted = await started.json();
+
+      if (booted && booted.ok && booted.url) {
+        dshMarkButtons(true);
+        dshEls().hint.textContent = booted.started ? "已启动 · 接入" : "已运行 · 直接接入";
+        dshShowFrame(booted.url);
+      } else {
+        dshMarkButtons(false);
+        dshEls().hint.textContent = "启动失败";
+        dshShowWait(
+          "没能启动 dsh web",
+          (booted && booted.error) || "未知原因，请查看报告服务的终端输出。",
+          true
+        );
+      }
+    } catch (err) {
+      dshMarkButtons(false);
+      dshEls().hint.textContent = "服务不可达";
+      dshShowWait("连不上报告服务", String(err && err.message || err), true);
+    } finally {
+      dshBusy = false;
+    }
+  }
+
+  function dshClose() {
+    if (!dshModal) return;
+    dshOpened = false;
+    dshModal.classList.remove("is-open");
+    dshModal.setAttribute("aria-hidden", "true");
+    if (lastFocus && typeof lastFocus.focus === "function") lastFocus.focus();
+  }
+
+  document.querySelectorAll("[data-dsh-open]").forEach(function (btn) {
+    btn.addEventListener("click", dshOpen);
+  });
+  document.querySelectorAll("[data-dsh-close]").forEach(function (el) {
+    el.addEventListener("click", dshClose);
+  });
+
+  // 页面加载后先探一次，让按钮上的小圆点反映真实状态
+  (function dshProbeOnce() {
+    fetch("/api/dsh", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { dshMarkButtons(!!(d && d.running)); })
+      .catch(function () { dshMarkButtons(false); });
+  })();
+
   var archModal = document.getElementById("arch-modal");
   var archOpen = false;
   var archTimers = [];
@@ -10941,6 +11505,14 @@
   /* ---------------- 键盘 ---------------- */
 
   document.addEventListener("keydown", function (e) {
+    if (dshOpened) {
+      if (e.key === "Escape") dshClose();
+      return;
+    }
+    if (docOpened) {
+      if (e.key === "Escape") closeDoc();
+      return;
+    }
     if (archOpen) {
       if (e.key === "Escape") closeArchDemo();
       return;

@@ -28,8 +28,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import socket
+import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 import webbrowser
@@ -48,6 +52,17 @@ DEFAULT_MODEL = "deepseek-flash"
 MAX_MESSAGES = 24
 MAX_TOTAL_CHARS = 24000
 REQUEST_TIMEOUT = 120
+
+# 本地 dsh web：探测 / 启动 / 取 token
+DSH_DIR = Path(os.environ.get("DSH_DIR") or r"D:\project\deepseek-harness-master")
+DSH_ENTRY = DSH_DIR / "apps" / "cli" / "lib" / "bin.js"
+DSH_PORT = 3080
+DSH_SPARE_PORT = 3099
+DSH_LOG = REPORT_DIR / ".dsh-web.log"
+DSH_STATE = REPORT_DIR / ".dsh-web.json"
+DSH_BOOT_TIMEOUT = 60.0
+
+_dsh_lock = threading.Lock()
 
 ROLES = {"system", "user", "assistant"}
 
@@ -210,6 +225,148 @@ def _upstream_error(raw: str, status: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 本地 dsh web：探测与启动
+# ---------------------------------------------------------------------------
+
+
+def _port_open(port: int) -> bool:
+    """能不能连上该端口（只看 TCP，不发 HTTP）。"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.35)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _dsh_token_from_log() -> str:
+    """从启动日志里取最近一次打印的 token。
+
+    先看本目录的日志（由本服务启动时写入），再看源码目录里的（手工启动留下的）。
+    """
+    candidates = [DSH_LOG, DSH_DIR / ".dsh-web.log"]
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        matches = re.findall(r"127\.0\.0\.1:(\d+)/\?token=([A-Za-z0-9_-]+)", text)
+        if matches:
+            return matches[-1][1]
+    return ""
+
+
+def _read_state() -> dict[str, object]:
+    try:
+        data = json.loads(DSH_STATE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_state(payload: dict[str, object]) -> None:
+    try:
+        DSH_STATE.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """不跟随跳转：带 token 的地址会 303 到 ``/``，跟随后就丢掉 cookie 变成 401。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001 —— 基类签名
+        return None
+
+
+_PROBE_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def _probe(url: str) -> int:
+    """请求一次，返回状态码；连不上返回 0。不跟随跳转。"""
+    try:
+        with _PROBE_OPENER.open(url, timeout=3) as resp:  # noqa: S310 —— 仅本地回环
+            return int(resp.status)
+    except urllib.error.HTTPError as exc:
+        return int(exc.code)
+    except (urllib.error.URLError, OSError):
+        return 0
+
+
+def _free_port(start: int) -> int:
+    for port in range(start, start + 40):
+        if not _port_open(port):
+            return port
+    return start
+
+
+def dsh_status() -> dict[str, object]:
+    """把 token 拼成完整地址后探测；返回给页面的状态。"""
+    state = _read_state()
+    port = int(state.get("port") or DSH_PORT)
+    url = str(state.get("url") or "")
+
+    if url and _probe(url) in (200, 302, 303):
+        return {"running": True, "url": url, "port": port, "started": False}
+
+    # 常见情况：3080 在跑，但 url 记录丢了——用日志里的 token 重建
+    if _port_open(port):
+        token = _dsh_token_from_log()
+        if token:
+            rebuilt = f"http://127.0.0.1:{port}/?token={token}"
+            if _probe(rebuilt) in (200, 302, 303):
+                _write_state({"port": port, "url": rebuilt})
+                return {"running": True, "url": rebuilt, "port": port, "started": False}
+        return {"running": False, "url": "", "port": port, "started": False,
+                "detail": "端口被占用，但拿不到有效 token"}
+
+    return {"running": False, "url": "", "port": port, "started": False}
+
+
+def dsh_start() -> dict[str, object]:
+    """启动 dsh web 并等到可访问，返回带 token 的地址。"""
+    with _dsh_lock:
+        current = dsh_status()
+        if current.get("running"):
+            return {**current, "started": False}
+
+        if not DSH_ENTRY.exists():
+            raise ApiError(
+                f"找不到 dsh 构建产物：{DSH_ENTRY}。请先在源码目录跑 pnpm run build。",
+                status=503,
+                code="dsh_not_built",
+            )
+
+        port = _free_port(DSH_PORT)
+        DSH_LOG.write_text("", encoding="utf-8")
+        log_file = DSH_LOG.open("ab")
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+        subprocess.Popen(  # noqa: S603 —— 固定本机路径与固定参数
+            ["node", str(DSH_ENTRY), "web", "--no-open", "--port", str(port)],
+            cwd=str(DSH_DIR),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            creationflags=creationflags,
+            start_new_session=os.name != "nt",
+        )
+
+        token = ""
+        deadline = time.monotonic() + DSH_BOOT_TIMEOUT
+        while time.monotonic() < deadline:
+            time.sleep(0.4)
+            token = _dsh_token_from_log()
+            if token and _port_open(port):
+                url = f"http://127.0.0.1:{port}/?token={token}"
+                if _probe(url) in (200, 302, 303):
+                    _write_state({"port": port, "url": url})
+                    return {"running": True, "url": url, "port": port, "started": True}
+        raise ApiError(
+            f"dsh web 在 {int(DSH_BOOT_TIMEOUT)} 秒内没有起来。看日志：{DSH_LOG}",
+            status=504,
+            code="dsh_boot_timeout",
+        )
+
+
+# ---------------------------------------------------------------------------
 # HTTP
 # ---------------------------------------------------------------------------
 
@@ -252,7 +409,14 @@ class ReportHandler(SimpleHTTPRequestHandler):
     # -- 路由 --
 
     def do_GET(self) -> None:  # noqa: N802 —— 基类命名
-        if urlsplit(self.path).path == "/api/status":
+        route = urlsplit(self.path).path
+        if route == "/api/dsh":
+            try:
+                self._json(200, {"ok": True, **dsh_status()})
+            except ApiError as exc:
+                self._json(exc.status, {"ok": False, "code": exc.code, "error": str(exc)})
+            return
+        if route == "/api/status":
             config = load_config()
             self._json(
                 200,
@@ -267,7 +431,19 @@ class ReportHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self) -> None:  # noqa: N802 —— 基类命名
-        if urlsplit(self.path).path != "/api/chat":
+        route = urlsplit(self.path).path
+
+        if route == "/api/dsh/start":
+            try:
+                self._json(200, {"ok": True, **dsh_start()})
+            except ApiError as exc:
+                self._json(exc.status, {"ok": False, "code": exc.code, "error": str(exc)})
+            except Exception as exc:  # noqa: BLE001 —— 兜底也要给页面结构化错误
+                self._json(500, {"ok": False, "code": "internal_error",
+                                 "error": f"{type(exc).__name__}: {exc}"})
+            return
+
+        if route != "/api/chat":
             self.send_error(404, "Not Found")
             return
 
