@@ -24,3 +24,5 @@ sessions_*/
 P4_Coding/workspace/
 P4_Coding/sessions/
 *.log
+# 讲稿页服务记录的本地 dsh web 地址（含 token）
+docs/report/.dsh-web.json

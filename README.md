@@ -1,73 +1,42 @@
-# Harness-Learning —— agent harness 开发学习项目
+# Harness-Learning
 
-从零学习 **agent harness**（智能体框架）开发的项目。参考实现是 TypeScript 的
-**DeepSeek Harness**；本项目用 **Python 3.13** 重写它的各个机制，**只读参考、不抄代码**。
+从零实现一个 agent harness。参考 **DeepSeek Harness**（TypeScript）的机制，
+用 **Python 3.13** 重写一遍——只读参考，不抄代码。
 
-学习计划（M0–M8 阶段、铁律、读 dsh 清单）见 [docs/learning-plan.md](docs/learning-plan.md)。
-本文件说明：**项目怎么组织、每阶段怎么跑、出问题怎么办**。
-
----
-
-## 1. 阶段总览与路线图
-
-项目按"预热 → 骨架 → 产品化"三级推进，每个阶段都是**自包含的模块化练习目录**
-（`_NN_主题/`，四件套 = 入口 + README + 测试 + 一键启动器）：
-
-| 阶段 | 内容 | 对应计划 | 状态 |
-|---|---|---|---|
-| **P0_Coding** | 单文件预热：把核心机制逐个跑通（模型调用、工具调用、循环、文件沙箱） | M0 前铺垫 | ✅ 完成（4 练习，15 用例） |
-| **P1_Coding** | 结构化骨架：协议化 / 管线化 / 事件化 | M1–M3 | ✅ 完成（5 练习，79 用例） |
-| **P2_Coding** | 产品化：提示词装配 / 能力接缝 / 配置组装 / 服务化 | M4–M7 | ✅ 完成（11 个阶段全绿；附基本 coding agent 工具面） |
-| **P3_Coding** | 插件化底座：把整个 harness 重表达为插件（内核：服务/事件/effect/inject）+ 基础能力补强（自扩展 / 流式 / 用量 / 仪表 / 压缩 / **工具插件化**） | M8 主线化的地基 | ✅ **本阶段收尾**（`_01`–`_06` + 四轮 `_05` 收尾）；`_06` = 工具插件化（决策 0036–0039），**423 用例全绿**；基线 = `_05` 完成态，351 用例全绿。**`_07` 及以后暂停**——"与 dsh 完全插件化的三处差距"已记录（P3 README 第 8 节），将来从这里接着做 |
-
-每个阶段的入口 README：
-
-- [P0_Coding/README.md](P0_Coding/README.md) —— 单文件练习索引
-- [P1_Coding/README.md](P1_Coding/README.md) —— M1–M3 练习路线（简介 / 模块 / 用法）
-- [P2_Coding/README.md](P2_Coding/README.md) —— M4–M7 的 11 个最小扩展阶段
-- [P3_Coding/README.md](P3_Coding/README.md) —— 插件化基础包（三层结构 / 二十个插件 / 运行方法 / **与 dsh 的同形度核对**）；阶段计划见 [P3_Coding/PLAN.md](P3_Coding/PLAN.md)
-- [P4_Coding/PLAN.md](P4_Coding/PLAN.md) —— P4 目标：**插件底座 + 三类插件 → 一个可用产品**（🏗️ **M1 / M2 完成**，M3 部分落地（LLM / 提示词 / 会话与项目 / 工具面 / Agent 三件套 / 最小应用 / YAML 装配单，500 用例，真 turn 已跑通）；**全部从零重写、不搬 P3**；入口 [P4_Coding/README.md](P4_Coding/README.md)）
-
-**核心纪律**：无验收不开始、无笔记（决策记录）不算完成、门禁不绿不前进。
-
-### 未来路线图（P3–P7）
-
-P0→P1→P2 走完"预热 → 骨架 → 产品化"后，继续往下推进。**P3 已开工：基础包
-（完全插件化的 mini harness）已落地**——它把路线图里 P4 的内核目标提前，作为
-后续所有能力增量的统一落点（决策记录
-[0020](docs/decisions/0020-p3-plugin-core.md)）。各阶段定位如下：
-
-| 阶段 | 目标 | 性质 | 对应计划 |
-|---|---|---|---|
-| **P3_Coding** | 补齐常规 harness 能力（流式、预算计量、压缩、spill、guard、任务管理 goal/plan/todo、上下文、凭证、沙箱…）；**范围由垂类裁剪，不求全**。✅ **本阶段收尾**：地基（插件内核 + 能力插件 + 构件层）已交付；`_01`–`_06` 完成（含并行会话 / 插件管理 / **工具插件化**），原计划的任务管理两轮回退后改向。**`_07` 及以后暂停** | 加功能 | M8 主线化 |
-| **P4_Coding** | **实质化**：最小插件底座（只做"辅助插件管理"）+ **三类插件**（基础 / 应用化 / 能力）→ 在**一个项目**里逐步补成**可用产品**（web / cli / sdk 由选配形成）；顺带闭上 P3 记的三处差距。🏗️ **基座开工**（2026-10-16）：全部重写、小步推进（M1 拆 8 步） | **重构 + 产品化** | — |
-| **P5_Coding** | 选一个**垂类**，基于 P3/P4 内核组合该领域少数深插件，补齐平台档（打包/文档/UI/凭证/安全），做出**可发布产品 demo** | 产品化 | — |
-| **P6_Coding** | **前后端分离的 SDK 包 demo**：把内核/产品包成可嵌入的 SDK + 前端接入 | 分发形态 | — |
-| **P7_Coding** | **回到 dsh 写插件**（建议按"练手"定义验收，贡献是副产品） | 回归参考实现 | M8 延伸 |
-
-**四条排期要点**（这几轮讨论的结论，避免重复踩坑）：
-
-1. **P7 建议提到 P4 之前**——P4 要设计内核 API，最好的老师是**先用成熟内核（cordis）写个真插件**；且 P7 不被任何决策阻塞，可立即开工。
-2. **P4 的能力增量限定在"通用能力"**（工具 / 压缩 / 计量 / 审批 / 管理——任何垂类都需要的这批；2026-10-16 定）；垂类特有的深插件仍留给 P5，**P5 仍要先定垂类**。P4 不选垂类也立得住：它的验收是"三种形态的可用产品"，与垂类无关。
-3. **P4 的性质是"实质化"**（2026-10-16 定）：基座照[决策 0042](docs/decisions/0042-p4-base-boundary.md) 的边界**从零重写、逐个小步**（[决策 0043](docs/decisions/0043-p4-rewrite-from-scratch.md)），外围补成产品（应用化插件 + 装配单，新增）。它是**独立项目**，不背着 P3 的测试跑；验收是"三形态可用 + 狗粮跑通 + 门禁绿"（见 [P4_Coding/PLAN.md](P4_Coding/PLAN.md)）。
-4. **P5/P6 的工作量里 harness 可能只占三成**——平台档（打包/文档/UI/遥测/凭证/安全）会从"不必追"变成"承重墙"，这是目标类型从"学机制"切到"做产品"的必然结果。
+每个阶段先定可运行的验收，验不过不进入下一阶段。
 
 ---
 
-## 2. 环境准备
+## 当前进度
 
-| 项目 | 说明 |
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| **P0** | 单文件预热：模型调用、工具调用、ReAct 循环、文件沙箱 | ✅ 4 个练习 / 15 用例 |
+| **P1** | 最小骨架：Provider 协议、主循环、工具管线、会话日志、综合组装 | ✅ 5 个练习 / 79 用例 |
+| **P2** | 能力补全：提示词装配、能力接缝、沙箱审批、插件协议、配置分层、RPC | ✅ 11 个阶段 / 693 用例 |
+| **P3** | 插件化：内核（服务 / 事件 / effect / inject）+ 六个能力增量 | ✅ 6 个阶段 / 1576 用例 |
+| **P4** | 插件化内核：上下文管理、事件分发、装配单检查、启动器 | 🚧 仅保留 `core/` |
+
+决策记录 57 份，见 [`docs/decisions/`](docs/decisions/)。
+
+> **P4 当前状态**：内核（`core/` 四文件、1511 行）与启动器已完成；插件层、测试与演示入口
+> 已从工作区移除。恢复完整形态可用 `git checkout <commit> -- P4_Coding`。
+
+---
+
+## 环境要求
+
+| 项 | 要求 |
 |---|---|
 | Python | 3.13 |
-| 依赖 | `openai`（DeepSeek 兼容 OpenAI 协议）、`pydantic`、`pytest`；工具链 `ruff`（可选 `mypy`） |
-| API 凭证 | 项目根 `.env` 里的 `DEEPSEEK_API_KEY`（已被 `.gitignore` 排除，不入库） |
+| 依赖 | `openai`、`pydantic`、`pytest`；可选 `ruff`、`mypy` |
+| API 凭证 | 项目根 `.env` 中的 `DEEPSEEK_API_KEY`（已 gitignore） |
 
 ```bash
-# 装依赖（任选：全局，或自建 .venv）
 python -m pip install openai pydantic pytest ruff
 ```
 
-**`.env` 格式**（项目根，真实 API 与可视化页面读它）：
+`.env` 格式（只有真实 API 和讲稿页需要，离线测试不需要）：
 
 ```
 DEEPSEEK_API_KEY=sk-你的密钥
@@ -75,220 +44,73 @@ DEEPSEEK_MODEL=deepseek-flash
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 ```
 
-> `DEEPSEEK_MODEL` 与 `DEEPSEEK_BASE_URL` 可省略（省略时用代码默认值）。
-> **值后面不要写行内注释**——加载器不解析注释，会把注释文字一起带进值里。
-
-> 所有 `run.bat` / `run.sh` / `run_web.*` 启动器优先用项目根的 `.venv/Scripts/python.exe`，
-> **找不到就回退到 PATH 上的 `python`**。所以有没有 `.venv` 都能跑。
+> 值后面不要写行内注释——加载器不解析注释，会把它一起带进值里。
 
 ---
 
-## 3. 怎么跑
+## 快速开始
 
-### 方式 0：一键启动器（最省事）
-
-每个练习/阶段目录都配了 `run.bat`（Windows，双击即用）与 `run.sh`（Git Bash）。
+### 跑测试
 
 ```bash
-cd P1_Coding/_05_Mini_Harness
-./run.bat                 # 双击等价：跑默认（离线 demo 或真实 API，见各阶段 README）
-./run.bat --fake          # 传参透传给入口脚本
-```
+# 单个练习
+cd P1_Coding/_05_Mini_Harness && python -m pytest -q
 
-P2 各阶段另有 `run_web.bat` / `run_web.sh`（可视化页面）。
-
-### 方式 A：直接用 python（推荐，命令直观）
-
-```bash
-cd P1_Coding/_05_Mini_Harness
-python demo.py                          # 离线端到端 demo
-python -m harness list                  # P2 阶段的统一入口
-```
-
-PowerShell 与 Git Bash 路径写法：Git Bash 用正斜杠 `/`，PowerShell 可用反斜杠 `\`。
-
-> **Windows 提示**：若 `.bat` 里出现中文导致 cmd 解析错乱，记住约定——**`.bat` 保持纯 ASCII**，
-> 中文输出全部交给 Python 脚本。中文乱码时用 Git Bash，或 `chcp 65001` 后重试。
-
----
-
-## 4. 各阶段怎么用
-
-每阶段的**招牌命令**；细节见各自目录的 README。
-
-### P0_Coding（单文件预热，已完成）
-
-```bash
-cd P0_Coding/_03_Calculator_Loop
-python calculator_loop.py --calc-only "2+3*4"   # 离线测计算器，不需要 key
-python calculator_loop.py "帮我算 987654*321"    # 完整循环（需要 key）
-```
-
-### P1_Coding（M1–M3，已完成）
-
-```bash
-# _01 LLM 接缝      _02 主循环       _03 工具管线    _04 会话日志   _05 综合组装
-cd P1_Coding/_05_Mini_Harness
-python -m pytest -q                              # 22 用例（全离线）
-python demo.py                                   # 离线：对话→工具→退出→resume→分叉
-python app.py chat --session s1                  # 交互对话（可恢复）
-python server.py                                 # 可视化页面（真实 API，:8765）
-```
-
-### P2_Coding（M4–M7，11 个最小扩展阶段）
-
-```bash
-cd P2_Coding/_01_Prompt_Sections                 # M4-1 提示词 section 注册表 + 装配器
-python -m pytest -q                              # 41 用例（22 基线 + 19 本阶段）
-python -m harness list                           # 统一入口
-python chat.py --fake                            # 用装配出的提示词离线对话
-
-cd P2_Coding/_02_Prompt_Context                  # M4-2 变量插值 + 运行时上下文（每 step 渲染）
-python -m pytest -q                              # 57 用例（22 基线 + 35 本阶段）
-python demo.py                                   # 离线演示：插值 / 每步渲染 / system 消息遮蔽
-python chat.py --fake --ask "现在几点？"          # 每 step 渲染 {{time}}（真实 API 去掉 --fake）
-
-cd P2_Coding/_03_Prompt_Trace                    # M4-3 装配单 + 来源追溯 + 重建断言（M4 收官）
-python -m pytest -q                              # 49 用例（22 基线 + 27 本阶段）
-python chat.py --fake --ask "现在几点？" --dump-prompt   # 装配单：来源/变量/重建校验
-python demo.py                                   # 离线演示：装配单 / 篡改检测 / 逐步重建
-
-cd P2_Coding/_04_Filesystem_Seam                 # M5-1 FileSystem 接缝（Local/Memory 可换）
-python -m pytest -q                              # 76 用例（22 基线 + 54 本阶段，双 provider 套件）
-python chat.py --fake --fs memory --ask "把 hello 写到 notes/a.txt"  # 磁盘零痕迹
-python demo.py                                   # 离线演示：接缝对照 / 单槽服务 / 双 provider 同结果
-
-cd P2_Coding/_05_Workspace_Jail                  # M5-2 工作区围栏（策略型 provider）
-python -m pytest -q                              # 75 用例（22 基线 + 53 本阶段）
-python chat.py --fake --fs jail --ask "把 x 写到 ../escape.txt"   # 越界 → 结构化拒绝
-python demo.py                                   # 离线演示：围栏 / 审批放行也拦 / 三 provider 对照
-
-cd P2_Coding/_06_Subprocess_Seam                 # M5-3 命令执行接缝（M5 收官）
-python -m pytest -q                              # 66 用例（22 基线 + 44 本阶段）
-python chat.py --fake --ask "用 shell 看看目录"    # 离线：命令走剧本，零真实进程
-python chat.py --shell local --ask "用 shell 看看目录"  # 真实执行（需审批）
-python demo.py                                   # 离线演示：两实现对照 / 三种结局渲染 / 超时
-
-cd P2_Coding/_07_Plugin_Effect                   # M6-1 插件协议 + effect 回卷
-python -m pytest -q                              # 57 用例（22 基线 + 35 本阶段）
-python chat.py --fake                             # /ctx 台账；/unload 看回卷；退出整体卸载
-python demo.py                                   # 离线演示：effect 装载/回卷 / 嵌套 / 故障回卷
-
-cd P2_Coding/_08_Profile_Layers                  # M6-2 profiles 分层 patch（配置驱动装配）
-python -m pytest -q                              # 67 用例（22 基线 + 45 本阶段）
-python chat.py --dump-config                     # 打印最终配置树（dev profile）
-python chat.py --profile prod --ask "你好"        # 真实 API（DeepSeek + 本地）
-python chat.py --patch my.yaml                   # 一层 CLI 补丁：换 provider 只改一行
-python demo.py                                   # 离线演示：四层叠加 / 一行换实现 / 配置 fail loud
-
-cd P2_Coding/_09_Dump_Config                     # M6-3 dump-config 来源追溯 + 错误定位（M6 收官）
-python -m pytest -q                              # 53 用例（22 基线 + 31 本阶段）
-python chat.py --dump-config                     # 每项带来源层（← base.yaml / ← CLI#N …）
-python chat.py --patch bad.yaml                  # 配错 → 层/条/拼写建议（退出码 2）
-python demo.py                                   # 离线演示：来源追踪 / 六类错误定位 / 回归
-
-cd P2_Coding/_10_Rpc_Transport                   # M7-1 stdio JSON-RPC（initialize / session.prompt）
-python -m pytest -q                              # 62 用例（22 基线 + 40 本阶段）
-python serve.py                                  # stdio 服务：stdin 收帧、stdout 出帧、EOF 退出
-./run.bat serve                                  # 启动器也路由 serve
-python demo.py                                   # 离线演示：帧词汇 / 握手·接续·错误·审批 / 回归
-
-cd P2_Coding/_11_Session_Follow                  # M7-2 事件流跟随 + 编码工具（P2 收官）
-python -m pytest -q                              # 66 用例（22 基线 + 44 本阶段）
-python attach.py --session s1                    # 跟随（重放+实时、断线补齐）
-python serve.py --listen 8765                    # TCP：多客户端共享同一会话
-python webui/server.py                           # ★ 可视化页面（P2 形态：全工具 + 插件台账）
-python chat.py --profile prod --ask "search_text 找出所有 TODO 并用 edit_file 改掉一处" --no-approve
-python demo.py                                   # 离线演示：follow 帧序/断线补齐 / 新工具 / 回归
-```
-
-各阶段对应机制见 [P2_Coding/README.md](P2_Coding/README.md) 的 11 行总览表
-（`_01`–`_03` 提示词装配 · `_04`–`_06` 能力接缝 · `_07`–`_09` 组合与配置 · `_10`–`_11` 服务化）。
-
----
-
-## 5. 跑测试与门禁
-
-```bash
-# 一次跑完所有阶段（从项目根目录）
-python -m pytest P0_Coding P1_Coding P2_Coding -q   # 当前共 763 个用例（P0 15 + P1 79 + P2 669）
-
-# 只跑某一个练习/阶段
-cd P1_Coding/_03_Tool_Pipeline && python -m pytest -q
-
-# P2 有独立门禁（ruff + 逐阶段 pytest + 整合包）
+# P2 / P3 各有独立门禁（ruff + 逐阶段 pytest）
 cd P2_Coding && python scripts/check.py
+cd P3_Coding && python scripts/check.py
 ```
 
-测试默认**不联网、不消耗模型额度**：模型调用一律走 `FakeLLM` 离线剧本断言，
-真实 API 只用于 demo 与可视化页面。
+### 跑演示
+
+每个练习/阶段目录都自带 `run.bat`（Windows 双击）与 `run.sh`（Git Bash），
+也可以直接 `python demo.py`。启动器优先用根目录 `.venv` 里的解释器，找不到就回退到 PATH 上的 `python`。
+
+### 打开讲稿页
+
+```bash
+python docs/report/server.py          # http://127.0.0.1:8765/
+python docs/report/server.py --open   # 顺手打开浏览器
+```
+
+讲稿页是一套 16:9 的演示文档，含交互 demo 和本机 dsh web 的内嵌弹窗。
+页面自身的说明见 [`docs/report/README.md`](docs/report/README.md)。
+
+> 直接双击 HTML 也能看，但聊天演示不可用——浏览器不能携带密钥请求模型，必须走 `server.py`。
 
 ---
 
-## 6. 常见问题
-
-| 现象 | 原因 | 解决 |
-|---|---|---|
-| `ModuleNotFoundError: No module named 'openai'` | 用的 Python 没装依赖 | `python -m pip install openai pydantic pytest`，或让启动器找到 `.venv` |
-| `未找到 DEEPSEEK_API_KEY` | 根目录 `.env` 缺失或格式不对 | 按 §2 建 `.env`；离线体验用 `--fake` / `--calc-only` |
-| `SSLError` / `ConnectionError` / 请求超时 | 网络问题（模型接口或搜索不可达） | 检查网络/代理；本站 `github.com:443` 偶发不可达，git push 可走本机代理 |
-| 中文输出乱码 | 终端编码问题 | 用 Git Bash，或 `chcp 65001` 后重试 |
-| PowerShell 报"禁止运行脚本" | 执行策略限制 `Activate.ps1` | 别激活环境，直接用 `python` 或全路径 `python.exe` |
-| 搜索结果全是无关内容 | Bing 页面结构变化导致解析失效 | 已知限制，先用浏览器确认 `cn.bing.com` 正常 |
-
----
-
-## 7. 约定
-
-- **目录命名**：`P<N>_Coding/_NN_主题/`，每个阶段自包含（各带所需的包副本）。
-- **代码组织（P2）**：`harness/` 冻结为 M1–M3 基线库；各阶段新增机制放阶段主目录顶层
-  （与 `harness/` 平级，如 `_01_Prompt_Sections/prompt/`），让「这一阶段加了什么」目录层面可见。
-- **四件套**：入口脚本 + `README.md`（目的/验收/运行）+ `test_*.py` + `run.bat`/`run.sh`。
-- **先写验收标准，再写实现**；验收不过不算完成。
-- **测试离线可重复**：模型调用走 `FakeLLM`；需要网络/真实 API 的路径用旁路 demo 隔离。
-- **`.bat` 保持纯 ASCII**（注释与提示用英文）——`chcp 65001` 后出现中文会让 cmd 解析错位。
-- P1 起每个练习/阶段完成时，在 [docs/decisions/](docs/decisions/README.md) 写决策记录
-  （背景 / 决策 / 备选 / 后果）；编号全项目递增，不复用。
-
----
-
-## 8. 目录结构
+## 目录结构
 
 ```
 Harness-Learning/
-├── README.md                     ← 本说明书
-├── .env                          ← API 凭证（不入库）
-├── .gitignore
-├── docs/
-│   ├── learning-plan.md          ← 学习计划（M0–M8 阶段与进度表）
-│   └── decisions/                ← 决策记录（0001 起，格式见其 README）
-├── P0_Coding/                    ← 阶段 0：单文件预热（已完成）
-│   ├── _01_LLM_Calling/          ← 模型调用 + 提示词拼装
-│   ├── _02_Tool_Calling/         ← 工具调用 + 网络搜索
-│   ├── _03_Calculator_Loop/      ← 模型→工具→模型 循环
-│   └── _04_File_Tools_Loop/      ← 文件读写工具（沙箱 + 审批）
-├── P1_Coding/                    ← 阶段 1：结构化骨架（M1–M3，已完成）
-│   ├── _01_Provider_Protocol/    ← LLM 接缝（协议 + FakeLLM + DeepSeek）
-│   ├── _02_Agent_Loop/           ← 主循环（turn/step + 轨迹 + 取消）
-│   ├── _03_Tool_Pipeline/        ← 工具管线（注册表 + 审批 + pre/exec/post）
-│   ├── _04_Session_Log/          ← 会话日志（事件溯源 + JSONL + resume）
-│   └── _05_Mini_Harness/         ← 综合组装 + 可视化页面
-└── P2_Coding/                    ← 阶段 2：产品化（M4–M7，进度见其 README）
-    ├── README.md                 ← 11 阶段总览 + 模块简介 + 使用方法
-    ├── pyproject.toml            ← ruff 配置（阶段式工作区）
-    ├── scripts/check.py          ← 门禁：ruff + 逐阶段 pytest + 整合包
-    ├── mini_harness/             ← ★ P2 整合包：全部功能的单一可运行目录（快照）
-    ├── _01_Prompt_Sections/      ← M4  section 注册表 + 装配器
-    ├── _02_Prompt_Context/       ← M4  变量插值 + 运行时上下文
-    ├── _03_Prompt_Trace/         ← M4  --dump-prompt + 重建断言
-    ├── _04_Filesystem_Seam/      ← M5  FileSystem 接缝 + Local/Memory
-    ├── _05_Workspace_Jail/       ← M5  WorkspaceJailFS 策略
-    ├── _06_Subprocess_Seam/      ← M5  Subprocess 接缝 + shell
-    ├── _07_Plugin_Effect/        ← M6  插件协议 + effect 回卷
-    ├── _08_Profile_Layers/       ← M6  YAML 分层 patch
-    ├── _09_Dump_Config/          ← M6  dump-config + 错误定位
-    ├── _10_Rpc_Transport/        ← M7  stdio JSON-RPC
-    └── _11_Session_Follow/       ← M7  follow + attach
+├─ P0_Coding/           单文件预热（4 个练习）
+├─ P1_Coding/           最小骨架（5 个练习）
+├─ P2_Coding/           11 个最小扩展阶段 + mini_harness 整合包
+├─ P3_Coding/           插件化内核 + 6 个能力增量
+├─ P4_Coding/core/      插件内核：context / plugin / launcher
+├─ docs/
+│  ├─ decisions/        57 份决策记录（背景 / 决策 / 备选 / 后果）
+│  ├─ learning-plan.md  学习计划（M0–M8）
+│  └─ report/           讲稿页与本地服务
+└─ README.md
 ```
 
-每个练习/阶段目录的内部结构（入口 + 启动器 + 测试 + README）见各自 README。
+---
+
+## 三条工程约束
+
+1. **无验收不开始** —— 动手前先写下这一阶段的验收命令，它就是「完成」的定义。
+2. **无笔记不算完成** —— 每个阶段留一份决策记录：背景、决策、备选、后果。
+3. **门禁不绿不前进** —— ruff + mypy + pytest 全绿才进入下一阶段。
+
+---
+
+## 参考
+
+- 参考实现：[deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）
+- 设计论文：*A Programming Paradigm for Spatiotemporal Composability*（Cordis）
+
+## 许可
+
+本项目为个人学习项目。参考实现 dsh 以 MIT 许可发布，本项目不包含其源码。
