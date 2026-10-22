@@ -1,7 +1,7 @@
 # Harness-Learning
 
 从零实现一个 agent harness。参考 **DeepSeek Harness**（TypeScript）的机制，
-用 **Python 3.13** 重写一遍——只读参考，不抄代码。
+用 **Python 3.13** 重写一遍。
 
 每个阶段先定可运行的验收，验不过不进入下一阶段。
 
