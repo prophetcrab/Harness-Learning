@@ -2,6 +2,9 @@
 .env
 .venv/
 
+# macOS
+.DS_Store
+
 # Python
 __pycache__/
 *.py[cod]
@@ -9,6 +12,8 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+coverage.xml
 
 # 打包产物
 build/

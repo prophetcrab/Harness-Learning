@@ -1,20 +1,23 @@
-"""plugin —— 插件协议与声明（name / inject / optional / setup）。
+"""plugin —— 插件协议与声明读取。
 
-**插件是什么**：一个有 `setup(ctx)` 方法的对象——不必 import 任何基类，结构满足
-即成立（鸭子类型）。setup 在装载期执行，把插件的一切注册进 ctx；它可以返回一个
-撤销函数（`Disposer`），卸载时会被调用。
+插件是满足以下形状的对象（鸭子类型，不必继承）：
 
-**三样声明**（都可选，缺了用默认值）：
+    class MyPlugin:
+        name = "my-plugin"            # 台账键与报错称呼；缺省用类名
+        inject = ("store",)           # 必需服务：缺了插件保持 pending
+        optional = ("approval",)      # 可选服务：缺了照常激活，来了不重装
+        requires = ("llm-provider",)  # 插件级依赖：只做装配期校验
+        async def setup(self, ctx):     # 也可以是同步函数
+            await ctx.provide("greeting", "你好")
 
-    name      身份：台账的键、报错里的称呼。缺省用类名兜底。
-    inject    必需依赖（服务名序列）：缺了 → pending（依赖齐了自动激活、提供者走了自动退位）
-    optional  可选依赖：缺了**照常激活**、来了**不重装**——"有则用、没有就降级"，
-              取不到时用 ctx.get 容错。为什么"来了不重装"：可选服务抖一下不该重启
-              一个正在对外服务的插件（P3 的界面插件就是这个场景——它要在换模型、
-              装卸插件的动荡里一直开着，而不是让用户的页面失联）。
+setup 在装载期执行（core 会 await 异步的 setup），可以返回撤销函数或 None。
 
-本模块只提供"读声明"的纯函数：不认识 harness（无业务词汇），也不认识 loader
-（条目 / 角色是 loader 的数据）。生命周期在 context.py。
+推荐用 `async def setup`：provide / effect / inject / load_plugin 等生命周期 API
+都是 awaitable，同步 setup 里调用它们会得到未 await 的协程（只会产生警告）。
+同步 setup 只适合纯计算、或只做同步登记（如 ctx.on）。
+
+各声明均可省略。本模块提供读取与校验这些声明的纯函数，非法声明在读取时报错；
+插件的生命周期在 context.py。
 """
 
 from __future__ import annotations
@@ -22,28 +25,23 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any, Protocol
 
-#: setup 的返回：撤销函数，或 None（"东西都注册在 ctx 上，没有额外资源要收"）。
-Disposer = Callable[[], None]
-#: setup 的签名：收到 ctx，返回撤销函数或 None。
-SetupFn = Callable[[Any], Disposer | None]
+#: 撤销函数：同步或异步（返回 awaitable 时 core 会等待）；也可以返回 None。
+Disposer = Callable[[], Any]
+#: 装载函数：同步或异步；返回撤销函数、None 或它们的 awaitable。
+SetupFn = Callable[[Any], Any]
 
 
 class Plugin(Protocol):
-    """插件协议：有 setup(ctx) 就是插件。
+    """插件协议：有 setup(ctx) 就是插件（同步/异步均可）；其余声明可选。"""
 
-    `name` / `inject` / `optional` / `requires` 是**可选声明**——运行时按鸭子
-    类型读取，缺失即默认值（见本模块各读取函数）。
-    """
-
-    def setup(self, ctx: Any) -> Disposer | None:
+    def setup(self, ctx: Any) -> Any:
         ...
 
 
 def plugin_name(plugin: object) -> str:
-    """插件名：优先 `plugin.name`；函数用函数名；都没有则用类限定名。
+    """插件名：优先 plugin.name，其次函数名，最后类限定名。
 
-    台账按名字记账（一个运行时里一个插件名一份实例），所以名字必须稳定、可读、
-    可重装——而不是内存地址这类东西。
+    台账按名字记账：一个运行时里一个插件名只保留一份实例。
     """
     name = getattr(plugin, "name", None)
     if name:
@@ -55,7 +53,7 @@ def plugin_name(plugin: object) -> str:
 
 
 def plugin_setup(plugin: object) -> SetupFn:
-    """取出装载函数：有 `setup` 用它；否则把插件本身当函数用；再不然 fail loud。"""
+    """取出装载函数：优先 setup；否则把插件本身当函数；都不可调用则 TypeError。"""
     setup = getattr(plugin, "setup", None)
     if callable(setup):
         return setup
@@ -65,7 +63,7 @@ def plugin_setup(plugin: object) -> SetupFn:
 
 
 def _service_names(plugin: object, attr: str) -> tuple[str, ...]:
-    """读一组"服务名序列"声明（inject / optional 共用）：非法一律 fail loud。"""
+    """读取一组服务名声明；字符串、不可迭代、空名、重复都报错。"""
     raw: Any = getattr(plugin, attr, ())
     if raw is None:
         return ()
@@ -93,8 +91,7 @@ def plugin_injects(plugin: object) -> tuple[str, ...]:
 def plugin_optionals(plugin: object) -> tuple[str, ...]:
     """可选依赖（optional）：缺了照常激活、来了不重装。
 
-    与 inject 重叠直接报错：一个服务不可能既必需又可选——声明矛盾说明作者还没
-    想清楚（装载期报错比运行时的古怪行为便宜）。
+    与 inject 重叠时报错（一个服务不能既必需又可选）。
     """
     optionals = _service_names(plugin, "optional")
     overlap = sorted(set(optionals) & set(plugin_injects(plugin)))
@@ -111,26 +108,16 @@ PROVIDER_SEPARATOR = ":"
 
 
 def matches_plugin_requirement(required: str, plugin_name_: str) -> bool:
-    """插件名是否满足一条**插件级依赖**声明。
-
-    规则：名字相同，或带 `:<实例>` 后缀（一个能力组挂多份）——`llm-provider`
-    由 `llm-provider:deepseek` / `llm-provider:openai` 满足。
-    """
+    """插件名是否满足一条插件级依赖：同名，或以 "required:" 开头。"""
     return plugin_name_ == required or plugin_name_.startswith(
         f"{required}{PROVIDER_SEPARATOR}"
     )
 
 
 def plugin_requires(plugin: object) -> tuple[str, ...]:
-    """**插件级**依赖（requires）：缺了它，这个插件不完整。
+    """插件级依赖（requires）：只做装配期校验，不参与激活。
 
-    与 inject / optional 的区别：那两样声明的是**服务**，驱动生命周期
-    （缺了 pending / 降级）；`requires` 声明的是**插件**，只做装配期校验
-    （由 loader 执行）——不参与激活，否则"provider 依赖 llm、llm 依赖
-    provider"会互相等死。
-
-    典型用途：`llm` 声明 `requires = ("llm-provider",)`——没有适配器时它虽然
-    能提供路由服务，但任何调用都会失败，属于"装配不完整"，应当在起产品时
-    fail loud，而不是等到第一次请求。
+    与 inject / optional 的区别：那两者声明服务并驱动生命周期；requires 声明
+    插件，缺了不会 pending，由装配方检查。
     """
     return _service_names(plugin, "requires")

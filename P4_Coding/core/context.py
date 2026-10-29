@@ -1,55 +1,33 @@
-"""Context —— 协作面（服务槽位 + 事件）+ 生命周期台账（插件状态机 + effect 回卷）。
+"""Context —— 插件运行时：服务、effect、事件、动态依赖、插件生命周期、变更锁。
 
-**服务槽位**（M1 步 1）：命名单槽的提供与查找——插件之间唯一的协作通道。
-**插件装载**（M1 步 2）：把"一个插件对象"变成台账里一条受依赖驱动的记录：
-装载顺序无关；依赖齐备自动激活、提供者走了自动退位；disable / enable 保留登记。
-**effect 回卷**（M1 步 3）：**注册即回卷**——装载期做的一切登记（提供的服务、
-嵌套 effect、订阅、插件自己的资源）自动挂上撤销动作，卸载时逐层回卷。
-**事件**（M1 步 4，本步）：广播（emit）与瀑布（waterfall）——插件之间的**第二条
-通道**。服务用来"用别人的能力"，事件用来"观察与拦截"；瀑布的中间件语义就是
-策略插座的本体（超时、预算这类 guard 将来挂在这里）。
+    服务槽位    provide / retract / get / require；命名单槽，重名与缺失报错
+    effect      ctx.effect(name, install)：装载期的登记自动回卷
+    事件        on / emit（广播）/ waterfall（中间件链）
+    动态依赖    ctx.inject(deps, callback)：依赖齐了运行回调，依赖走了自动拆
+    插件        load / unload / disable / enable；状态 pending / active / disabled / failed
+    稳定化      依赖齐了自动激活、提供者走了自动退位；装载顺序无关
+    变更       公共操作串行化（可重入）；有效变更使 revision + 1 并记录 ChangeReport
 
-三条不变式：
+    回卷顺序：子 effect 先于父；同级后进先出；一个 disposer 抛错不打断其余，
+    全部跑完后重抛第一个异常。
+    装载失败：本次登记的一切被回卷，服务表还原。
+    句柄：装载返回的卸载句柄认"这一次装载"，重复调用 / 已回卷 / 被同名新对象
+    顶替都是空操作；按名字的 API（unload_effect / unload_plugin）严格报错。
 
-    fail loud    重名槽 / 缺失槽 / 重名插件 / 重名 effect / 非法声明 / handler 抛错
-                 → 直接报错（总线不替消费方吞错或隔离）
-    不留半装     装载失败 → 它登记过的一切被回卷、服务表还原（等于"什么都没发生"）
-    回卷干净     回卷顺序"子先父后、同级后进先出"；一个 disposer 抛错**不打断**
-                 其余回卷（全部跑完，最后重抛第一个异常）——**跨插件的级联同理**：
-                 一次卸载里某个插件的清理炸了，其余照常退位（错误最后抛出）
-
-effect 的两级用法：
-
-    ctx.effect("名字", install)   自己的账：把一组登记打包成可撤销单元
-    插件装载                      插件 = 一个 effect（`plugin:<名字>`）：
-                                  setup 期间的一切都挂在这个 effect 下
-
-**句柄语义**：装载返回的卸载函数认的是"**这一次装载**"，不是名字——
-重复调用、对应对象已被回卷（如子 effect 随父回卷）、或已被同名新对象顶替，
-都是**安全空操作**；而按名字的 API（unload_effect / unload_plugin）**严格
-fail loud**（名字是地址，写错地址必须报出来）。两者的分工是刻意的：句柄
-天然出现在"清理顺序不确定"的场景里（谁先卸谁后卸都可能），名字出现在
-人手敲的地方（敲错要立刻知道）。
-
-依赖语义（两组声明，读法见 core/plugin.py）：
-
-    inject    必需：缺了 → pending（依赖齐的那一刻自动激活）；提供者走了 → 自动退位
-    optional  可选：缺了 → 照常激活（用 ctx.get 容错）；来了 → 不重装
-
-**变更串行化**（M1 步 7）：所有改变世界的操作走同一把**可重入**锁——
-并发请求（两个 HTTP 线程、模型工具线程、界面轮询）不会撕裂台账；重入是
-合法的（插件在自己的 setup / 清理里装卸别的插件）。每次**有效的**变更
-（服务表 / 插件状态 / effect 表真的变了）revision +1，并留下 `last_change`
-报告（谁退位、谁激活）——界面轮询与测试据此判断"变过没有"。
-
-还没做的（按 PLAN 的 M1 拆步表）：启动器（步 8）。
+    async-first：生命周期操作（provide / retract / effect / inject / load / unload /
+    disable / enable / emit / waterfall）都是 awaitable；插件的 setup、effect 的
+    install、disposer、事件 handler、inject callback 都可以是同步或异步函数，内核
+    统一等待。**单事件循环模型**：一个 Context 只能在一个事件循环里用，非线程安全；
+    只读属性是同步快照，在别的 task 的变更 await 期间可能读到中间态。锁内不要再
+    spawn 一个 task 并等它操作同一个 Context（会死锁）。
 """
 
 from __future__ import annotations
 
-import threading
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+import asyncio
+import inspect
+from collections.abc import AsyncIterator, Callable, Iterable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -78,11 +56,50 @@ PLUGIN_EFFECT_PREFIX = "plugin:"
 #: 动态依赖回调的 effect 名字前缀（`inject:<序号>`）：同样是内部命名空间。
 INJECT_EFFECT_PREFIX = "inject:"
 
-#: effect 的装载函数：执行登记，返回撤销函数（或 None = 没有额外资源要收）。
-Install = Callable[[], "Disposer | None"]
+#: effect 的装载函数：同步或异步；返回撤销函数、None，或它们的 awaitable。
+Install = Callable[[], Any]
 
-#: 事件处理器：广播（emit）收 `**payload`；瀑布（waterfall）收 `(value, **context)`。
+#: 事件处理器：同步或异步；广播（emit）收 `**payload`，瀑布收 `(value, **context)`。
 EventHandler = Callable[..., Any]
+
+#: `require` 用的哨兵：区分"键不存在"与"值恰好是 None"。
+_MISSING = object()
+
+
+async def _maybe_await(value: Any) -> Any:
+    """同步值原样返回，awaitable 则等待（内核唯一的"异步兼容"机制）。"""
+    if inspect.isawaitable(value):
+        return await value
+    return value
+
+
+class _AsyncRLock:
+    """可重入异步锁：同一 task 可重入，其他 task 排队。
+
+    变更操作在 await 插件代码期间仍持锁；同一 task 里的嵌套公共操作（插件
+    setup 里再 load_plugin）直接放行并并入最外层变更。注意：**不要**在持有锁的
+    回调里 spawn 新 task 再等它操作同一个 Context（会死锁）。
+    """
+
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._owner: asyncio.Task[Any] | None = None
+        self._depth = 0
+
+    async def __aenter__(self) -> None:
+        task = asyncio.current_task()
+        if self._owner is task:
+            self._depth += 1
+            return
+        await self._lock.acquire()
+        self._owner = task
+        self._depth = 1
+
+    async def __aexit__(self, *_exc: object) -> None:
+        self._depth -= 1
+        if self._depth == 0:
+            self._owner = None
+            self._lock.release()
 
 
 class DuplicateSlotError(ValueError):
@@ -111,7 +128,7 @@ class MissingEffectError(KeyError):
 
 @dataclass(frozen=True)
 class PluginInfo:
-    """一个插件的状态快照（观测用：台账 / 测试 / 管理面读的就是它）。"""
+    """一个插件的状态快照（观测用）。"""
 
     name: str
     status: PluginStatus
@@ -123,17 +140,17 @@ class PluginInfo:
     error: BaseException | None = None
     #: **插件级**依赖声明（`requires`）：这些插件名在场，本插件才完整。
     requires: tuple[str, ...] = ()
-    #: 当前缺的插件级依赖（不阻断生命周期；loader 在装配期据此 fail loud）。
+    #: 当前缺的插件级依赖（不阻断生命周期；由装配方在装配期检查）。
     missing_requires: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class ChangeReport:
-    """一次**有效变更**的报告（revision 与它一一对应）。
+    """一次有效变更的报告。
 
-    retired / activated 是插件名，按发生顺序；同一个插件在一次变更里先退位
-    又激活（重启）时，会同时出现在两边。动态依赖回调（`ctx.inject`）用
-    `injections_started` / `injections_stopped` 记录（值是 `inject:<序号>`）。
+    retired / activated 是插件名，按发生顺序；同一次变更里先退位又激活的插件
+    会同时出现在两边。动态依赖用 injections_started / injections_stopped 记录
+    （值是 inject:<序号>）。
     """
 
     revision: int
@@ -153,7 +170,7 @@ InjectionStatus = Literal["pending", "active", "failed"]
 
 @dataclass(frozen=True)
 class InjectionInfo:
-    """一条动态依赖订阅的状态快照（观测用：测试 / 管理面 / 排障）。"""
+    """一条动态依赖订阅的状态快照（观测用）。"""
 
     name: str  # `inject:<序号>`（effect 名，也是报告里的标识）
     deps: tuple[str, ...]
@@ -179,10 +196,10 @@ class _InjectionRecord:
 
 @dataclass
 class _PluginRecord:
-    """台账里的一条记录：这个插件的生命周期状态只有一个事实来源，就是它。"""
+    """台账里的一条插件记录。"""
 
     name: str
-    setup: Any  # SetupFn：Callable[[Context], Disposer | None]
+    setup: Any  # SetupFn：Callable[[Context], Any]（同步/异步均可）
     inject: tuple[str, ...]
     optional: tuple[str, ...] = ()
     #: 插件级依赖（`requires`）：只做装配期校验，不参与激活（见 core/plugin.py）。
@@ -204,34 +221,37 @@ class _Effect:
 
 
 class Context:
-    """插件世界的容器与台账。
+    """插件容器与台账。
 
-    用法（装载方视角）：
+    装载方：
 
         ctx = Context()
-        ctx.load_plugin(Reporter())     # 依赖未齐也行：先 pending，等依赖
-        ctx.load_plugin(Store())        # 依赖齐 → 两者都自动激活
-        ctx.unload_plugin("store")      # 提供者走了：依赖它的自动退位（退回 pending）
-        ctx.disable_plugin("store")     # 保留登记、只回卷；enable_plugin 一键恢复
+        await ctx.load_plugin(Reporter())   # 依赖未齐则 pending，等依赖
+        await ctx.load_plugin(Store())      # 依赖齐则自动激活
+        await ctx.unload_plugin("store")    # 依赖它的插件自动退位
+        await ctx.disable_plugin("store")   # 保留登记，enable_plugin 恢复
 
-    用法（插件作者视角）：
+    插件作者：
 
         class MyPlugin:
             name = "my-plugin"
-            inject = ("sessions",)      # 必需依赖：缺了先挂起（不报错）
+            inject = ("sessions",)      # 必需依赖：缺了先挂起
             optional = ("approval",)    # 可选依赖：缺了照常激活
 
-            def setup(self, ctx):
-                sessions = ctx.require("sessions")
-                ctx.provide("greeting", "你好")     # 注册即回卷：卸载时自动撤销
-                ctx.effect("ticker", self._start)    # 嵌套 effect 也行
-
-            def _start(self):
-                return lambda: ...                   # 返回自己的撤销动作
+            async def setup(self, ctx):
+                await ctx.provide("greeting", "你好")    # 注册即回卷
+                await ctx.effect("ticker", self._start)
     """
 
     def __init__(self) -> None:
         self._slots: dict[str, Any] = {}
+        #: 每个槽的提供令牌：回卷时只撤"自己那一次提供"（槽可能已被 retract
+        #: 后由别的 effect 重新提供，不能按名字盲删）。
+        self._slot_tokens: dict[str, object] = {}
+        #: 槽的提供者插件名（仅插件装载期的 provide 记账；用于准确级联与报错）。
+        self._slot_owners: dict[str, str] = {}
+        #: 正在激活的插件（provide 据此记 owner；settle 期间不会嵌套激活）。
+        self._activating: _PluginRecord | None = None
         self._plugins: dict[str, _PluginRecord] = {}
         self._effects: dict[str, _Effect] = {}
         #: 正在装载的 effect 栈（父子关系与"注册即回卷"都靠它）。
@@ -239,8 +259,8 @@ class Context:
         #: 事件订阅表：事件名 → [(令牌, handler)]；令牌让退订精确到"哪一次订阅"。
         self._handlers: dict[str, list[tuple[int, EventHandler]]] = {}
         self._handler_seq = 0
-        #: 变更串行化：可重入（插件在 setup / 清理里装卸别的插件是合法的）。
-        self._lock = threading.RLock()
+        #: 变更串行化：按 task 可重入的异步锁（单事件循环模型，非线程安全）。
+        self._lock = _AsyncRLock()
         #: 变更嵌套深度 + 最外层变更开始时的状态签名（见 `_change`）。
         self._change_depth = 0
         self._change_before: tuple[Any, ...] | None = None
@@ -255,6 +275,8 @@ class Context:
         self._injection_seq = 0
         #: settle 重入保护（见 _settle）：稳定化过程中不再嵌套稳定化。
         self._settling = False
+        #: 回卷深度：disposer 运行期间不推送稳定态（半拆世界里 settle 会看错）。
+        self._unwinding = 0
         #: 退位级联期间被抑制的插件名：它们刚被停用，但提供者的服务还没撤——
         #: 不抑制的话，级联途中触发的 settle 会看到它们"依赖齐备"又立刻复活。
         self._suppressed: set[str] = set()
@@ -265,18 +287,16 @@ class Context:
 
     @property
     def revision(self) -> int:
-        """世界版本号：每次**有效变更** +1（失败且没留下痕迹的变更不加）。"""
-        with self._lock:
-            return self._revision
+        """世界版本号：每次有效变更 +1。"""
+        return self._revision
 
     @property
     def last_change(self) -> ChangeReport | None:
-        """最近一次有效变更的报告（谁退位、谁激活）；还没变过则为 None。"""
-        with self._lock:
-            return self._last_change
+        """最近一次有效变更的报告；还没变过则为 None。"""
+        return self._last_change
 
     def _signature(self) -> tuple[Any, ...]:
-        """当前世界的"变没变"签名：服务表 + 插件状态 + effect 表 + 动态订阅状态。"""
+        """当前世界签名：服务表、插件状态、effect 表、动态订阅状态。"""
         return (
             tuple(self._slots),
             tuple((record.name, record.status) for record in self._plugins.values()),
@@ -284,15 +304,13 @@ class Context:
             tuple((record.seq, record.status) for record in self._injections.values()),
         )
 
-    @contextmanager
-    def _change(self) -> Iterator[None]:
-        """把一个公共操作包成"一次变更"：串行化 + 结束时判定 revision。
+    @asynccontextmanager
+    async def _change(self) -> AsyncIterator[None]:
+        """把一次公共操作包成一次变更：加锁，结束时比较签名并更新 revision。
 
-        嵌套调用（插件 setup 里的 provide / load_plugin …）并入最外层那一次：
-        一次用户动作只产生一个 revision。判定用**前后签名对比**——操作报错但
-        世界确实变了（例如清理失败）也要 +1；彻底回滚干净的失败则不加。
+        嵌套调用并入最外层：一次外层动作只产生一个 revision。
         """
-        with self._lock:
+        async with self._lock:
             outermost = self._change_depth == 0
             if outermost:
                 self._change_before = self._signature()
@@ -321,132 +339,129 @@ class Context:
     # 服务（命名单槽）
     # ------------------------------------------------------------------
 
-    def provide(self, key: str, value: Any) -> None:
-        """提供一项服务；同名重复 → DuplicateSlotError（原值原样保留）。
+    async def provide(self, key: str, value: Any) -> None:
+        """提供一项服务；同名已存在时抛 DuplicateSlotError，原值保留。
 
-        **注册即回卷**：在某个 effect 的装载期调用时，本次提供自动挂上
-        "撤销槽位"的动作——effect 卸载、装载失败，槽位都会被回卷。
+        装载期调用会自动登记回卷。提供后推进稳定态：等待这项服务的插件可能在
+        这里被激活，其 setup 抛错会从本次调用抛出。
 
-        提供之后会把世界推向稳定态：正在等这项服务的插件会当场激活；若某个
-        等待者的 setup 抛错，异常会从这次 provide 里抛回来（那个插件标记
-        failed，台账里看得到）。
-
-        刻意**不返回**刚提供的值：`ctx.effect("x", lambda: ctx.provide(...))`
-        是最常见的写法，返回值会让它变成"install 返回了非撤销函数的怪东西"。
-        （`retract` 相反——它把原值交还，那是有用的。）
+        不返回刚提供的值（便于把 provide 直接当作 effect 的 install 使用）。
         """
         if not isinstance(key, str) or not key:
             raise ValueError(f"服务名必须是非空字符串，收到：{key!r}")
-        with self._change():
+        async with self._change():
             if key in self._slots:
                 raise DuplicateSlotError(
                     f"服务已提供：{key}（重复注册直接报错，不静默覆盖；要换实现先 retract）"
                 )
+            token = object()
             self._slots[key] = value
-            if self._stack:  # 装载期：登记自动回卷（卸载时把它撤掉）
-                self._stack[-1].disposers.append(lambda k=key: self._slots.pop(k, None))
-            self._settle()
+            self._slot_tokens[key] = token
+            if self._activating is not None:
+                self._slot_owners[key] = self._activating.name
+            if self._stack:  # 装载期：登记自动回卷（卸载时只撤这一次提供）
+                self._stack[-1].disposers.append(
+                    lambda k=key, t=token: self._drop_slot(k, t)
+                )
+            await self._settle()
 
-    def retract(self, key: str) -> Any:
-        """撤掉一项服务并返回原值；不存在 → MissingServiceError。
+    async def retract(self, key: str) -> Any:
+        """撤销一项服务并返回原值；不存在时抛 MissingServiceError。
 
-        依赖它的活跃插件会随之退位（退回 pending，等服务再出现）。
-
-        注意：**撤销不在回卷范围**——卸载 effect 回卷的是"它提供过的东西"，
-        不会把装载期撤掉的槽位再变回来（装载失败是例外：整表还原）。
-        所以 setup 里不要 retract 别人的槽（那是拆台，不是自己分内的登记）。
+        依赖它的活跃插件随之退位（深的先退，清理异常收齐后抛第一个），退回
+        pending。撤销本身不会因 effect 回卷而恢复；装载失败时整表还原是例外。
         """
-        if key not in self._slots:
-            raise MissingServiceError(f"服务不存在：{key}（无法撤掉）")
-        with self._change():
+        async with self._change():
+            if key not in self._slots:
+                raise MissingServiceError(f"服务不存在：{key}（无法撤掉）")
             value = self._slots.pop(key)
-            self._settle()
+            self._slot_tokens.pop(key, None)
+            self._forget_owner(key)
+            await self._settle()
             return value
 
-    def get(self, key: str, default: Any = None) -> Any:
-        """取一项服务；缺失返回 default（"可选依赖"的取法）。
+    def _drop_slot(self, key: str, token: object) -> None:
+        """回卷一次服务提供：槽还是自己提供的那份才撤（幂等）。"""
+        if self._slot_tokens.get(key) is token:
+            self._slot_tokens.pop(key, None)
+            self._slots.pop(key, None)
+            self._slot_owners.pop(key, None)
 
-        注意：default 只在**缺失**时生效——值本身是 None 时与缺失看起来一样；
-        要区分"没有"和"有但是 None"请用 require。
+    def _forget_owner(self, key: str) -> None:
+        """retract 时把槽从提供者插件的 `provided` 里摘掉。"""
+        owner_name = self._slot_owners.pop(key, None)
+        if owner_name is None:
+            return
+        owner = self._plugins.get(owner_name)
+        if owner is not None and key in owner.provided:
+            owner.provided = tuple(item for item in owner.provided if item != key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """取一项服务；缺失返回 default。
+
+        default 只在缺失时生效，无法区分"没有"与"有但是 None"（用 require 区分）。
         """
         return self._slots.get(key, default)
 
     def require(self, key: str) -> Any:
-        """取一项服务；缺失 → MissingServiceError（"必需依赖"的取法）。"""
-        if key not in self._slots:
+        """取一项服务；缺失时抛 MissingServiceError。"""
+        value = self._slots.get(key, _MISSING)
+        if value is _MISSING:
             raise MissingServiceError(f"服务不存在：{key}（谁提供它？检查装配单）")
-        return self._slots[key]
+        return value
 
     @property
     def services(self) -> list[str]:
-        """当前已提供的服务名（**按提供顺序**的快照：调用方改它不影响容器）。"""
-        with self._lock:
-            return list(self._slots)
+        """当前已提供的服务名（按提供顺序的快照）。"""
+        return list(self._slots)
 
     # ------------------------------------------------------------------
     # effect（注册即回卷）
     # ------------------------------------------------------------------
 
-    def effect(self, name: str, install: Install) -> Disposer:
-        """装载一个 effect：执行 install，登记它返回的撤销函数；返回卸载句柄。
+    async def effect(self, name: str, install: Install) -> Disposer:
+        """装载一个 effect：执行 install，登记返回的撤销函数，返回卸载句柄。
 
-        装载期（install 执行中）在 ctx 上做的一切登记——`provide`、嵌套
-        `effect`——自动挂进本 effect；调用返回的句柄（或 `unload_effect(name)`）
-        会把它们逐层回卷。
+        装载期在 ctx 上的登记（provide、嵌套 effect、on）自动挂进本 effect，卸载
+        时逐层回卷。install 抛错或返回值不是 None / 可调用对象时，本 effect 与
+        子 effect 全部回卷、名字从台账移除，再抛出原始异常。
 
-        回卷顺序（见 `_unwind`）：**子 effect 先**（同级后进先出），然后自己的
-        撤销函数（后进先出）——于是"插件返回的清理动作"运行在它提供的服务被
-        撤掉**之前**（清理代码用得着自己的服务）。
-
-        失败即回卷：install 抛错（或返回值不是 None / 可调用）→ 本 effect 及其
-        子 effect 全部回卷、名字从台账摘掉，再把原始异常抛出——不留半装。
-
-        install 的返回值是"它自己资源的撤销动作"：若它已经在账本里（例如写成
-        `lambda: ctx.on(...)`——on 返回的退订函数早已自动登记），不会重复记账。
-
-        返回的卸载句柄见模块开头的「句柄语义」。
-
-        `name` 以 `plugin:` 开头 → ValueError（那是插件自己的命名空间）。
+        返回值若已在账本里（例如 on 返回的退订函数），不重复记账。
+        install 可以是同步或异步函数；返回的 disposer 也可以是异步函数。
+        name 以 plugin: 或 inject: 开头时报错（内部命名空间）。
         """
-        with self._change():
-            return self._effect(name, install, internal=False)
+        async with self._change():
+            return await self._effect(name, install, internal=False)
 
-    def unload_effect(self, name: str) -> None:
-        """卸载一个 effect（连同它的子 effect）；不存在 → MissingEffectError。
+    async def unload_effect(self, name: str) -> None:
+        """卸载一个 effect 及其子 effect；不存在时抛 MissingEffectError。
 
-        某个 disposer 抛错时：**继续回卷其余部分**，最后把第一个异常抛出去
-        （卸载不会因为一个清理失败而半途而废——那正是最容易留下垃圾的时刻）。
+        plugin: 开头的 effect 不能直接卸载（用 unload_plugin / disable_plugin）。
+        某个 disposer 抛错时继续回卷其余部分，最后抛第一个异常。
         """
         if name.startswith(PLUGIN_EFFECT_PREFIX):
             raise ValueError(
                 f"插件自己的 effect 不能直接卸载：{name}"
                 "（请用 unload_plugin / disable_plugin——它要同步改台账状态）"
             )
-        self._unload_named(name)
+        await self._unload_named(name)
 
     @property
     def effects(self) -> list[str]:
-        """当前装载的 effect 名（按装载顺序；含插件自己的 `plugin:<名>`）。"""
-        with self._lock:
-            return list(self._effects)
+        """当前装载的 effect 名（按装载顺序，含插件自己的 plugin:<名>）。"""
+        return list(self._effects)
 
     # ------------------------------------------------------------------
     # 事件（广播 / 瀑布）
     # ------------------------------------------------------------------
 
     def on(self, event: str, handler: EventHandler) -> Disposer:
-        """订阅一个事件；返回退订函数（幂等）。
+        """订阅事件，返回幂等退订函数。
 
-        同一个事件可以有多个订阅者，**按注册顺序**派发。两种 handler：
+        emit 的 handler 调用形式为 handler(**payload)，waterfall 为 handler(value, **context)。
+        同一事件按注册顺序派发。装载期订阅自动随 effect 回卷。
 
-            广播（emit）        handler(**payload)——收到什么看得到；返回值被忽略
-            瀑布（waterfall）   handler(value, **context)——返回非 None 即替换当前值
-
-        **注册即回卷**：装载期订阅自动挂上进本 effect 的退订动作——effect 卸载、
-        装载失败、插件退位，订阅随之消失（"注册即 effect"在事件上的落地）。
-
-        派发名单在派发开始时取快照：handler 在半途订阅 / 退订，从**下一轮**生效
-        （本轮照常跑完）——这样派发过程不会因为订阅表被改而错乱。
+        派发名单在派发开始时取快照：本轮中途的订阅 / 退订从下一轮生效。
         """
         if not isinstance(event, str) or not event:
             raise ValueError(f"事件名必须是非空字符串，收到：{event!r}")
@@ -465,77 +480,53 @@ class Context:
             self._stack[-1].disposers.append(off)
         return off
 
-    def emit(self, event: str, **payload: Any) -> None:
-        """广播一个事件：按订阅顺序调用 `handler(**payload)`；返回值忽略。
+    async def emit(self, event: str, **payload: Any) -> None:
+        """广播事件：按订阅顺序调用 handler(**payload)，返回值忽略。
 
-        handler 抛错**直接往外抛**（fail loud）：总线不替消费方吞错，也不隔离
-        订阅者——吞错是消费方自己的策略（真需要"一个断了不影响别人"时，写一个
-        替它兜住的 handler，或把那个 subscriber 做成独立 effect）。已经跑过的
-        handler 不回滚，后面的 handler 不再跑。
+        handler 可以是同步或异步函数；抛错直接外抛，已跑过的不回滚、后面的不再运行。
         """
-        for _, handler in list(self._handlers.get(event, ())):
-            handler(**payload)
+        handlers = list(self._handlers.get(event, ()))
+        for _, handler in handlers:
+            await _maybe_await(handler(**payload))
 
-    def waterfall(self, event: str, value: Any, **context: Any) -> Any:
-        """瀑布事件：每个 handler 可以改写当前值——**中间件链 / 策略插座**。
+    async def waterfall(self, event: str, value: Any, **context: Any) -> Any:
+        """瀑布事件：按订阅顺序调用 handler(value, **context)。
 
-        handler 签名 `handler(value, **context) -> Any | None`：
-
-            返回 None  不干预（下一个人看到的是原值）
-            返回别的   替换当前值（下一个人看到的是它）
-
-        `value` 本身可以是函数——挂载点常常是"把执行动作包一层"的策略
-        （超时、重试、截断都这么写），而不是改一个数据字段。
-
-        异常与名单快照语义同 `emit`。
+        handler 可以是同步或异步函数；返回 None 表示不干预，返回其他值则替换当前值。
+        异常与订阅名单快照语义同 emit。
         """
-        for _, handler in list(self._handlers.get(event, ())):
-            result = handler(value, **context)
+        handlers = list(self._handlers.get(event, ()))
+        for _, handler in handlers:
+            result = await _maybe_await(handler(value, **context))
             if result is not None:
                 value = result
         return value
 
     @property
     def event_names(self) -> list[str]:
-        """当前有订阅者的事件名（订阅者全部退订后不再列出；按首次订阅顺序）。"""
+        """当前有订阅者的事件名（按首次订阅顺序）。"""
         return [name for name, handlers in self._handlers.items() if handlers]
 
     # ------------------------------------------------------------------
     # 动态依赖（inject）：依赖齐了才跑一块
     # ------------------------------------------------------------------
 
-    def inject(self, deps: Iterable[str], callback: Callable[[Context], Any]) -> Disposer:
-        """注册一块**依赖出现才运行**的代码；返回取消订阅的句柄（幂等）。
+    async def inject(self, deps: Iterable[str], callback: Callable[[Context], Any]) -> Disposer:
+        """注册一块依赖出现才运行的代码，返回幂等的取消订阅句柄。
 
-        与静态 `inject` 是一对：
+        与静态 inject 的区别：静态 inject 缺依赖时整个插件不激活；这里的回调放进
+        子 effect 运行，依赖消失自动拆，依赖再次出现时重跑。
 
-            静态 inject = ("store",)   → 缺依赖，**整个插件**不激活
-            ctx.inject(["store"], cb)  → 插件本体照常跑，**这一块**等依赖
+        装载期注册时，订阅本身随外层 effect 回卷。回调抛错时该订阅标记 failed 且
+        不原地重试，依赖变化后才会重试。deps 必须是非空序列。
 
-        回调在依赖齐备时运行，**放进一个子 effect**：它在那里面做的登记
-        （provide / on / effect / 返回的清理函数）随"依赖消失"自动回卷；
-        依赖再出现时会重跑（这是与 `optional` 的关键区别——optional 是
-        "来了不重装"，动态 inject 是"来了就装、走了就拆"）。
-
-        三种典型用途（dsh 里 57 处调用都是这个形状）：
-
-            · 服务出现时往它那里**注册**东西（挂拦截器、加提示词段、注册变量）
-            · 服务被换掉后**重新挂**（旧订阅已经随之回卷）
-            · 可选能力的延后装配（主体不必等）
-
-        装载期（某个 effect 的 install 里）调用时，**订阅本身**也挂在那个
-        effect 下：外层 effect 卸载 → 订阅取消 + 正在生效的回调随之回卷。
-
-        回调抛错 → 记录标 failed、原异常抛给触发方；**不原地重试**（否则每次
-        settle 都会再炸一遍）。依赖消失再出现后会重试——错误可查（`injections`）。
-
-        `deps` 必须是非空序列（单个字符串是常见笔误，直接报错）。
+        返回的取消订阅句柄是异步函数：`await handle()`。
         """
         names = self._inject_deps(deps)
         if not callable(callback):
             raise TypeError(f"inject 的 callback 必须可调用，收到：{callback!r}")
 
-        with self._change():
+        async with self._change():
             self._injection_seq += 1
             record = _InjectionRecord(
                 seq=self._injection_seq,
@@ -545,64 +536,52 @@ class Context:
             )
             self._injections[record.seq] = record
 
-            def handle() -> None:
+            async def handle() -> None:
                 # 认"这一次注册"（记录身份），不是序号（同句柄语义）。
-                with self._lock:
+                if self._injections.get(record.seq) is not record:
+                    return
+                async with self._change():
                     if self._injections.get(record.seq) is not record:
                         return
-                    # 作为外层 effect 的 disposer 被调用时（unwind 中），只取消
-                    # 订阅、不推动稳定态——外层操作收尾时会 settle（与 provide /
-                    # on 的自动撤销同一纪律，避免在半个世界里做激活）。
-                    with self._change():
-                        self._cancel_injection(record)
+                    await self._cancel_injection(record)
                     if not self._stack:
-                        self._settle()
+                        await self._settle()
 
             if self._stack:  # 装载期：订阅随外层 effect 回卷
                 self._stack[-1].disposers.append(handle)
-            self._settle()
+            await self._settle()
         return handle
 
     @property
     def injections(self) -> list[InjectionInfo]:
         """全部动态依赖订阅的状态快照（按注册顺序）。"""
-        with self._lock:
-            return [
-                InjectionInfo(
-                    name=f"{INJECT_EFFECT_PREFIX}{record.seq}",
-                    deps=record.deps,
-                    status=record.status,
-                    missing=tuple(dep for dep in record.deps if dep not in self._slots),
-                    error=record.error,
-                )
-                for record in self._injections.values()
-            ]
+        return [
+            InjectionInfo(
+                name=f"{INJECT_EFFECT_PREFIX}{record.seq}",
+                deps=record.deps,
+                status=record.status,
+                missing=tuple(dep for dep in record.deps if dep not in self._slots),
+                error=record.error,
+            )
+            for record in self._injections.values()
+        ]
 
     # ------------------------------------------------------------------
     # 插件（装载 / 卸载 / 停用 / 启用）
     # ------------------------------------------------------------------
 
-    def load_plugin(self, plugin: object) -> Disposer:
-        """装载一个插件；返回卸载函数（调用即 unload_plugin）。
+    async def load_plugin(self, plugin: object) -> Disposer:
+        """装载一个插件，返回卸载函数。
 
-        返回时插件可能 active（依赖齐备）也可能 pending（依赖缺失，等就绪自动
-        激活）——**待激活不是错误**：是否允许残留 pending 是调用方（启动器）的
-        判断。同名已存在 → DuplicatePluginError。
+        返回时插件可能 active，也可能 pending（依赖缺失，待就绪后自动激活）。
+        同名已存在时抛 DuplicatePluginError。
 
-        激活失败（setup 抛错）在这里的行为分两种：
-
-        - 本次装载触发的失败 → 异常抛出，**记录不留台账**（不留半装状态）；
-        - 别人的操作（如 provide）触发的失败 → 异常也从触发方抛出，但记录
-          以 failed 留在台账（错误可查，可用 enable_plugin 重试）。
-
-        返回的卸载句柄见模块开头的「句柄语义」：认"这一次装载"，重复调用 /
-        已卸载 / 同名新插件顶上都是安全空操作。
+        激活失败分两种：本次装载触发的失败直接抛出且记录不留台账；由其他操作
+        （如 provide）触发的失败从触发方抛出，记录以 failed 保留，可 enable_plugin
+        重试。若失败来自被这次装载连带激活的**别的**插件，本插件可能已经激活并
+        留在台账——装配方（loader）需要按名字回滚它。
         """
         name = plugin_name(plugin)
-        if name in self._plugins:
-            raise DuplicatePluginError(
-                f"插件已装载：{name}（一个运行时里一个插件名只留一份实例；先 unload_plugin）"
-            )
         record = _PluginRecord(
             name=name,
             setup=plugin_setup(plugin),
@@ -610,129 +589,128 @@ class Context:
             optional=plugin_optionals(plugin),
             requires=plugin_requires(plugin),
         )
-        with self._change():
+        async with self._change():
+            if name in self._plugins:
+                raise DuplicatePluginError(
+                    f"插件已装载：{name}（一个运行时里一个插件名只留一份实例；先 unload_plugin）"
+                )
             self._plugins[name] = record
             try:
-                self._settle()
+                await self._settle()
             except BaseException:
                 if record.status == "failed":
                     self._plugins.pop(name, None)
                 raise
 
-        def handle() -> None:
+        async def handle() -> None:
             # 认"这一次装载"（记录身份），不是名字（见模块开头的「句柄语义」）。
-            with self._lock:
-                if self._plugins.get(name) is record:
-                    self.unload_plugin(name)
+            if self._plugins.get(name) is record:
+                await self.unload_plugin(name)
 
         return handle
 
-    def unload_plugin(self, name: str) -> None:
-        """卸载一个插件：**依赖者先退位**，然后回卷它自己（effect 逐层回卷）。
+    async def unload_plugin(self, name: str) -> None:
+        """卸载一个插件：依赖它的活跃插件先退位（深的先退），再回卷它自己。
 
-        退位顺序"深的先退"（间接依赖者先于直接依赖者、提供者最后）：这样每个
-        插件跑自己的清理代码时，它依赖的服务都还在。依赖它的活跃插件退回收
-        pending——提供者（或别的提供同一服务的插件）回来时，它们会自动重新激活。
-
-        某个插件的清理抛错时：**继续退位与卸载其余部分**，最后把第一个异常抛出去
-        （与 effect 回卷同一条纪律：卸载不半途而废——半途而废正是留下垃圾的时刻）。
+        退位的依赖者退回 pending，提供者回来时自动重新激活。
+        某个插件清理抛错时继续卸载其余部分，最后抛第一个异常。
+        插件不存在时抛 MissingPluginError。
         """
-        record = self._plugins.pop(name, None)
-        if record is None:
-            raise MissingPluginError(f"插件不存在：{name}（无法卸载）")
-        with self._change():
+        errors: list[BaseException] = []
+        async with self._change():
+            record = self._plugins.pop(name, None)
+            if record is None:
+                raise MissingPluginError(f"插件不存在：{name}（无法卸载）")
             dependents = list(reversed(self._dependent_records(record)))
-            errors: list[BaseException] = []
             self._suppressed.update(dep.name for dep in dependents)
             try:
                 for dependent in dependents:
-                    self._deactivate_into(dependent, errors)
-                self._deactivate_into(record, errors)
+                    await self._deactivate_into(dependent, errors)
+                await self._deactivate_into(record, errors)
             finally:
                 for dependent in dependents:
                     self._suppressed.discard(dependent.name)
-            self._settle()
+            settle_error = await self._settle_collecting()
         if errors:
+            if settle_error is not None:
+                errors[0].add_note(f"另有异常：{settle_error!r}")
             raise errors[0]
+        if settle_error is not None:
+            raise settle_error
 
-    def disable_plugin(self, name: str) -> list[str]:
-        """**停用**一个插件：回卷它的 effect、状态标为 disabled，但**保留登记**。
+    async def disable_plugin(self, name: str) -> list[str]:
+        """停用插件：回卷 effect、状态标为 disabled，但保留登记。
 
-        与卸载的区别（这就是"一键关掉某个能力"要的语义）：
-
-            卸载  → 从台账删掉；要回来必须重新提供插件对象
-            停用  → 只回卷、状态 disabled；enable_plugin 用**同一个对象**恢复
-                    （setup 会在同一实例上再跑一遍，配置与身份都不丢）
-
-        级联与卸载一致：依赖它的插件一起退位（退回 pending，等它恢复后自动激活）。
-        返回被影响的插件名（含自己）。某个插件的清理抛错时：其余照常退位，
-        错误最后抛出（同 `unload_plugin`）。
+        与卸载的区别：enable_plugin 用同一个对象恢复，setup 会重跑。
+        依赖它的插件一起退位。返回受影响的插件名（含自己）。
         """
-        record = self._plugins.get(name)
-        if record is None:
-            raise MissingPluginError(f"插件不存在：{name}（无法停用）")
-        if record.status == "disabled":
-            raise ValueError(f"插件已处于停用状态：{name}")
-        dependents = list(reversed(self._dependent_records(record)))
-        with self._change():
+        errors: list[BaseException] = []
+        async with self._change():
+            record = self._plugins.get(name)
+            if record is None:
+                raise MissingPluginError(f"插件不存在：{name}（无法停用）")
+            if record.status == "disabled":
+                raise ValueError(f"插件已处于停用状态：{name}")
+            dependents = list(reversed(self._dependent_records(record)))
             # 先改自己的状态：回卷途中若触发 settle，它不能把自己当作 pending 复活。
             record.status = "disabled"
             self._suppressed.update(dep.name for dep in dependents)
-            errors: list[BaseException] = []
             try:
                 for dependent in dependents:
-                    self._deactivate_into(dependent, errors)
-                self._deactivate_into(record, errors, status="disabled")
+                    await self._deactivate_into(dependent, errors)
+                await self._deactivate_into(record, errors, status="disabled")
             finally:
                 for dependent in dependents:
                     self._suppressed.discard(dependent.name)
-            self._settle()
+            settle_error = await self._settle_collecting()
         if errors:
+            if settle_error is not None:
+                errors[0].add_note(f"另有异常：{settle_error!r}")
             raise errors[0]
+        if settle_error is not None:
+            raise settle_error
         return [record.name, *(dep.name for dep in dependents)]
 
-    def enable_plugin(self, name: str) -> None:
-        """重新启用被停用（或激活失败）的插件：标回 pending，交给 settle 定夺。
+    async def enable_plugin(self, name: str) -> None:
+        """重新启用 disabled / failed 的插件：标回 pending，由稳定化决定是否激活。
 
-        **不保证一定激活**：依赖缺失时停在 pending（台账里看得见缺什么）——
-        这是"启用"该有的诚实行为，不是"点了就应该活"。
+        依赖缺失时停在 pending；其他状态调用会报错。
         """
-        record = self._plugins.get(name)
-        if record is None:
-            raise MissingPluginError(f"插件不存在：{name}（无法启用）")
-        if record.status not in ("disabled", "failed"):
-            raise ValueError(
-                f"插件当前是 {record.status}，不需要启用（只有 disabled / failed 可以）"
-            )
-        with self._change():
+        async with self._change():
+            record = self._plugins.get(name)
+            if record is None:
+                raise MissingPluginError(f"插件不存在：{name}（无法启用）")
+            if record.status not in ("disabled", "failed"):
+                raise ValueError(
+                    f"插件当前是 {record.status}，不需要启用（只有 disabled / failed 可以）"
+                )
             record.status = "pending"
             record.error = None
-            self._settle()
+            await self._settle()
 
     @property
     def plugins(self) -> list[PluginInfo]:
         """全部插件的状态快照（按装载顺序）。"""
-        with self._lock:
-            return [
-                PluginInfo(
-                    name=record.name,
-                    status=record.status,
-                    inject=record.inject,
-                    missing=tuple(dep for dep in record.inject if dep not in self._slots),
-                    optional=record.optional,
-                    missing_optionals=tuple(
-                        dep for dep in record.optional if dep not in self._slots
-                    ),
-                    provided=record.provided,
-                    error=record.error,
-                    requires=record.requires,
-                    missing_requires=self._missing_requires(record),
-                )
-                for record in self._plugins.values()
-            ]
+        return [
+            PluginInfo(
+                name=record.name,
+                status=record.status,
+                inject=record.inject,
+                missing=tuple(dep for dep in record.inject if dep not in self._slots),
+                optional=record.optional,
+                missing_optionals=tuple(
+                    dep for dep in record.optional if dep not in self._slots
+                ),
+                provided=record.provided,
+                error=record.error,
+                requires=record.requires,
+                missing_requires=self._missing_requires(record),
+            )
+            for record in self._plugins.values()
+        ]
 
     def _missing_requires(self, record: _PluginRecord) -> tuple[str, ...]:
-        """插件级依赖里当前不在台账的那些（供 loader / 管理面做装配期校验）。"""
+        """插件级依赖里当前不在台账的那些插件名。"""
         names = list(self._plugins)
         return tuple(
             required
@@ -743,23 +721,20 @@ class Context:
     @property
     def active_plugins(self) -> list[str]:
         """运行中的插件名（按装载顺序）。"""
-        with self._lock:
-            return [rec.name for rec in self._plugins.values() if rec.status == "active"]
+        return [rec.name for rec in self._plugins.values() if rec.status == "active"]
 
     @property
     def pending_plugins(self) -> list[str]:
-        """等待依赖的插件名（按装载顺序）——启动器检查残留用的就是它。"""
-        with self._lock:
-            return [rec.name for rec in self._plugins.values() if rec.status == "pending"]
+        """等待依赖的插件名（按装载顺序）。"""
+        return [rec.name for rec in self._plugins.values() if rec.status == "pending"]
 
     @property
     def disabled_plugins(self) -> list[str]:
         """被停用的插件名（按装载顺序）。"""
-        with self._lock:
-            return [rec.name for rec in self._plugins.values() if rec.status == "disabled"]
+        return [rec.name for rec in self._plugins.values() if rec.status == "disabled"]
 
     def missing_dependencies(self, name: str) -> list[str]:
-        """某个插件当前缺失的必需依赖（用于 fail-loud 文案 / 观测）。"""
+        """某个插件当前缺失的必需依赖；插件不存在时报错。"""
         record = self._plugins.get(name)
         if record is None:
             raise MissingPluginError(f"插件不存在：{name}")
@@ -769,8 +744,8 @@ class Context:
     # 内部：effect 装载 / 回卷
     # ------------------------------------------------------------------
 
-    def _effect(self, name: str, install: Install, *, internal: bool) -> Disposer:
-        """`effect` / 插件装载共用的实现（internal 放行 `plugin:` 前缀）。"""
+    async def _effect(self, name: str, install: Install, *, internal: bool) -> Disposer:
+        """effect 与插件装载共用的实现；internal 放行内部命名空间前缀。"""
         if not isinstance(name, str) or not name:
             raise ValueError(f"effect 名必须是非空字符串，收到：{name!r}")
         if name.startswith(PLUGIN_EFFECT_PREFIX) and not internal:
@@ -793,7 +768,7 @@ class Context:
 
         self._stack.append(record)
         try:
-            result = install()
+            result = await _maybe_await(install())
             if result is not None and not callable(result):
                 raise TypeError(
                     f"effect {name!r} 的 install 必须返回 None 或撤销函数，收到：{result!r}"
@@ -803,66 +778,70 @@ class Context:
             self._stack.pop()
             self._detach(record)
             self._forget(record)
-            self._unwind(record)  # 回卷途中的异常不遮蔽原始异常
+            await self._unwind(record)  # 回卷途中的异常不遮蔽原始异常
             raise
         self._stack.pop()
         if result is not None and not any(result is item for item in record.disposers):
             # install 的返回值 = "它自己资源的撤销动作"。若已在账本里（如
             # `lambda: ctx.on(...)` 返回的退订——on 早已自动登记），不重复记账。
             record.disposers.append(result)
-        self._settle()  # 本次装载可能解开了别的插件的依赖（重入时自动跳过）
+        await self._settle()  # 本次装载可能解开了别的插件的依赖（重入时自动跳过）
 
-        def handle() -> None:
+        async def handle() -> None:
             # 认"这一次装载"（记录身份），不是名字（见模块开头的「句柄语义」）。
             if self._effects.get(name) is record:
-                self._unload_named(name)
+                await self._unload_named(name)
 
         return handle
 
-    def _unload_named(self, name: str) -> None:
-        """按名字回卷 + 稳定化 + 重抛第一个清理异常（公共入口与句柄共用）。"""
-        with self._change():
-            errors = self._unload_effect(name)
-            self._settle()
+    async def _unload_named(self, name: str) -> None:
+        """按名字回卷、稳定化，并重抛第一个清理异常。"""
+        async with self._change():
+            errors = await self._unload_effect(name)
+            await self._settle()
         if errors:
             raise errors[0]
 
-    def _unload_effect(self, name: str) -> list[BaseException]:
-        """按名字回卷一个 effect；返回途中的异常（不回卷=不管）。"""
+    async def _unload_effect(self, name: str) -> list[BaseException]:
+        """按名字回卷一个 effect，返回途中的异常。"""
         record = self._effects.get(name)
         if record is None:
             raise MissingEffectError(f"effect 不存在：{name}（无法卸载）")
         self._detach(record)  # 先与父链断开：父之后卸载时不会重复回卷它
         self._forget(record)  # 从台账摘掉整棵子树（不动 children——回卷要用）
-        return self._unwind(record)
+        return await self._unwind(record)
 
     @staticmethod
     def _detach(record: _Effect) -> None:
-        """把 effect 从父的 children 列表里摘掉（防重复回卷）。"""
+        """把 effect 从父的 children 中摘掉，避免重复回卷。"""
         if record.parent is not None and record in record.parent.children:
             record.parent.children.remove(record)
 
     def _forget(self, record: _Effect) -> None:
-        """从名字台账里摘掉一个 effect（连同子树）；不碰 children 结构。"""
+        """从名字台账中移除一个 effect 及其子树。"""
         self._effects.pop(record.name, None)
         for child in record.children:
             self._forget(child)
 
-    def _unwind(self, record: _Effect) -> list[BaseException]:
-        """回卷：子 effect 先（同级后进先出），然后自己的撤销动作（后进先出）。
+    async def _unwind(self, record: _Effect) -> list[BaseException]:
+        """回卷：子 effect 先（同级后进先出），再跑自己的撤销函数（后进先出）。
 
-        返回途中的异常，**不错过其余回卷**（某个清理炸了不代表剩下的不清理）。
+        返回途中的异常；一个失败不打断其余回卷。
         """
         errors: list[BaseException] = []
-        while record.children:
-            child = record.children.pop()  # 同级后进先出
-            errors.extend(self._unwind(child))
-        while record.disposers:
-            disposer = record.disposers.pop()  # 后进先出
-            try:
-                disposer()
-            except BaseException as exc:  # 全部捕获、统一重抛
-                errors.append(exc)
+        self._unwinding += 1
+        try:
+            while record.children:
+                child = record.children.pop()  # 同级后进先出
+                errors.extend(await self._unwind(child))
+            while record.disposers:
+                disposer = record.disposers.pop()  # 后进先出
+                try:
+                    await _maybe_await(disposer())
+                except BaseException as exc:  # 全部捕获、统一重抛
+                    errors.append(exc)
+        finally:
+            self._unwinding -= 1
         return errors
 
     # ------------------------------------------------------------------
@@ -874,7 +853,7 @@ class Context:
 
     @staticmethod
     def _inject_deps(deps: Iterable[str]) -> tuple[str, ...]:
-        """校验并规范化动态依赖声明（与静态 inject 同一套 fail-loud 纪律）。"""
+        """校验并规范化动态依赖声明。"""
         if isinstance(deps, (str, bytes)):
             raise TypeError(f"inject 的 deps 必须是序列（如 ['store']），收到字符串：{deps!r}")
         if not isinstance(deps, Iterable):
@@ -888,13 +867,13 @@ class Context:
             raise ValueError(f"inject 的 deps 有重复项：{names!r}")
         return names
 
-    def _start_injection(self, record: _InjectionRecord) -> None:
-        """依赖齐了：把回调放进一个子 effect 里运行（注册的一切随它回卷）。"""
+    async def _start_injection(self, record: _InjectionRecord) -> None:
+        """依赖齐了：把回调放进一个子 effect 里运行。"""
         effect_name = f"{INJECT_EFFECT_PREFIX}{record.seq}"
         record.status = "active"
         record.error = None
         try:
-            self._effect(effect_name, lambda: record.callback(self), internal=True)
+            await self._effect(effect_name, lambda: record.callback(self), internal=True)
         except BaseException as exc:
             # 回调抛错：标 failed、不原地重试（否则每次 settle 都要再炸一遍）。
             record.status = "failed"
@@ -904,38 +883,49 @@ class Context:
         record.effect = effect_name
         self._report_injections_started.append(effect_name)
 
-    def _stop_injection(self, record: _InjectionRecord) -> None:
-        """依赖不再齐：回卷回调的 effect，**订阅保留**（依赖回来时重跑）。"""
+    async def _stop_injection(self, record: _InjectionRecord) -> None:
+        """依赖不满足：回卷回调的 effect，保留订阅。"""
         effect_name, record.effect = record.effect, None
         record.status = "pending"
         record.error = None
         if effect_name is not None:
             self._report_injections_stopped.append(effect_name)
-            errors = self._unload_effect(effect_name)
+            errors = await self._unload_effect(effect_name)
             if errors:
                 raise errors[0]  # 清理失败 fail loud（其余回卷照常完成）
 
-    def _cancel_injection(self, record: _InjectionRecord) -> None:
-        """取消订阅本身：回卷回调的 effect、从订阅表摘掉。"""
+    async def _cancel_injection(self, record: _InjectionRecord) -> None:
+        """取消订阅：回卷回调的 effect，并从订阅表移除。"""
         self._injections.pop(record.seq, None)
-        self._stop_injection(record)
+        await self._stop_injection(record)
 
-    def _activate(self, record: _PluginRecord) -> None:
-        """激活：把 setup 放进一个 effect 里跑（`plugin:<名>`）。
+    async def _activate(self, record: _PluginRecord) -> None:
+        """激活插件：把 setup 放进 plugin:<名> 的 effect 里运行。
 
-        装载期做的一切登记都挂在这个 effect 下——退位时逐层回卷（插件自己的
-        清理动作先跑，它提供的服务随后撤）。失败标记 failed、**服务表还原**
-        （等于"什么都没发生"），异常抛出。
+        setup 中的登记都挂在该 effect 下。失败时标记 failed、还原服务表并抛出。
         """
         before = dict(self._slots)
+        before_tokens = dict(self._slot_tokens)
+        before_owners = dict(self._slot_owners)
+        before_provided = {name: item.provided for name, item in self._plugins.items()}
         effect_name = f"{PLUGIN_EFFECT_PREFIX}{record.name}"
+        self._activating = record
         try:
-            self._effect(effect_name, lambda: record.setup(self), internal=True)
+            await self._effect(effect_name, lambda: record.setup(self), internal=True)
         except BaseException as exc:
             record.status = "failed"
             record.error = exc
-            self._slots = before  # 保险：装载失败 = 服务表回到装载前
+            # 保险：装载失败 = 服务表（含令牌 / 提供者）回到装载前
+            self._slots = before
+            self._slot_tokens = before_tokens
+            self._slot_owners = before_owners
+            for name, provided in before_provided.items():
+                owner = self._plugins.get(name)
+                if owner is not None:
+                    owner.provided = provided
             raise
+        finally:
+            self._activating = None
         record.effect = effect_name
         # 本插件在 active 期间新提供的服务（按提供顺序）——退位级联按它扩散。
         record.provided = tuple(key for key in self._slots if key not in before)
@@ -943,11 +933,10 @@ class Context:
         record.error = None
         self._report_activated.append(record.name)
 
-    def _deactivate(self, record: _PluginRecord, *, status: PluginStatus = "pending") -> None:
-        """回卷一个插件：卸载它的 effect（子先父后、服务自动撤销）。
+    async def _deactivate(self, record: _PluginRecord, *, status: PluginStatus = "pending") -> None:
+        """回卷插件：卸载它的 effect，更新状态与服务表。
 
-        只改状态与表，**不推送稳定态**——调用方（settle 循环 / 卸载级联）负责
-        在恰当的时候收尾（半拆状态下 settle 会看到错误的中间世界）。
+        不推动稳定态；调用方负责收尾。
         """
         record.status = status
         record.error = None
@@ -955,70 +944,99 @@ class Context:
         effect_name, record.effect = record.effect, None
         if effect_name is not None:
             self._report_retired.append(record.name)
-            errors = self._unload_effect(effect_name)
+            errors = await self._unload_effect(effect_name)
             if errors:
                 raise errors[0]  # 清理失败 fail loud（其余回卷照常完成）
 
-    def _deactivate_into(
+    async def _deactivate_into(
         self,
         record: _PluginRecord,
         errors: list[BaseException],
         *,
         status: PluginStatus = "pending",
     ) -> None:
-        """退位一个插件，把清理异常收进 `errors`——用于**级联**（继续处理其余部分）。
-
-        单个插件的入口（`_deactivate`）抛第一个异常；批量退位（一次卸载里的
-        提供者 + 一串依赖者）要"不半途而废"：全部退完，异常最后一起报。
-        """
+        """退位并把清理异常收进 errors（供级联使用）。"""
         try:
-            self._deactivate(record, status=status)
+            await self._deactivate(record, status=status)
         except BaseException as exc:
             errors.append(exc)
 
-    def _dependent_records(self, provider: _PluginRecord) -> list[_PluginRecord]:
-        """列出需要随 provider 一起退位的活跃插件（**不含 provider 自己**）。
+    async def _settle_collecting(self) -> BaseException | None:
+        """跑一次稳定化，返回它抛出的第一个异常（没有则 None）。"""
+        try:
+            await self._settle()
+        except BaseException as exc:
+            return exc
+        return None
 
-        顺序 = "由近及远"（先直接依赖者、再它们的依赖者）；调用方反转即得
-        "深的先退"。服务闭包按层扩展，天然容忍环形依赖（环在同一批被选中，
-        不会无限循环）。
+    def _dependent_closure(
+        self, going: Iterable[str], *, exclude: _PluginRecord | None = None
+    ) -> list[_PluginRecord]:
+        """按服务依赖扩散，返回需要退位的活跃插件（由近及远）。
+
+        `going` 是即将消失的服务名集合：谁 inject 了它们，谁就要退位；退位者
+        提供的服务再加入集合。只考虑活跃插件；环形依赖在同一批被选中，不会
+        无限循环。`exclude` 用于"提供者自己不算依赖者"的场景。
         """
-        going = set(provider.provided)
         selected: list[_PluginRecord] = []
+        reachable = set(going)
         remaining = {
-            name: rec
-            for name, rec in self._plugins.items()
-            if rec.status == "active" and rec is not provider
+            name: record
+            for name, record in self._plugins.items()
+            if record.status == "active" and record is not exclude
         }
         changed = True
         while changed:
             changed = False
-            for name, rec in list(remaining.items()):
-                if any(dep in going for dep in rec.inject):
-                    selected.append(rec)
-                    going.update(rec.provided)
+            for name, record in list(remaining.items()):
+                if any(dep in reachable for dep in record.inject):
+                    selected.append(record)
+                    reachable.update(record.provided)
                     del remaining[name]
                     changed = True
         return selected
 
-    def _settle(self) -> None:
-        """把插件世界推到稳定态：先撤"依赖不再满足"的，再激活"依赖已满足"的。
+    def _dependent_records(self, provider: _PluginRecord) -> list[_PluginRecord]:
+        """需要随 provider 退位的活跃插件（不含自己），由近及远。"""
+        return self._dependent_closure(provider.provided, exclude=provider)
 
-        触发时机：provide / retract / load_plugin / unload_plugin / disable /
-        enable / effect 装载与卸载。
+    async def _retire_unsatisfied(self, errors: list[BaseException]) -> bool:
+        """退位所有依赖已不满足的活跃插件，顺序"深的先退"；返回是否退位过。
 
-        两种跳过（都为了让激活永远发生在**干净的顶层**）：
-
-            已在稳定化中  最外层的循环会重新扫描，直到不再变化
-            装载期（栈非空）  本次 effect 的收尾会再来一趟（否则插件会激活在
-                          别人的 effect 里，被那个 effect 的卸载牵连）
-
-        激活失败（setup 抛错）会把异常抛给触发方：世界停在失败点，那条记录以
-        failed 留着（错误可查、可重试）。这是有意的 fail loud。
+        清理异常收进 `errors` 并继续退位，全部退完后再由 `_settle` 抛出第一个
+        异常——不退到一半就把世界留在"active 但缺依赖"的中间态。
         """
-        if self._settling or self._stack:
+        missing = {
+            dep
+            for record in self._plugins.values()
+            if record.status == "active"
+            for dep in record.inject
+            if dep not in self._slots
+        }
+        if not missing:
+            return False
+        affected = self._dependent_closure(missing)
+        if not affected:
+            return False
+        # 闭包由近及远；反转即"深的先退"，依赖者清理时它的服务都还在。
+        for record in reversed(affected):
+            await self._deactivate_into(record, errors)
+        return True
+
+    async def _settle(self) -> None:
+        """把插件世界推到稳定态：先退依赖不再满足的，再激活依赖已满足的。
+
+        触发时机：服务与插件表变化、effect 装卸。三种跳过：正在稳定化中（最外层
+        循环会继续扫描）、装载期（栈非空）、回卷期（disposer 还在跑）——后两者
+        都由本次操作的收尾再推一次。
+
+        退位"深的先退"；清理 / 激活 / 注入启动的异常全部收齐，世界推到稳定态
+        后再抛第一个（其余进异常的 note）。激活失败的记录以 failed 保留。
+        """
+        if self._settling or self._stack or self._unwinding:
             return
         self._settling = True
+        errors: list[BaseException] = []
         try:
             while True:
                 changed = False
@@ -1026,32 +1044,47 @@ class Context:
                 for injection in list(self._injections.values()):
                     deps_ok = all(dep in self._slots for dep in injection.deps)
                     if injection.status == "active" and not deps_ok:
-                        self._stop_injection(injection)
+                        try:
+                            await self._stop_injection(injection)
+                        except BaseException as exc:
+                            errors.append(exc)
                         changed = True
                     elif injection.status == "failed" and not deps_ok:
                         # 依赖走了：回到 pending，等它再出现时重试（不原地空转）。
                         injection.status = "pending"
                         injection.error = None
                         changed = True
-                for record in list(self._plugins.values()):
-                    if record.status == "active" and not self._deps_ok(record):
-                        self._deactivate(record)
-                        changed = True
+                if await self._retire_unsatisfied(errors):
+                    changed = True
                 for record in list(self._plugins.values()):
                     if (
                         record.status == "pending"
                         and record.name not in self._suppressed
                         and self._deps_ok(record)
                     ):
-                        self._activate(record)
+                        try:
+                            await self._activate(record)
+                        except BaseException as exc:
+                            errors.append(exc)
                         changed = True
                 for injection in list(self._injections.values()):
                     if injection.status == "pending" and all(
                         dep in self._slots for dep in injection.deps
                     ):
-                        self._start_injection(injection)
+                        try:
+                            await self._start_injection(injection)
+                        except BaseException as exc:
+                            errors.append(exc)
                         changed = True
                 if not changed:
-                    return
+                    break
+        except BaseException as exc:
+            for error in errors:
+                exc.add_note(f"另有异常：{error!r}")
+            raise
         finally:
             self._settling = False
+        if errors:
+            for error in errors[1:]:
+                errors[0].add_note(f"另有异常：{error!r}")
+            raise errors[0]

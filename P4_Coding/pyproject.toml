@@ -1,33 +1,25 @@
 [project]
 name = "p4-harness"
 version = "0.4.0"
-description = "P4：插件化 harness 的实质化 —— 最小插件底座 + 三类插件 → 一个可用产品"
+description = "P4：async-first 插件内核（Context / 插件协议 / 引导）"
 requires-python = ">=3.13"
-
-# 未来分发形态：`pip install p4-harness` 后 `import harness`。
-# 分发单元是 core + 随包 loader；其余插件由使用方的 catalog 提供（0056）。
-dependencies = ["PyYAML>=6"]
+dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.6"]
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-# core（框架 + 引导）/ plugins（插件）/ manifests（装配单）/ harness（公开门面）。
-include = ["core*", "plugins*", "manifests*", "harness*"]
+# 当前只有 core（框架 + 引导）；插件由使用方的 catalog 提供。
+include = ["core*"]
 exclude = ["tests*", "docs*"]
-
-[tool.setuptools.package-data]
-# YAML 装配单随 manifests 包分发；它只是数据，不参与 import。
-manifests = ["*.yaml"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-extend-exclude = ["sessions", "workspace"]
 
 [tool.ruff.lint]
 # E/W pycodestyle、F pyflakes、I import 排序、UP pyupgrade、B bugbear
@@ -38,14 +30,11 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-# P4 的顶层包：core（框架 + 引导）/ plugins（插件）/ manifests（装配单）/
-# harness（公开门面）/ app（入口）。
-known-first-party = ["core", "plugins", "manifests", "harness", "app"]
+known-first-party = ["core"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# 顶层包就在本目录（core/plugins/...）：pytest 从任意位置跑都把项目根放进 sys.path。
 pythonpath = ["."]
-# `-ra`：默认跑完后列出跳过原因——真实 API 用例被跳过时，结果里必须看得见
-# "34 skipped"，不能把"离线全绿"读成"真实 API 也绿"（决策 0057）。
 addopts = "-ra"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

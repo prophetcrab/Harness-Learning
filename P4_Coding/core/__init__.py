@@ -1,26 +1,17 @@
-"""core —— 基座（**非插件只有这一处**）：框架 + 引导。
+"""core —— 插件内核：框架（context / plugin）+ 引导（launcher）。
 
-边界（决策 0042）。core 里两个角色、两级纪律：
+context.py   服务槽位、effect 回卷、事件、动态依赖、插件生命周期、变更锁
+plugin.py    插件协议与声明读取（name / inject / optional / requires / setup）
+launcher.py  组合根：boot() 装配插件并返回 Runtime，可选产品政策检查
 
-    core · 框架   插件世界的「物理定律」——服务槽位、事件、effect 回卷、
-                  单插件生命周期、变更锁、快照原语。
-                  **不认识任何插件**（一律不 import plugins），
-                  **不出现任何 harness 词汇**（llm / tool / session / …）。
-    core · 引导   自带启动器（`launcher.py`，步 8 长出）：唯一**组合根**——
-                  读装配单 → 挂上 loader → 产品政策检查 → `--dump`。
-                  它是"先有鸡才能装鸡"的那一下，认识 loader 一个插件
-                  （函数内懒加载，全仓唯一的向上边）。
+async-first：生命周期操作都是 awaitable（`await ctx.provide(...)`、
+`await ctx.load_plugin(...)`、`await ctx.emit(...)` …）；插件 setup / effect /
+事件 handler / inject callback 可同步或异步，内核统一等待。单事件循环模型，
+一个 Context 只在一个事件循环里用，非线程安全。
 
-按小步纪律，core · 框架一次只长一条语义（M1 拆步表，见 PLAN.md）：
-
-    步 1  服务槽位 ✅             provide / get / require / retract
-    步 2  插件装载与依赖驱动 ✅    inject / optional；pending / active / disabled / failed
-    步 3  effect 回卷 ✅          注册即回卷：子先父后、一个失败不打断其余、失败不留半装
-    步 4  事件 ✅                 on / emit（广播）/ waterfall（中间件链）；订阅随 effect 回卷
-    步 7  变更锁 + revision ✅    公共操作串行化；每次有效变更 revision +1 + 变更报告
-    步 8  引导（launcher）✅      自带启动器：boot(装配单) → Runtime；产品政策检查
-    补充  动态依赖 inject ✅      ctx.inject(deps, cb)：依赖齐了才跑一块，走了自动拆
-    （条目 / 树 / 装配单 / 热插拔都是 loader 插件的事，不在 core 的框架部分。）
+core 不包含插件。boot() 需要调用方传入 catalog，并由一个提供 "loader" 服务的
+插件完成装配；该插件不在本目录中（导入处见 launcher.py 的 Runtime.loader 与
+boot()）。
 """
 
 from core.context import (

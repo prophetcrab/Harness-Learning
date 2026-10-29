@@ -15,12 +15,13 @@
 | **P1** | 最小骨架：Provider 协议、主循环、工具管线、会话日志、综合组装 | ✅ 5 个练习 / 79 用例 |
 | **P2** | 能力补全：提示词装配、能力接缝、沙箱审批、插件协议、配置分层、RPC | ✅ 11 个阶段 / 693 用例 |
 | **P3** | 插件化：内核（服务 / 事件 / effect / inject）+ 六个能力增量 | ✅ 6 个阶段 / 1576 用例 |
-| **P4** | 插件化内核：上下文管理、事件分发、装配单检查、启动器 | 🚧 仅保留 `core/` |
+| **P4** | async-first 插件内核：服务 / effect / 事件 / 生命周期 / 启动器 | 🚧 `core/` + 测试 |
 
-决策记录 57 份，见 [`docs/decisions/`](docs/decisions/)。
+决策记录 58 份，见 [`docs/decisions/`](docs/decisions/)。
 
-> **P4 当前状态**：内核（`core/` 四文件、1511 行）与启动器已完成；插件层、测试与演示入口
-> 已从工作区移除。恢复完整形态可用 `git checkout <commit> -- P4_Coding`。
+> **P4 当前状态**：async-first 内核（`core/` 四文件：context / plugin / launcher）
+> 与机制测试（`tests/`）已完成；插件层与演示入口已从工作区移除。
+> 恢复完整形态可用 `git checkout <commit> -- P4_Coding`。
 
 ---
 
@@ -29,11 +30,23 @@
 | 项 | 要求 |
 |---|---|
 | Python | 3.13 |
-| 依赖 | `openai`、`pydantic`、`pytest`；可选 `ruff`、`mypy` |
+| 依赖 | `openai`、`pydantic`、`PyYAML`、`pytest`、`pytest-asyncio`；可选 `ruff`、`mypy` |
 | API 凭证 | 项目根 `.env` 中的 `DEEPSEEK_API_KEY`（已 gitignore） |
 
+环境用项目根的 `.venv`（已 gitignore）：
+
 ```bash
-python -m pip install openai pydantic pytest ruff
+python3.13 -m venv .venv
+# Windows 用 .venv\Scripts\python，macOS / Linux 用 .venv/bin/python
+.venv/bin/python -m pip install openai pydantic PyYAML pytest pytest-asyncio ruff
+# 可选：静态类型检查（装了之后 P2/P3 门禁会顺带跑 mypy）
+.venv/bin/python -m pip install mypy
+```
+
+跑测试 / 门禁前先激活 venv（`scripts/check.py` 从 PATH 找 ruff）：
+
+```bash
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 ```
 
 `.env` 格式（只有真实 API 和讲稿页需要，离线测试不需要）：
@@ -55,6 +68,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com
 ```bash
 # 单个练习
 cd P1_Coding/_05_Mini_Harness && python -m pytest -q
+
+# P4 内核（离线，含并发与随机不变量测试）
+cd P4_Coding && python -m pytest -q
 
 # P2 / P3 各有独立门禁（ruff + 逐阶段 pytest）
 cd P2_Coding && python scripts/check.py
@@ -88,7 +104,9 @@ Harness-Learning/
 ├─ P1_Coding/           最小骨架（5 个练习）
 ├─ P2_Coding/           11 个最小扩展阶段 + mini_harness 整合包
 ├─ P3_Coding/           插件化内核 + 6 个能力增量
-├─ P4_Coding/core/      插件内核：context / plugin / launcher
+├─ P4_Coding/           插件内核 + 机制测试
+│  ├─ core/             框架（context / plugin）+ 引导（launcher）
+│  └─ tests/            机制测试（服务 / effect / 事件 / 生命周期 / 引导 / 并发）
 ├─ docs/
 │  ├─ decisions/        57 份决策记录（背景 / 决策 / 备选 / 后果）
 │  ├─ learning-plan.md  学习计划（M0–M8）

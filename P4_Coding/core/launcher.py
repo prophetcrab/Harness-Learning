@@ -1,44 +1,35 @@
-"""launcher —— core 的**引导**角色：全仓唯一的组合根（composition root）。
+"""launcher —— 组合根：装配插件，可选地按产品政策检查。
 
-**为什么它在 core 里**（0042）：基座应当**自带启动器**——拿到 core 就能起一个
-装配，不需要外部胶水；非插件部分因此只有 core 一处。它和框架模块的区别是
-纪律，不是位置：
+    boot()                  建 Context → 装载 loader 插件 → 装配装配单
+                            →（product=True 时）产品政策检查，返回 Runtime
+                            （async：`runtime = await boot(...)`）
+    check_product_policy()  三条检查：非分组条目必须声明 role；role 必须合法；
+                            至少一个 role=application 的条目处于 active
+    dump()                  把条目状态渲染成表格
 
-    core · 框架   不认识任何插件（一律不 import plugins），不出现 harness 词汇
-    core · 引导   认识 loader **一个**插件（函数内懒加载，全仓唯一的向上边）；
-                  它知道三类角色词表——那是 P4 的产品概念（0041），由它在
-                  "起产品"时检查
+    Runtime                 引导产物：ctx + loader 入口 + close / dump
 
-**引导做的事**（只有这四件）：
+launcher 认识一个插件：plugins.base.loader（提供 "loader" 服务），在
+Runtime.loader 与 boot() 中函数内导入。该插件不在本目录中；缺失时这两个入口
+会在导入处抛 ImportError。
 
-    1. 建 Context
-    2. 挂上 loader（**唯一特权步骤**——"先有鸡才能装鸡"）
-    3. 把装配单交给 loader（整批装配；失败整批回滚）
-    4. 若是"起产品"（product=True）→ 产品政策检查 → 返回 Runtime
-
-**产品政策**（只在 product=True 时执行；裸装配 / 空装配单照起）：
-
-    · 每条非分组条目都必须声明 role
-    · role 必须是 base / application / capability 之一
-    · 至少要有一个**正在运行**的 application 条目（"用户从哪进来"要有答案）
-
-**装配单是数据**（0042）：目前接受 `list[Entry]` / `list[dict]`；文件格式等
-出现第二个消费者再定。启动器不读文件、不碰环境变量——那是 M4/M5 的打包层。
+loader 契约：`assemble(manifest)` 可以是同步或异步函数（boot 会等待）；
+`snapshot()` 保持同步（政策检查与 dump 都是同步读）。
 """
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from core.context import Context, MissingPluginError
 
-#: 三类角色词表（P4 的产品概念，见决策 0041）。
-#: 只有引导知道它——框架模块里不出现这些词（纯度测试的第二级）。
+#: 三类角色词表（产品政策使用）。
 ROLES: tuple[str, ...] = ("base", "application", "capability")
 
-#: "产品"至少要有的一种角色。
+#: 产品政策要求至少有一个该角色的条目处于 active。
 APPLICATION_ROLE = "application"
 
 
@@ -52,41 +43,38 @@ class PolicyError(BootError):
 
 @dataclass
 class Runtime:
-    """一次引导的产物：ctx + 对 loader 的读写入口。
+    """一次引导的产物：ctx 与 loader 入口。
 
-    `ctx` 是**世界本身**（服务、事件、台账都在里面）；`loader` 是行政入口。
-    两者都给出去，是因为消费方分得清：测试 / 管理面读 `ctx`，装配与热插拔
-    走 `loader`——不存在第三个入口。
+    ctx 是运行时本身（服务、事件、台账）；loader 负责装配与热插拔。
     """
 
     ctx: Context
 
     @property
     def loader(self) -> Any:
-        """当前的 loader 服务（函数内懒加载：引导是 core 唯一允许认识 plugins 的地方）。"""
+        """当前提供 "loader" 服务的插件（函数内导入）。"""
         from plugins.base.loader import LOADER_SERVICE
 
         return self.ctx.require(LOADER_SERVICE)
 
     def snapshot(self) -> tuple[Any, ...]:
-        """条目快照（转发 loader；loader 被停用时 fail loud）。"""
+        """条目快照（转发 loader.snapshot()）。"""
         return self.loader.snapshot()
 
     def dump(self) -> str:
-        """给人看的树报告（`--dump` 的内容；启动器 / 测试 / 排障共用）。"""
+        """给人看的树报告。"""
         return dump(self)
 
-    def close(self) -> None:
-        """卸载世界里的全部插件（逆序；某个清理抛错不打断其余，最后抛第一个）。
+    async def close(self) -> None:
+        """卸载世界里的全部插件（逆序；loader 最后卸）。
 
-        停用中的插件也一并清掉（它们仍占着台账），loader 最后卸——这样树的
-        卸载走的是正常入口，而不是"loader 没了、树还挂着"。
+        某个清理抛错不打断其余，最后重抛第一个异常。
         """
         names = [info.name for info in self.ctx.plugins]
         errors: list[BaseException] = []
         for name in reversed(names):
             try:
-                self.ctx.unload_plugin(name)
+                await self.ctx.unload_plugin(name)
             except MissingPluginError:
                 continue  # 已经随级联卸掉了
             except BaseException as exc:  # noqa: BLE001 —— 全部收齐后重抛第一个
@@ -95,33 +83,33 @@ class Runtime:
             raise errors[0]
 
 
-def boot(
+async def boot(
     manifest: Sequence[Any] = (),
     *,
     catalog: Mapping[str, Callable[..., object]],
     product: bool = False,
 ) -> Runtime:
-    """起一个装配：建 ctx → 挂 loader → 装装配单 →（可选）产品政策检查。
+    """起一个装配：建 Context → 装载 loader → 装配装配单 →（可选）政策检查。
 
-    - `manifest`：条目列表（Entry 或 dict）；空列表也能起（基座自足）。
-    - `catalog`：name → 工厂（loader 的目录）。
-    - `product=True`：按三类角色检查这是一份"产品"装配——缺角色、角色非法、
-      没有运行中的应用化插件都 fail loud。裸装配不检查（测试 / 嵌入式场景）。
+    manifest 是条目列表（Entry 或 dict）；catalog 是 name → 工厂。
+    product=True 时执行产品政策检查。`loader.assemble` 可以是同步或异步的。
 
-    失败时抛 `AssemblyError`（装配单问题）或 `PolicyError`（产品政策）——
-    **不返回半个 Runtime**：失败的装配不留下可用的世界。
+    失败时清理已装载的插件并抛 BootError（政策失败抛 PolicyError），不返回
+    半个 Runtime。
     """
     from plugins.base.loader import LOADER_SERVICE, loader_plugin
 
     ctx = Context()
     try:
-        ctx.load_plugin(loader_plugin(catalog))
+        await ctx.load_plugin(loader_plugin(catalog))
         loader = ctx.require(LOADER_SERVICE)
-        loader.assemble(manifest)
+        result = loader.assemble(manifest)
+        if inspect.isawaitable(result):
+            await result
     except BaseException as exc:
         # 引导失败：把已经装上的（loader 自己）收拾掉，不把半个世界交出去。
         try:
-            Runtime(ctx).close()
+            await Runtime(ctx).close()
         except BaseException:  # 清理失败不遮蔽原始异常
             pass
         if isinstance(exc, BootError):
@@ -134,7 +122,7 @@ def boot(
             check_product_policy(runtime)
         except BaseException:
             try:
-                runtime.close()
+                await runtime.close()
             except BaseException:  # 清理失败不遮蔽原始异常
                 pass
             raise
@@ -142,16 +130,11 @@ def boot(
 
 
 def check_product_policy(runtime: Runtime) -> None:
-    """产品政策检查（product=True 时调用；也可以单独用来验收一份装配）。
+    """产品政策检查（product=True 时由 boot 调用，也可单独使用）。
 
-    三条（0042 / 0041）：
-
-        1. 每条**非分组**条目都声明了 role（分组是容器，不需要）；
-        2. role 在词表内（写错一个字母不能被当成"别的东西"静默放行）；
-        3. 至少一条 role=application 的条目**正在运行**（active）。
-
-    第 3 条用 active 而不是"声明了"：装配成功后 pending 已被 loader 拦下，
-    failed 会整批回滚，所以 active 就是这个条目真的起来了。
+    1. 每条非分组条目都声明了 role；
+    2. role 在 ROLES 词表内；
+    3. 至少一条 role=application 的条目处于 active。
     """
     states = runtime.snapshot()
     unroled = [state.path for state in states if state.name is not None and state.role is None]
@@ -184,7 +167,7 @@ def check_product_policy(runtime: Runtime) -> None:
 
 
 def dump(runtime: Runtime) -> str:
-    """把树渲染成一张表（`--dump` 的报告；状态、角色、插件名、缺的依赖）。"""
+    """把条目状态渲染成表格（路径、角色、状态、插件名 / 缺依赖 / 错误）。"""
     states = runtime.snapshot()
     if not states:
         return "（装配单是空的：只有 loader 在运行）"
